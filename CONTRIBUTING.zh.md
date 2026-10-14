@@ -72,7 +72,7 @@
 
 1. 向 `dev` 提一个 Pull Request：修改 `ds-bot/package.json` 里的版本号，根据已合并 Pull Request 的 Changelog 句子写 `CHANGELOG.md` 的这一版。
 2. 提一个从 `dev` 到 `main` 的 Pull Request，标题为 `release: vX.Y.Z`。在描述里列出这一版所有的 `Fixes #<号>`，合并时这些 Issue 会一起关闭。
-3. 用 merge commit 合并，在 `main` 上发布 GitHub Release `vX.Y.Z`。
+3. 用 merge commit 合并，在 `main` 上发布 GitHub Release `vX.Y.Z`。Release 工作流会检查 tag 与版本号一致、且在 `main` 上，跑完检查后把包发到 npm（预发布版本发到 npm 的 `next` 标签）。不要手动 `npm publish`。
 4. 热修：从 `main` 切 `fix/hot-<短名>`，向 `main` 提 Pull Request，发一个补丁版本，再把 `main` 合回 `dev`。
 
 ## 搭建环境
@@ -130,7 +130,13 @@ node scripts/build-client.mjs --check  # client.js 与 src/client 一致
 npm run lint                           # oxlint
 ```
 
-CI 在每个 Pull Request 上，在 Linux 和 Windows 上跑同样的三项检查。
+CI 在每个 Pull Request 上，在 Linux 和 Windows 上跑同样的三项检查。它还会扫描入库的文件，查找密钥、token、个人路径和邮箱，以及只应留在本地的材料。想自己扫描，在仓库根目录运行：
+
+```sh
+mkdir -p /tmp/ds-bot-tree && git archive HEAD | tar -x -C /tmp/ds-bot-tree && node scripts/scan.mjs /tmp/ds-bot-tree
+```
+
+「must fix」的结果会让 CI 失败；「can stay」的结果仅供阅读。分支规则只要求一项检查 **Test result**，所有检查都通过它才通过。
 
 改服务端（`index.js`、`src/host/`）时，还要跑冒烟测试。它启动模拟模型和一个链接到你本地插件的 DSH Web，走一遍主要流程（Bot、群聊、对话分段、压缩、设置）。`CONTEXT_WINDOW` 和 `CHECK_RATIO` 让模拟模型的上下文窗口变小，几条长回复就能到达检查线：
 
