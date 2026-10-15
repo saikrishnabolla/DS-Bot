@@ -347,3 +347,22 @@ test('a message sent between rounds still opens a full round', async (t) => {
   const result = JSON.parse(await running)
   assert.deepEqual(result.replies.map(reply => reply.name ?? 'User'), ['Chief', 'Writer'])
 })
+
+// #209: DSH can fail a member's turn before its first step (DSH 0.2.1 does so for a folder
+// that is gone), so the turn never takes the round's call. The round counts the failure at
+// once instead of waiting minutes for a reply that cannot come.
+test('a member turn that fails before it takes the call fails that member in the round at once', async (t) => {
+  const { call, emit, userMessage, relay, answer, stop, sent } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  await emit(room.id, userMessage('Start'))
+  const running = relay(room.id, 'relay')
+  const first = await turnFor(sent)
+  await emit(first.sessionId, { type: 'turn/start', data: { turn: 1 } })
+  await emit(first.sessionId, { type: 'turn/end', data: { reason: { kind: 'error', error: { message: 'working-directory: directory does not exist: "/gone"', code: 'UNKNOWN' } } } })
+  const second = await turnFor(sent, first)
+  assert.ok(second, 'the next member speaks without waiting for the reply timeout')
+  await answer(second.sessionId, second.message.source.exchangeId, 'Writer here.', 1)
+  const result = JSON.parse(await running)
+  assert.deepEqual(result.replies.map(reply => [reply.kind ?? 'reply', reply.name]), [['failed', 'Chief'], ['reply', 'Writer']])
+})
