@@ -528,3 +528,32 @@ test('a write that fails at save time archives the Session it made', async (t) =
   const saved = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
   assert.equal(Object.values(saved.bots).some(bot => bot.name === 'Phantom'), false)
 })
+
+// 公开#178: "User" is how a group log names the user, so a Bot may not take it.
+test('a Bot cannot be named or renamed like the user; one named so before keeps working', async (t) => {
+  const team = {
+    version: 1,
+    mainBotIds: ['a'],
+    bots: {
+      a: { id: 'a', name: 'Chief', role: '', instructions: '', sessionId: 'a', createdAt: 1 },
+      u: { id: 'u', name: 'User', role: '', instructions: '', sessionId: 'u', createdAt: 2 },
+    },
+    rooms: {},
+    agents: {},
+    exchanges: [],
+    exchangeTurns: {},
+    questions: {},
+    prefs: {},
+    revision: 0,
+  }
+  const { call, stop } = start(team)
+  t.after(stop)
+  const made = await call('create-bot', { name: 'user' })
+  assert.equal(made.ok, false)
+  assert.match(made.error.message, /stands for the user in a chat/)
+  const renamed = await call('update-bot', { id: 'a', name: 'You' })
+  assert.equal(renamed.ok, false)
+  assert.match(renamed.error.message, /stands for the user in a chat/)
+  assert.equal((await call('update-bot', { id: 'u', name: 'User', role: 'Tester' })).ok, true)
+  assert.equal((await call('update-bot', { id: 'u', name: 'Helper' })).ok, true)
+})
