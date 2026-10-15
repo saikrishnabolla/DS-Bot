@@ -347,3 +347,38 @@ test('a message sent between rounds still opens a full round', async (t) => {
   const result = JSON.parse(await running)
   assert.deepEqual(result.replies.map(reply => reply.name ?? 'User'), ['Chief', 'Writer'])
 })
+
+// A member deleted while its group Session is made sits the round out; the Session it was
+// getting belongs to no one, so it is archived instead of left over.
+test('a member deleted while its group Session is made is left out, and the Session is not kept', async (t) => {
+  const { call, emit, userMessage, relay, answer, stop, sent, ctx, rt } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  const writer = rt.state.rooms[room.id].members.find(id => !rt.isMain(id))
+  const archived = []
+  ctx.workspaceRegistry.archiveSession = async (sessionId) => { archived.push(sessionId) }
+  await emit(room.id, userMessage('Start'))
+  const running = relay(room.id, 'relay')
+  const first = await turnFor(sent)
+
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  let made
+  const making = new Promise(resolve => { made = resolve })
+  const create = ctx.sessionController.create
+  ctx.sessionController.create = async (options) => {
+    const result = await create(options)
+    made(result.sessionId)
+    await gate
+    return result
+  }
+  await answer(first.sessionId, first.message.source.exchangeId, 'Chief here.', 1)
+  const sessionId = await making
+  assert.equal((await call('delete-bot', { id: writer })).ok, true)
+  release()
+
+  const result = JSON.parse(await running)
+  assert.deepEqual(result.replies.map(reply => [reply.kind ?? 'reply', reply.name]), [['reply', 'Chief']])
+  assert.ok(archived.includes(sessionId))
+  assert.equal(rt.state.rooms[room.id].sessions?.[writer], undefined)
+})
