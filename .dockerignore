@@ -1,0 +1,11 @@
+.git
+**/node_modules
+ds-bot/dev/harness
+.dsh-test*
+.dsh-home
+shots
+docs/images
+*.tgz
+docker/data
+docker/workspace
+docker/.env
