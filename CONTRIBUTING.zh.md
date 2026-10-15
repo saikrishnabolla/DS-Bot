@@ -11,14 +11,14 @@
 ## 最重要的规则
 
 1. **基于 DSH 构建，不改 DSH。** Bot 功能是 DSH 插件：只用 DSH 有文档的插件接口（Cordis 服务、插件客户端入口、profile patch）。桌面应用只通过 DSH 有文档的入口启动 DSH（`@deepseek-ai/dsh/profile-boot`、`dsh` 命令）。不修改 DeepSeek Harness，不依赖 DSH 安装目录里的文件。功能需要 DSH 没有提供的能力时，先在这里开 Issue；修复可能应该放在 DSH 里。
-2. **每个 Bot 都是一个 DSH Session。** Bot 的工作走 DSH 正常的 agent 循环、工具和模型路由。不要另加一套 agent 运行时。
+2. **Bot 的工作跑在 DSH Session 里。** Bot 的身份不变，工作跑在 DSH Session 里：私聊一条、每个群各一条，上下文快满时换一条新的。每个回合都走 DSH 正常的 agent 循环、工具和模型路由。不要另加一套 agent 运行时。
 3. **任何地方都不放真实密钥。** 不要提交 API key、token、cookie、`DSH_HOME` 目录、日志，或带个人信息的截图。测试和测试台用脚本化的模拟模型，不需要密钥。
 4. **只用原创素材。** 不要从其他产品或网站复制代码、文字、图标、logo 或其他图形。唯一例外是与 Apache 2.0 兼容许可的代码：注明出处，并把它的声明加进 `NOTICE` 文件。
 5. **每个改动都要测试。** 每个改动都要跑单元测试和客户端检查（见[测试改动](#测试改动)）。
 
 ## 协作方式
 
-团队里谁都可以做任何工作：分诊、修 bug、做功能、改界面、写文档。只有一部分决定归维护者：产品方向、改动已定的设计、这些规则、发版和架构。需要这类决定的 Issue 和 Pull Request 带 `maintainer` 标签；开工前先等维护者回复。拿不准是 bug 还是设计如此时，在 Issue 里问。
+团队里谁都可以做任何工作：分诊、修 bug、做功能、改界面、写文档。只有一部分决定归维护者：产品方向、改动已定的设计、这些规则、发版和架构。需要这类决定的 Issue 和 Pull Request 带 `maintainer` 标签；开工前先等维护者回复。DS Bot 要做成什么，见 [docs/vision.zh.md](docs/vision.zh.md)；已定的设计在 [docs/plans/](docs/plans/)。拿不准是 bug 还是设计如此时，先查这两处，再在 Issue 里问。
 
 ### 分支
 
