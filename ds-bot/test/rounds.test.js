@@ -446,14 +446,15 @@ test('a relative file link a member writes reaches the group, and another Bot, a
   const result = JSON.parse(await running)
   assert.equal(result.replies[0].text, `It is in [a.txt](${full('sub/a.txt')}).`)
 
-  // A Bot that works in the folder sends the same link to another Bot.
+  // A Bot that works in the folder sends the same link to another Bot; from its group
+  // Session that calls the Bot in the group (#165).
   const chief = rt.state.mainBotIds[0]
   const writer = rt.state.rooms[room.id].members.find(id => id !== chief)
   sent.length = 0
   await ctx.registeredTools.get('message_bot').execute({ to: rt.botOf(writer).name, message: 'Read [notes](notes.md#L3)', when: 'queue' }, {
     agent: { id: first.sessionId, session: { id: first.sessionId, header: { cwd: folder } }, inbox: { nextStep: [], nextTurn: [] } }, callId: 'c1',
   })
-  const delivered = await waitFor(() => sent.find(entry => entry.message.source?.role === 'request'))
+  const delivered = await waitFor(() => sent.find(entry => entry.sessionId === room.id && entry.message.source?.role === 'post'))
   assert.ok(delivered.message.content.map(block => block.text).join('\n').includes(`[notes](${full('notes.md')}#L3)`))
 })
 
