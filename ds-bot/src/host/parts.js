@@ -659,8 +659,11 @@ export function install(rt) {
     await rt.ensureCapabilities(target)
     const agent = await rt.resolveAgent(target)
     for (const message of messages) {
-      const copy = createUserMessage({ content: message.content, ...(message.source ? { source: message.source } : {}) })
       const kind = message.source?.kind
+      // DSH's notice of a folder change is about the Session it was queued in; the part
+      // that goes on has its own folder, which its handoff names.
+      if (kind === 'working-directory') continue
+      const copy = createUserMessage({ content: message.content, ...(message.source ? { source: message.source } : {}) })
       if (kind === 'user' || kind === SOURCE_KIND || kind === REPLY_KIND) agent.followup(copy)
       else agent.inject(copy)
     }
@@ -780,6 +783,15 @@ export function install(rt) {
     if (picked !== undefined) await selectRoute(bot, freshId, picked)
     await rt.applyPermission(bot, freshId, room)
       .catch(error => rt.warn('ds-bot: permission for the fresh part of %s not applied: %s', bot.name, error))
+    // The fresh part took several awaits: a Bot or group deleted meanwhile, a member that
+    // left, or a part that is no longer the current one gets no fresh part.
+    const current = room !== undefined ? room.sessions?.[bot.id] : rt.chatOf(bot.id)
+    const gone = rt.botOf(bot.id) === undefined || (room !== undefined && (rt.roomOf(room.id) !== room || !room.members.includes(bot.id)))
+    if (gone || current !== agent.id) {
+      await ctx.workspaceRegistry.archiveSession(freshId, { stopActivity: true })
+        .catch(error => rt.warn('ds-bot: unused fresh part of %s not archived: %s', bot.name, error))
+      return
+    }
     const segment = { sessionId: agent.id, endedAt: Date.now(), ...(tokens !== undefined ? { tokens } : {}), ...noted }
     if (room !== undefined) {
       room.segments ??= {}
@@ -885,6 +897,31 @@ export function install(rt) {
     const target = wanted !== undefined && await rt.isFolder(wanted) ? wanted : rt.teamFolder()
     return target === undefined || target === cwd ? undefined : target
   }
+
+  // DSH 0.2.1 checks a Session's folder as it puts each model request together, before
+  // agent/pre-step, and fails the turn when both the folder and the one the Session was
+  // made in are gone. The team folder is DS Bot's own, so it is made again; a Bot whose
+  // own folder went away first changes to the folder it would move to, through DSH's
+  // documented way out (`workingDirectory.set`), and the pre-step then moves it to a
+  // fresh part there, as on DSH 0.2.0.
+  ctx.on('system-prompt/assemble', async (assembly, context, next) => {
+    const agent = context.agent
+    const folders = ctx.get?.('workingDirectory')
+    if (agent === undefined || typeof folders?.get !== 'function' || readOnly()) return next()
+    const current = folders.get(agent.session)
+    if (current === undefined || await rt.isFolder(current)) return next()
+    await rt.load()
+    const team = await rt.keepTeamFolder()
+    if (current === team || !rt.isBotSession(agent.id)) return next()
+    const place = placeOf(agent.id)
+    const wanted = rt.workDirOf(place)
+    const target = wanted !== undefined && await rt.isFolder(wanted) ? wanted : team
+    if (target !== undefined) {
+      await folders.set(agent, target, context.signal)
+        .catch(error => rt.warn('ds-bot: %s works in %s, which is gone, and could not change to %s: %s', rt.botOf(place?.botId)?.name ?? agent.id, current, target, error))
+    }
+    return next()
+  }, { prepend: true })
 
   // A Bot's own chat moves to its new folder now when it is idle; a running turn
   // moves at its next step, and each group conversation at its next turn there.
