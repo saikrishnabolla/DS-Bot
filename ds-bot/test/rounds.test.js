@@ -423,3 +423,35 @@ test('a group line longer than a member reads is cut in its prompt, with its len
   const line = rt.state.rooms[room.id].log.find(entry => entry.length === 25_000)
   assert.equal(readFileSync(join(home, 'group-lines', room.id, `${line.seq}.txt`), 'utf8').length, 20_000)
 })
+
+// 公开#176: a PDF the user sent in a group reached neither the log nor any member, so
+// every Bot said it could not read it; in a Bot's own chat the same file worked.
+test('a file the user sends in a group reaches each member the line is shown to, once', async (t) => {
+  const { call, emit, relay, answer, stop, sent, rt } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  const pdf = { attachmentId: 'sha256:39cb3dab00', name: 'report-XYZ176.pdf', bytes: 607 }
+  await emit(room.id, { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Read this PDF' }, { type: 'file', attachment: pdf }] } })
+  let running = relay(room.id, 'r1')
+  const first = await turnFor(sent)
+  const files = message => message.content.filter(block => block.type === 'file').map(block => block.attachment)
+  assert.deepEqual(files(first.message), [pdf])
+  assert.match(first.message.content[0].text, /User: Read this PDF\n\[File "report-XYZ176\.pdf" \(607 bytes\) attached\]/)
+  await answer(first.sessionId, first.message.source.exchangeId, 'Reading it.', 1)
+  const second = await turnFor(sent, first)
+  assert.deepEqual(files(second.message), [pdf])
+  await answer(second.sessionId, second.message.source.exchangeId, 'Me too.', 2)
+  await running
+  assert.deepEqual(rt.roomOf(room.id).log.find(line => line.who === 'User').files, [pdf])
+
+  sent.length = 0
+  await emit(room.id, { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Thanks' }] } })
+  running = relay(room.id, 'r2')
+  const next = await turnFor(sent)
+  assert.deepEqual(files(next.message), [])
+  await answer(next.sessionId, next.message.source.exchangeId, 'OK.', 3)
+  const after = await turnFor(sent, next)
+  await answer(after.sessionId, after.message.source.exchangeId, 'OK.', 4)
+  await running
+})
+
