@@ -429,6 +429,7 @@ export function install(rt) {
             ...(source.resumed ? { resumed: true } : {}),
             ...(source.again ? { again: true } : {}),
             ...(source.stopped ? { stopped: true } : {}),
+            ...(source.done ? { done: true } : {}),
             ...(source.askedBy ? { askedBy: source.askedBy } : {}),
           })
         } else if (source?.kind === SOURCE_KIND && source.role === 'kickoff' && rt.roomOf(id)) {
@@ -489,6 +490,7 @@ export function install(rt) {
         const joined = entry.joined ?? []
         // What the group already saw of the turn is not posted again.
         const texts = entry.texts.slice(entry.shown)
+        const shown = entry.shown > 0
         const { lastText, lastCalled } = entry
         // A turn stopped for a switch goes on in the next part, which answers instead.
         const switched = entry.switched === true
@@ -546,11 +548,11 @@ export function install(rt) {
           } else if (!stopped && reason?.kind !== 'aborted') {
             // The round moved on without this member; how its turn ends still reaches the group.
             if (failure !== undefined) void rt.lateRoomFailure?.(id, info, failure)
-            else void rt.lateRoomReply?.(id, info, groupReply())
+            else void rt.lateRoomReply?.(id, info, groupReply(), { shown })
           }
         } else if (!retry && speaksInGroup(id, info)) {
           if (failure !== undefined) void rt.lateRoomFailure?.(id, info ?? {}, failure)
-          else if (reason?.kind !== 'aborted') void rt.lateRoomReply?.(id, info ?? {}, groupReply())
+          else if (reason?.kind !== 'aborted') void rt.lateRoomReply?.(id, info ?? {}, groupReply(), { shown })
         } else if (!retry && info !== undefined) {
           answer(info, replyText())
         }
