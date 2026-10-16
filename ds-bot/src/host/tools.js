@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { COLORS, EXTRA_COLORS, MAX_HOPS, MAX_UNATTENDED_MESSAGES, MAX_UNREAD_REQUESTS, MESSAGE_INLINE_MAX, ROOM_BOT_ROUNDS, ROOM_MODES, SOURCE_KIND } from './constants.js'
+import { absoluteLinks } from './links.js'
 import { unquote } from './text.js'
 
 export const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] }
@@ -135,8 +136,9 @@ export function install(rt) {
       if (unread >= MAX_UNREAD_REQUESTS) {
         refuse(`Not sent: ${target.name} has not read the last ${unread} messages from Bots yet, so it is most likely stuck, for example waiting for the user. Do not send it more; tell the user that ${target.name} is not responding.`)
       }
-      const long = await rt.attachLong(String(args.message), `Message from ${sender.name}.txt`)
-      if (long === undefined) return tooLong(String(args.message))
+      const text = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
+      const long = await rt.attachLong(text, `Message from ${sender.name}.txt`)
+      if (long === undefined) return tooLong(text)
       const toUser = args.reply_to === 'user'
       const working = rt.live.get(chat)?.turn !== undefined
       const steer = args.when !== 'queue' && !toUser
@@ -422,7 +424,7 @@ export function install(rt) {
       if (info?.role === 'room' && info.roomId === room.id) return `You are speaking in "${room.name}" right now. Write your message as your reply instead.`
       const hop = nextHop(exec)
       if (hop > MAX_HOPS) return CHAIN_TOO_LONG
-      const text = String(args.message ?? '').trim()
+      const text = absoluteLinks(String(args.message ?? '').trim(), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
       if (text === '') return 'Write a message to post.'
       if ((room.botRounds ?? 0) >= ROOM_BOT_ROUNDS) return `Bots already started ${ROOM_BOT_ROUNDS} rounds in "${room.name}" since the user last spoke there. Wait for the user.`
       checkUnattended()

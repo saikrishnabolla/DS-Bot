@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -346,6 +346,39 @@ test('a message sent between rounds still opens a full round', async (t) => {
   await answer(second.sessionId, second.message.source.exchangeId, 'Hello!', 2)
   const result = JSON.parse(await running)
   assert.deepEqual(result.replies.map(reply => reply.name ?? 'User'), ['Chief', 'Writer'])
+})
+
+// #217: DSH opens a relative file link from the folder of the Session that shows it. A
+// member wrote the link in its own group Session, which works in the group's folder; the
+// group's Session and other Bots work elsewhere, so the link reaches them in full.
+test('a relative file link a member writes reaches the group, and another Bot, as a full path', async (t) => {
+  const { call, emit, userMessage, relay, answer, stop, sent, ctx, rt } = start()
+  t.after(stop)
+  const folder = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-links-')))
+  t.after(() => rmSync(folder, { recursive: true, force: true }))
+  const room = await team(call, sent)
+  assert.equal((await call('update-room', { id: room.id, workDir: folder })).ok, true)
+  const full = path => join(folder, path).replace(/\\/g, '/').replace(/ /g, '%20')
+  await emit(room.id, userMessage('Where is the draft?'))
+  const running = relay(room.id, 'relay')
+  const first = await turnFor(sent)
+  await answer(first.sessionId, first.message.source.exchangeId, 'It is in [a.txt](sub/a.txt).', 1)
+  const second = await turnFor(sent, first)
+  // The next member reads it in its prompt, and the group shows it, with the full path.
+  assert.ok(second.message.content[0].text.includes(`[a.txt](${full('sub/a.txt')})`))
+  await answer(second.sessionId, second.message.source.exchangeId, 'Thanks.', 2)
+  const result = JSON.parse(await running)
+  assert.equal(result.replies[0].text, `It is in [a.txt](${full('sub/a.txt')}).`)
+
+  // A Bot that works in the folder sends the same link to another Bot.
+  const chief = rt.state.mainBotIds[0]
+  const writer = rt.state.rooms[room.id].members.find(id => id !== chief)
+  sent.length = 0
+  await ctx.registeredTools.get('message_bot').execute({ to: rt.botOf(writer).name, message: 'Read [notes](notes.md#L3)', when: 'queue' }, {
+    agent: { id: first.sessionId, session: { id: first.sessionId, header: { cwd: folder } }, inbox: { nextStep: [], nextTurn: [] } }, callId: 'c1',
+  })
+  const delivered = await waitFor(() => sent.find(entry => entry.message.source?.role === 'request'))
+  assert.ok(delivered.message.content.map(block => block.text).join('\n').includes(`[notes](${full('notes.md')}#L3)`))
 })
 
 // #209: DSH can fail a member's turn before its first step (DSH 0.2.1 does so for a folder
