@@ -3,7 +3,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX } from './constants.js'
-import { currentColor, isColor, unquote } from './text.js'
+import { currentColor, isColor, normalize, unquote } from './text.js'
 import { nameProblem } from '../shared/mentions.js'
 
 export function install(rt) {
@@ -69,21 +69,42 @@ export function install(rt) {
     return Object.keys(avatar).length > 0 ? avatar : undefined
   }
 
+  // A new Bot or group is written only after its Session is made, several awaits after
+  // its name was checked. The name is held from the check until the create ends, so a
+  // create or rename that runs meanwhile cannot take it too.
+  const held = { bot: new Set(), room: new Set() }
+  const isHeld = (kind, name) => held[kind].has(normalize(name))
+  async function holdName(kind, name, work) {
+    const key = normalize(name)
+    if (key === '') return work()
+    held[kind].add(key)
+    try {
+      return await work()
+    } finally {
+      held[kind].delete(key)
+    }
+  }
+  const botNameTaken = name => rt.findBot(name) !== undefined || isHeld('bot', name)
+
   const freshName = (base) => {
     const stem = base.slice(0, 34)
-    if (!rt.findBot(stem)) return stem
+    if (!botNameTaken(stem)) return stem
     let index = 2
-    while (rt.findBot(`${stem} ${index}`)) index += 1
+    while (botNameTaken(`${stem} ${index}`)) index += 1
     return `${stem} ${index}`
   }
 
   // `pickModel` leaves the model to the user: the chat opens on a model card, and the
   // greeting waits until a model is chosen. So does a Bot made when no model is served.
-  async function createBot({ name: botName, role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false }) {
-    const cleanName = String(botName ?? '').trim().slice(0, 40)
+  async function createBot(options) {
+    const cleanName = String(options.name ?? '').trim().slice(0, 40)
     const problem = nameProblem(cleanName)
     if (problem !== undefined) throw new Error(problem)
-    if (rt.findBot(cleanName)) throw new Error(`A Bot named ${cleanName} already exists`)
+    if (botNameTaken(cleanName)) throw new Error(`A Bot named ${cleanName} already exists`)
+    return holdName('bot', cleanName, () => buildBot(cleanName, options))
+  }
+
+  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false }) {
     const cleanAvatarValue = cleanAvatar(avatar)
     // The model is fixed at creation, so a later change of the DSH default leaves it alone.
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
@@ -166,6 +187,9 @@ export function install(rt) {
     const bot = rt.botOf(id)
     if (bot === undefined) throw new Error('Unknown Bot')
     const served = (await rt.catalog()).some(entry => entry.ref === bot.model)
+    // A folder that went away since leaves the copy in the team workspace.
+    const workDir = bot.workDir !== undefined && await rt.isFolder(bot.workDir) ? bot.workDir : undefined
+    // No await from here to createBot's check, so two copies at once get different names.
     return createBot({
       name: freshName(`${bot.name} copy`),
       role: bot.role,
@@ -174,8 +198,7 @@ export function install(rt) {
       avatar: bot.avatar,
       model: served ? bot.model : undefined,
       effort: served ? bot.effort : undefined,
-      // A folder that went away since leaves the copy in the team workspace.
-      workDir: bot.workDir !== undefined && await rt.isFolder(bot.workDir) ? bot.workDir : undefined,
+      workDir,
       copyOf: bot.id,
     })
   }
@@ -189,7 +212,8 @@ export function install(rt) {
     if (patch.name !== undefined) {
       const next = String(patch.name).trim().slice(0, 40)
       const clash = rt.findBot(next)
-      if (next === '' || (clash && clash.id !== id)) throw new Error(`Name ${next} is not available`)
+      const pending = isHeld('bot', next) && normalize(next) !== normalize(bot.name)
+      if (next === '' || (clash && clash.id !== id) || pending) throw new Error(`Name ${next} is not available`)
       // A name saved before the rule stays usable until it changes.
       const problem = next === bot.name ? undefined : nameProblem(next)
       if (problem !== undefined) throw new Error(problem)
@@ -261,7 +285,7 @@ export function install(rt) {
 
   function cleanRoomName(text, selfId) {
     const next = unquote(text).replace(/\s+/g, ' ').slice(0, ROOM_NAME_MAX)
-    if (next !== '' && rt.findRooms(next).some(room => room.id !== selfId)) throw new Error(`Another group chat is already called "${next}"`)
+    if (next !== '' && (rt.findRooms(next).some(room => room.id !== selfId) || isHeld('room', next))) throw new Error(`Another group chat is already called "${next}"`)
     return next
   }
 
@@ -301,6 +325,10 @@ export function install(rt) {
     const adminId = admin !== undefined ? admin : defaultAdmin(members, createdBy)
     if (adminId !== null && !members.includes(adminId)) throw new Error('The admin must be a member of the group')
     if (mode !== undefined && !ROOM_MODES.includes(mode)) throw new Error(`Reply mode must be one of ${ROOM_MODES.join(', ')}`)
+    return holdName('room', custom, () => buildRoom({ members, custom, notice, mode, adminId, createdBy }))
+  }
+
+  async function buildRoom({ members, custom, notice, mode, adminId, createdBy }) {
     const title = custom || autoRoomName(members)
     // The group's own Session only relays, so it stays in the team workspace; the
     // group's folder is for its members' Sessions.

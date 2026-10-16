@@ -94,6 +94,7 @@ const ZH = {
   'Repositories, issues, and pull requests': '仓库、issue 和 PR',
   'Connecting…': '正在连接…',
   'Could not connect: {error}': '连接失败：{error}',
+  'Bot mode could not be set up here: {error}': '这里无法启用 Bot 模式：{error}',
   'Connected as {account}': '已连接：{account}',
   Connected: '已连接',
   Disconnect: '断开',
@@ -766,6 +767,7 @@ const ZH = {
   'The model took too long to answer': '模型响应超时',
   'Could not reach the model service': '连不上模型服务',
   'Its group conversation could not open': '它的群聊会话打不开',
+  'Its group conversation could not open, so it starts a new one next time': '它的群聊会话打不开，下次会换一个新的',
   // The composer's +
   'Add files': '添加文件',
   'Reference a chat': '引用对话',
@@ -856,6 +858,7 @@ const HOST_ERRORS = [
   [/^A Bot named (.+) already exists$/, '已经有叫 $1 的 Bot 了'],
   [/^Name (.*) is not available$/, '名字 $1 不可用'],
   [/^"(.+)" calls everyone in a group, so it cannot be a Bot name$/, '「$1」在群里表示所有人，不能用作 Bot 名字'],
+  [/^"(.+)" stands for the user in a chat, so it cannot be a Bot name$/, '「$1」在对话里表示用户本人，不能用作 Bot 名字'],
   [/^Another group chat is already called "(.+)"$/, '已经有叫「$1」的群聊了'],
   [/^A group chat holds at most (\d+) Bots$/, '一个群聊最多 $1 个 Bot'],
   [/^Reply mode must be one of (.+)$/, '回复模式只能是 $1'],

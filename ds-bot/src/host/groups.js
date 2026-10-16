@@ -22,7 +22,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { GROUP_LINE_READ, ROOM_LATE_ROUNDS, ROOM_REPLY_TIMEOUT_MS, ROOM_STEP_GAP_MS, ROOM_WORK_GRACE_MS, SOURCE_KIND, TEAM_TOOLS, TEXT_KEPT } from './constants.js'
 import { escapeRegExp, headOf, splitRef, textOf } from './text.js'
-import { mentionSpans } from '../shared/mentions.js'
+import { mentionSpans, speakerOf } from '../shared/mentions.js'
 import { GROUP_REF, output } from './tools.js'
 import { failureLine } from './turns.js'
 
@@ -53,12 +53,12 @@ const unseenLines = (room, memberId) => {
 
 // `text` is what to show of a message line, by default what the log keeps of it.
 const lineText = (line, text = line.text) => {
-  if (line.kind === 'lookup') return `[${line.who} looked up its own chat${line.text ? ` for "${line.text}"` : ''}]`
-  if (line.kind === 'resumed') return `[${line.who}'s work here was cut off when DeepSeek Harness restarted; it is picking it back up and posts when done]`
-  if (line.kind === 'cut') return `[${line.who}'s work here was cut off by a restart again, so it stopped; ask it to go on if it still matters]`
-  if (line.kind === 'stopped') return `[The user stopped ${line.who}'s work here]`
-  if (line.kind === 'done') return `[${line.who} finished the work it was asked for]`
-  return `${line.who}: ${text}`
+  if (line.kind === 'lookup') return `[${speakerOf(line)} looked up its own chat${line.text ? ` for "${line.text}"` : ''}]`
+  if (line.kind === 'resumed') return `[${speakerOf(line)}'s work here was cut off when DeepSeek Harness restarted; it is picking it back up and posts when done]`
+  if (line.kind === 'cut') return `[${speakerOf(line)}'s work here was cut off by a restart again, so it stopped; ask it to go on if it still matters]`
+  if (line.kind === 'stopped') return `[The user stopped ${speakerOf(line)}'s work here]`
+  if (line.kind === 'done') return `[${speakerOf(line)} finished the work it was asked for]`
+  return `${speakerOf(line)}: ${text}`
 }
 const transcript = (lines, textOfLine = line => line.text) => lines.map(line => lineText(line, textOfLine(line))).join('\n')
 
@@ -111,6 +111,9 @@ const roomKickoff = language => `The user just created this group and has not wr
 
 const ROOM_READ_MAX = 30
 
+// DSH cannot open the Session at all: it is gone, or its stored log is corrupt. DSH
+// reports a corrupt log only in the message of a generic failure.
+const lostSession = error => error?.code === 'session/not-found' || /\bis corrupt\b|\bcorrupt session log\b/i.test(String(error?.message ?? ''))
 const fileLine = file => `[File "${file.name}" (${file.bytes} bytes) attached]`
 
 export function install(rt) {
@@ -309,7 +312,14 @@ export function install(rt) {
       else if (busy) rt.roomWaiters.get(exchangeId)?.resolve({ working: true })
     } catch (error) {
       rt.warn('ds-bot: group delivery to %s failed: %s', member.name, error)
-      rt.roomWaiters.get(exchangeId)?.resolve(null)
+      // A delivery that failed is not a pass: the round shows it. Nothing here can
+      // repair a lost Session, so the member's next turn in the group starts a new one.
+      const lost = lostSession(error)
+      if (lost && room.sessions?.[member.id] === sessionId) {
+        rt.retireGroupSession(room, member.id)
+        void rt.save().catch(() => {})
+      }
+      rt.roomWaiters.get(exchangeId)?.fail({ code: lost ? 'SESSION_RESET' : 'SESSION', message: String(error?.message ?? error).slice(0, 300) })
     }
     const reply = await done
     // A turn that ended leaves nothing for a stop to cancel.
