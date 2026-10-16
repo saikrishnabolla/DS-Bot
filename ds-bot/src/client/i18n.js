@@ -13,6 +13,7 @@ const ZH = {
   Search: '搜索',
   'New chat': '新对话',
   'New…': '新建',
+  'Collapse sidebar': '收起侧边栏',
   'Animation': '动画',
   'Bot animation': 'Bot 动画',
   'Quiet': '安静',
@@ -92,6 +93,7 @@ const ZH = {
   'Repositories, issues, and pull requests': '仓库、issue 和 PR',
   'Connecting…': '正在连接…',
   'Could not connect: {error}': '连接失败：{error}',
+  'Bot mode could not be set up here: {error}': '这里无法启用 Bot 模式：{error}',
   'Connected as {account}': '已连接：{account}',
   Connected: '已连接',
   Disconnect: '断开',
@@ -379,6 +381,9 @@ const ZH = {
   'Bot exchange transcript': 'Bot 间对话记录',
   'No messages yet': '还没有消息',
   'Close Chat': '关闭',
+  'Show all · {count} characters': '显示全部 · {count} 字',
+  'Showing the first {count} characters': '只显示前 {count} 字',
+  'Only the start of this message is kept here': '这里只保留了这条消息的开头',
 
   // Time and usage
   'Today {time}': '今天 {time}',
@@ -761,6 +766,7 @@ const ZH = {
   'The model took too long to answer': '模型响应超时',
   'Could not reach the model service': '连不上模型服务',
   'Its group conversation could not open': '它的群聊会话打不开',
+  'Its group conversation could not open, so it starts a new one next time': '它的群聊会话打不开，下次会换一个新的',
   // The composer's +
   'Add files': '添加文件',
   'Reference a chat': '引用对话',

@@ -3,6 +3,7 @@
 //
 // Turn tracking: which turns were triggered by another Bot, and what they said.
 import { HANDOFF_ACK, REFERENCE_KIND, REPLY_KIND, SOURCE_KIND } from './constants.js'
+import { absoluteLinks } from './links.js'
 import { textOf } from './text.js'
 import { reminderText } from './schedules.js'
 
@@ -371,8 +372,11 @@ export function install(rt) {
           }
         }
         if (source?.kind === SOURCE_KIND && source.role === 'post' && rt.roomOf(id)) {
+          // A long post comes as a file (attachLong), which stays with its line.
+          const files = (Array.isArray(event.data.content) ? event.data.content : []).filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment)
           queueRoomMessage(id, {
             text: textOf(event.data.content).replace(/^\[Group post from [^\]]*\]\n?/, ''),
+            ...(files.length > 0 ? { files } : {}),
             botId: source.senderSessionId,
             name: source.senderName,
             reportBack: source.reportBack === true,
@@ -411,9 +415,10 @@ export function install(rt) {
           attachReference(roomInbox.get(id), source, textOf(event.data.content))
         } else if (source?.kind === 'user' || source?.kind === REPLY_KIND) {
           if (rt.roomOf(id) && source.kind === 'user') {
-            const images = (Array.isArray(event.data.content) ? event.data.content : [])
-              .filter(block => block?.type === 'image' && !block.offloaded).map(block => block.attachment)
-            queueRoomMessage(id, { text: textOf(event.data.content), ...(images.length > 0 ? { images } : {}) })
+            const content = Array.isArray(event.data.content) ? event.data.content : []
+            const images = content.filter(block => block?.type === 'image' && !block.offloaded).map(block => block.attachment)
+            const files = content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment)
+            queueRoomMessage(id, { text: textOf(event.data.content), ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}) })
           }
           const own = rt.chatOwners.get(id)
           if (own !== undefined) rt.dropKickoff(own)
@@ -430,7 +435,8 @@ export function install(rt) {
         const text = textOf(content)
         const called = Array.isArray(content) && content.some(block => block?.type === 'tool-call')
         if (text !== '' && text !== HANDOFF_ACK) {
-          entry.texts.push(text)
+          // What a turn says goes on to the group or the sender, read from other folders.
+          entry.texts.push(absoluteLinks(text, rt.sessionFolder?.(session)))
           if (entry.turn !== undefined) showSteps(id, entry, called ? entry.texts.length : entry.texts.length - 1)
         }
         entry.lastText = text
@@ -524,7 +530,10 @@ export function install(rt) {
             else void rt.lateRoomReply?.(id, info, groupReply(), { shown })
           }
         } else if (!retry && speaksInGroup(id, info)) {
-          if (failure !== undefined) void rt.lateRoomFailure?.(id, info ?? {}, failure)
+          // A turn that failed before it took any input (DSH can turn it down before its
+          // first step) never names its call, so the call waiting on this Session fails.
+          const inRound = failure !== undefined && info === undefined && rt.failRoomTurn?.(id, failure) === true
+          if (failure !== undefined) { if (!inRound) void rt.lateRoomFailure?.(id, info ?? {}, failure) }
           else if (reason?.kind !== 'aborted') void rt.lateRoomReply?.(id, info ?? {}, groupReply(), { shown })
         } else if (!retry && info !== undefined) {
           answer(info, replyText())
