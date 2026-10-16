@@ -25,7 +25,7 @@ First install DSH and set up at least one model in it. DS Bot uses the models fr
 2. In **Package name or address**, enter `ds-bot`. In mainland China, set **Registry** to **Mainland China mirror**.
 3. Select **Install**, then **Enable now**. If DSH says the change takes effect at the next start, quit DSH completely and open it again.
 
-If npm is not reachable, in step 2 you can also enter the full path of `ds-bot-0.1.6.tgz` downloaded from [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases), or `github:Fei2411/DeepSeek-Bot#v0.1.6&path:/ds-bot` (needs Git).
+If npm is not reachable, in step 2 you can also enter the full path of `ds-bot-0.1.7.tgz` downloaded from [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases), or `github:Fei2411/DeepSeek-Bot#v0.1.7&path:/ds-bot` (needs Git).
 
 **DSH Web (Windows, macOS, Linux)**
 
@@ -35,6 +35,10 @@ Needs Node.js `22.19` or later, and pnpm.
 npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.0-rc.2 web
 ```
+
+**Docker (NAS, Linux server)**
+
+The [`docker/`](docker/) directory builds an image with DSH Web and DS Bot, for a NAS or any always-on machine. The container is the Bots' sandbox: they get full access to what you mount into it, and nothing else. See [`docker/README.md`](docker/README.md).
 
 ## Setup
 
@@ -84,7 +88,7 @@ The plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`d
 
 ## Acknowledgments
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot is a DSH session and uses the DSH tools and models.
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot works in DSH sessions and uses the DSH tools and models.
 - [esbuild](https://esbuild.github.io/): bundles the plugin's interface code.
 - Thanks to these projects for the ideas they published. DS Bot learned from their designs and does not contain their code:
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo): the Markdown format of Bot memory.

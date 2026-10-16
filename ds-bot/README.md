@@ -35,7 +35,7 @@ Tested with dsh `0.2.0-rc.2` (Web and Desktop) on Linux.
 
 The [project page](../README.md#install) has the full steps for dsh Desktop and dsh Web. In short:
 
-- dsh Desktop: Settings → Plugins → add `ds-bot` (npm), a `.tgz` file, or `github:Fei2411/DeepSeek-Bot#v0.1.6&path:/ds-bot`.
+- dsh Desktop: Settings → Plugins → add `ds-bot` (npm), a `.tgz` file, or `github:Fei2411/DeepSeek-Bot#v0.1.7&path:/ds-bot`.
 - Command line: `dsh plugin --profile desktop add ds-bot` (or `--profile web`).
 
 To work on the plugin from a checkout, add it to a dsh profile as a linked dependency and a bundle:
@@ -189,7 +189,8 @@ Files in `bot/`:
 
 | File | Content |
 |---|---|
-| `state.json` | The team: Bots, groups, Bot-to-Bot messages, preferences and open questions |
+| `state.json` | The team: Bots, groups, Bot-to-Bot messages, preferences and open questions. A long message keeps only its first 2,000 characters here; all of it is in the Session it went to. |
+| `group-lines/` | Long group lines, up to the 20,000 characters a member reads, one file per line; each is removed when its line leaves the group's latest 60 lines or the group is deleted |
 | `state.lock` | The dsh that is using this data (pid and host). It is removed when that dsh exits. |
 | `chat-index.sqlite` | Full-text index of older chat parts (`read_own_chat`); rebuilt if deleted |
 | `usage.sqlite` | Token counts for the Usage page; rebuilt from the Session logs if deleted, losing only the calls outside the logs and the names of deleted Bots |

@@ -25,7 +25,7 @@ DeepSeek Bot（简称 DS Bot）是一个基于 [DeepSeek Harness](https://github
 2. **包名或地址** 填 `ds-bot`。在中国大陆，**安装源** 选 **中国大陆镜像源**。
 3. 点 **安装**，再点 **立即启用**。如果提示“下次启动生效”，完全退出 dsh 再打开。
 
-连不上 npm 时，第 2 步也可以填 [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases) 里下载的 `ds-bot-0.1.6.tgz` 的完整路径，或者 `github:Fei2411/DeepSeek-Bot#v0.1.6&path:/ds-bot`（需要装 Git）。
+连不上 npm 时，第 2 步也可以填 [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases) 里下载的 `ds-bot-0.1.7.tgz` 的完整路径，或者 `github:Fei2411/DeepSeek-Bot#v0.1.7&path:/ds-bot`（需要装 Git）。
 
 **dsh Web（Windows、macOS、Linux）**
 
@@ -35,6 +35,10 @@ DeepSeek Bot（简称 DS Bot）是一个基于 [DeepSeek Harness](https://github
 npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.0-rc.2 web
 ```
+
+**Docker（NAS、Linux 服务器）**
+
+[`docker/`](docker/) 目录构建一个带 dsh Web 和 DS Bot 的镜像，适合 NAS 或其他常开的机器。容器就是 bot 的沙箱：bot 对挂进容器的目录有完全权限，其他的碰不到。见 [`docker/README.md`](docker/README.md)（英文）。
 
 ## 配置
 
@@ -84,7 +88,7 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 ## 致谢
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：ds bot 建在 dsh 的插件系统上。每个 bot 都是一个 dsh 会话，用的是 dsh 的工具和模型。
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：ds bot 建在 dsh 的插件系统上。每个 bot 都在 dsh 会话里工作，用的是 dsh 的工具和模型。
 - [esbuild](https://esbuild.github.io/)：用来打包插件的界面代码。
 - 感谢下面这些项目公开的设计思路。ds bot 参考了它们的思路，没有使用它们的代码：
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo)：bot 记忆的 Markdown 格式。
