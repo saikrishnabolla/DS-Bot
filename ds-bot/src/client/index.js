@@ -25,6 +25,7 @@ import { FOLDER_CSS } from './folder-menu.js'
 import { USAGE_CSS } from './usage-page.js'
 import { SCHEDULE_CSS } from './schedules.js'
 import { STORAGE, migrateStorage } from './storage.js'
+import { noteLeft, setUnread, sharedMap, toggleReaction } from './shared-map.js'
 import { freePriority, groupsFor, readMode, surfaceGroups, writeMode } from './surface.js'
 import { installLocale, language, t } from './i18n.js'
 import { noteClientError, quietly } from './diagnostics.js'
@@ -40,19 +41,14 @@ export function apply(ctx) {
   ctx.effect(() => installLocale(ctx.get('locale')), 'ds-bot: interface copy')
   const roster = createSource(EMPTY_ROSTER)
   migrateStorage()
-  const UNREAD_KEY = STORAGE.unread
-  let savedUnread = {}
-  try { savedUnread = JSON.parse(localStorage.getItem(UNREAD_KEY) ?? '{}') ?? {} } catch { savedUnread = {} }
-  const REACTIONS_KEY = STORAGE.reactions
-  let savedReactions = {}
-  try { savedReactions = JSON.parse(localStorage.getItem(REACTIONS_KEY) ?? '{}') ?? {} } catch { savedReactions = {} }
+  const unreadStore = sharedMap(STORAGE.unread)
+  const reactionStore = sharedMap(STORAGE.reactions)
   // When each conversation was last left; a visit compares new turns against it.
-  const SEEN_KEY = STORAGE.seen
-  let seenAt = {}
-  try { seenAt = JSON.parse(localStorage.getItem(SEEN_KEY) ?? '{}') ?? {} } catch { seenAt = {} }
+  const seenStore = sharedMap(STORAGE.seen)
+  let seenAt = seenStore.read()
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
-  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: savedUnread, reactions: savedReactions, visits: {} })
+  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} })
   // Bot mode paints the whole team surface; Agent mode withdraws every slot and
   // style so the shell's own interface returns. `plain` stays false until a Bot-mode
   // view hosts a plain session, which drops only the conversation replacements.
@@ -80,15 +76,25 @@ export function apply(ctx) {
   // A Bot's chat spans several parts, so when it was last left is kept per Bot.
   const seenKey = id => roster.getSnapshot().byId?.[id]?.id ?? id
   const leaveVisits = (ids) => {
-    const now = Date.now()
-    for (const id of ids) seenAt[seenKey(id)] = now
-    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenAt)) } catch { /* storage unavailable */ }
+    seenAt = seenStore.update(seen => noteLeft(seen, ids.map(seenKey), Date.now()), seenAt)
   }
   ctx.effect(() => {
     const onPageHide = () => leaveVisits(Object.keys(ui.getSnapshot().visits ?? {}))
     window.addEventListener('pagehide', onPageHide)
     return () => window.removeEventListener('pagehide', onPageHide)
   }, 'ds-bot: remember visits on page hide')
+  // Unread marks, reactions and visits are shared by every window; one saved elsewhere
+  // shows here at once. A `null` key is a cleared storage.
+  ctx.effect(() => {
+    const onStorage = (event) => {
+      if (event.storageArea !== localStorage) return
+      if (event.key === null || event.key === unreadStore.key) ui.set(state => ({ ...state, unread: unreadStore.read(state.unread) }))
+      if (event.key === null || event.key === reactionStore.key) ui.set(state => ({ ...state, reactions: reactionStore.read(state.reactions) }))
+      if (event.key === null || event.key === seenStore.key) seenAt = seenStore.read(seenAt)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, 'ds-bot: follow other windows')
   const activity = createSource({})
   // Per Bot, the turn it runs and its tool; and the approvals waiting for the user.
   const work = createSource({ bots: {}, approvals: [] })
@@ -117,14 +123,10 @@ export function apply(ctx) {
   const PREFS_KEY = STORAGE.prefs
   let savedPrefs = {}
   try { savedPrefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') ?? {} } catch { savedPrefs = {} }
-  const setUnread = (id, value) => ui.set((state) => {
-    if (Boolean(state.unread[id]) === value) return state
-    const unread = { ...state.unread }
-    if (value) unread[id] = true
-    else delete unread[id]
-    try { localStorage.setItem(UNREAD_KEY, JSON.stringify(unread)) } catch { /* storage unavailable */ }
-    return { ...state, unread }
-  })
+  const writeUnread = (id, value) => {
+    const unread = unreadStore.update(marks => setUnread(marks, id, value), ui.getSnapshot().unread)
+    ui.set(state => (JSON.stringify(state.unread) === JSON.stringify(unread) ? state : { ...state, unread }))
+  }
   const refreshed = new Set()
   // Pulls can overlap (the poll and a navigation); an older answer never wins.
   let pulls = 0
@@ -418,6 +420,7 @@ export function apply(ctx) {
       ctx.uiWorkspace.openSession(target)
     },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
+    toggleSidebar: () => { ctx.layout.toggleSidebar() },
     openNewChat: (mode) => { ui.set(state => ({ ...state, newChat: mode, menu: null, palette: null })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
     // The token keeps a late exit timer from closing a palette opened again since.
@@ -480,7 +483,7 @@ export function apply(ctx) {
         })
       }
     },
-    markUnread: id => setUnread(id, true),
+    markUnread: id => writeUnread(id, true),
     beginVisit: (id) => {
       // A conversation a Bot started, never opened here, is unread from its start.
       const made = roster.getSnapshot().byId[id] ?? roster.getSnapshot().roomsById[id]
@@ -496,20 +499,13 @@ export function apply(ctx) {
         return { ...state, visits }
       })
     },
-    toggleReaction: (key, index, emoji) => ui.set((state) => {
-      const entry = { ...(state.reactions?.[key] ?? {}) }
-      const list = entry[index] ?? []
-      entry[index] = list.includes(emoji) ? list.filter(item => item !== emoji) : [...list, emoji]
-      if (entry[index].length === 0) delete entry[index]
-      const reactions = { ...state.reactions }
-      if (Object.keys(entry).length) reactions[key] = entry
-      else delete reactions[key]
-      try { localStorage.setItem(REACTIONS_KEY, JSON.stringify(reactions)) } catch { /* storage unavailable */ }
-      return { ...state, reactions }
-    }),
+    toggleReaction: (key, index, emoji) => {
+      const reactions = reactionStore.update(saved => toggleReaction(saved, key, index, emoji), ui.getSnapshot().reactions)
+      ui.set(state => ({ ...state, reactions }))
+    },
     quote: (sessionId, text) => ui.set(state => ({ ...state, quote: { sessionId, text, token: Date.now() } })),
     clearQuote: token => ui.set(state => (state.quote?.token === token ? { ...state, quote: null } : state)),
-    clearUnread: id => setUnread(id, false),
+    clearUnread: id => writeUnread(id, false),
     setFlags: (id, flags) => after(call('set-flags', { id, ...flags })),
     deleteRoom: id => after(call('delete-room', { id })),
     openMenu: (menu) => { ui.set(state => ({ ...state, menu })) },
@@ -550,6 +546,8 @@ export function apply(ctx) {
     scheduleCreate: task => call('schedule-create', task),
     scheduleDelete: (sessionId, id) => call('schedule-delete', { sessionId, id }),
     exchange: (a, b) => call('exchange', { a, b }).catch(() => []),
+    exchangeText: id => call('exchange-text', { id }).catch(() => undefined),
+    fileText: file => call('file-text', { file }).catch(() => undefined),
     roomProgress: roomId => call('room-progress', { roomId }).catch(() => []),
     earlier: (sessionId, cursor) => call('earlier', { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.
