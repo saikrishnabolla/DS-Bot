@@ -160,6 +160,16 @@ export function install(rt) {
       room.notice ??= ''
       migrated = true
     }
+    // A Bot deleted while a group was made or changed could stay listed in it, even as its
+    // admin; it leaves the group now.
+    for (const room of Object.values(state.rooms)) {
+      const members = room.members.filter(id => state.bots[id])
+      const admin = members.includes(room.admin) ? room.admin : null
+      if (members.length === room.members.length && admin === room.admin) continue
+      room.members = members
+      room.admin = admin
+      migrated = true
+    }
     // Teams from before #206 kept every long message whole in this file, written whole on
     // every save. A message between Bots is whole in its recipient's Session; a group
     // line's whole text moves to a file of its own, which only the writing host makes.

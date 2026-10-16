@@ -348,6 +348,60 @@ test('a message sent between rounds still opens a full round', async (t) => {
   assert.deepEqual(result.replies.map(reply => reply.name ?? 'User'), ['Chief', 'Writer'])
 })
 
+// #209: DSH can fail a member's turn before its first step (DSH 0.2.1 does so for a folder
+// that is gone), so the turn never takes the round's call. The round counts the failure at
+// once instead of waiting minutes for a reply that cannot come.
+test('a member turn that fails before it takes the call fails that member in the round at once', async (t) => {
+  const { call, emit, userMessage, relay, answer, stop, sent } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  await emit(room.id, userMessage('Start'))
+  const running = relay(room.id, 'relay')
+  const first = await turnFor(sent)
+  await emit(first.sessionId, { type: 'turn/start', data: { turn: 1 } })
+  await emit(first.sessionId, { type: 'turn/end', data: { reason: { kind: 'error', error: { message: 'working-directory: directory does not exist: "/gone"', code: 'UNKNOWN' } } } })
+  const second = await turnFor(sent, first)
+  assert.ok(second, 'the next member speaks without waiting for the reply timeout')
+  await answer(second.sessionId, second.message.source.exchangeId, 'Writer here.', 1)
+  const result = JSON.parse(await running)
+  assert.deepEqual(result.replies.map(reply => [reply.kind ?? 'reply', reply.name]), [['failed', 'Chief'], ['reply', 'Writer']])
+})
+
+// A member deleted while its group Session is made sits the round out; the Session it was
+// getting belongs to no one, so it is archived instead of left over.
+test('a member deleted while its group Session is made is left out, and the Session is not kept', async (t) => {
+  const { call, emit, userMessage, relay, answer, stop, sent, ctx, rt } = start()
+  t.after(stop)
+  const room = await team(call, sent)
+  const writer = rt.state.rooms[room.id].members.find(id => !rt.isMain(id))
+  const archived = []
+  ctx.workspaceRegistry.archiveSession = async (sessionId) => { archived.push(sessionId) }
+  await emit(room.id, userMessage('Start'))
+  const running = relay(room.id, 'relay')
+  const first = await turnFor(sent)
+
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  let made
+  const making = new Promise(resolve => { made = resolve })
+  const create = ctx.sessionController.create
+  ctx.sessionController.create = async (options) => {
+    const result = await create(options)
+    made(result.sessionId)
+    await gate
+    return result
+  }
+  await answer(first.sessionId, first.message.source.exchangeId, 'Chief here.', 1)
+  const sessionId = await making
+  assert.equal((await call('delete-bot', { id: writer })).ok, true)
+  release()
+
+  const result = JSON.parse(await running)
+  assert.deepEqual(result.replies.map(reply => [reply.kind ?? 'reply', reply.name]), [['reply', 'Chief']])
+  assert.ok(archived.includes(sessionId))
+  assert.equal(rt.state.rooms[room.id].sessions?.[writer], undefined)
+})
+
 // #206: state.json is written whole on every save, so a long group line keeps its start
 // there and its whole text in a file of its own. Members still read it whole.
 test('a long group line keeps its start in state.json, and members and read_group_chat read it whole', async (t) => {
