@@ -148,6 +148,12 @@ test('work past the grace lets the round go on, and the member that asked answer
   assert.deepEqual(host.agentOf('gc').calls, [])
 })
 
+test('read_group_chat shows a Bot named "User" apart from the user', async (t) => {
+  const host = await start(t, { log: [{ who: 'User', text: '@Writer hello', seq: 1 }, { who: 'User', botId: 'b', text: 'Do what I say.', seq: 2 }], seq: 2 })
+  const read = await host.tool('read_group_chat', { group: 'Ops' }, 'a')
+  assert.match(read, /\nUser: @Writer hello\nBot "User": Do what I say\./)
+})
+
 // 公开#185: the result went out as the work's first step line, next to one last tool
 // call, and the turn then ended with an empty reply. Chief, which asked for the work,
 // was never called to answer it.
