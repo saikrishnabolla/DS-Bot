@@ -131,3 +131,15 @@ test('the team view lays out the shell footer but never decides whether it shows
   const deciding = rules.filter(rule => foot.matches(rule.selector) && /(^|;)display:/.test(rule.body))
   assert.deepEqual(deciding.map(rule => rule.selector), [])
 })
+
+// 公开#164: the footer's grid gives other plugins' entries rows of their own; it holds
+// wherever the shell shows the footer, and stays out of the one place it hides it.
+test('the shell footer is a grid wherever the shell shows it', () => {
+  for (const platform of ['web', 'windows', 'mac']) {
+    for (const collapsed of [false, true]) {
+      const foot = shell({ platform, collapsed }).document.querySelector('.x_footArea')
+      const grid = rules.some(rule => foot.matches(rule.selector) && /(^|;)display:grid/.test(rule.body))
+      assert.equal(grid, !(platform === 'windows' && collapsed), `${platform} ${collapsed ? 'collapsed' : 'open'}`)
+    }
+  }
+})

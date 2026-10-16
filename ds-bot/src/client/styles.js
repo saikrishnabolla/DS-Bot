@@ -517,9 +517,17 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
 html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
 html[data-windows-titlebar] .bt-side-collapse,html[data-platform=darwin] .bt-side-collapse{display:none}
-[class*="_footArea"]{flex-direction:row-reverse;align-items:center;gap:9px;padding:8px 6px 6px!important}
-[class*="_footArea"]>[class*="_footerActions"]{flex:1 1 auto;min-width:0}
-[class*="_footArea"]>[class*="_settingsArea"]{flex:none;width:auto!important}
+/* The footer ends in the Bot row: the whale's settings seat, then Connect plugins. Every
+   other plugin's entry takes a whole row above it, in the shell's order, so none of them
+   squeezes the Bot row. */
+[class*="_footArea"]{grid-template-columns:auto minmax(0,1fr);grid-auto-flow:row dense;align-items:center;gap:4px 9px;padding:8px 6px 6px!important}
+/* DSH hides the footer of a collapsed sidebar under a Windows title bar; the grid
+   stays out of that one place. */
+html:not([data-windows-titlebar]) [class*="_footArea"],:not([class*="_collapsed"])>[class*="_footArea"]{display:grid!important}
+[class*="_footArea"]>[class*="_footerActions"],[class*="_footArea"]>[class*="_footerActions"]>div{display:contents!important}
+[class*="_footArea"]>[class*="_footerActions"]>div>*{grid-column:1/-1}
+[class*="_footArea"]>[class*="_footerActions"]>div>.bt-connect-wrap{grid-column:2;order:1}
+[class*="_footArea"]>[class*="_settingsArea"]{grid-column:1;order:1;width:auto!important}
 [class*="_footArea"] button[aria-label="Settings"]{width:auto!important;padding:0!important;background:none!important;border-radius:50%!important;height:auto!important}
 ${SKIN_FOOT}{display:flex!important;flex-direction:row!important;align-items:center!important;gap:9px!important}
 ${SKIN_FOOT}>div:has(> [data-slot="sidebar.footer.action"]){display:flex!important;align-items:center!important;flex:1 1 auto!important;min-width:0!important}
