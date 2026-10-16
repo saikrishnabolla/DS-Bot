@@ -36,6 +36,10 @@ npx @deepseek-ai/dsh@0.2.0-rc.2 plugin --profile web add ds-bot
 npx @deepseek-ai/dsh@0.2.0-rc.2 web
 ```
 
+**Docker (NAS, Linux server)**
+
+The [`docker/`](docker/) directory builds an image with DSH Web and DS Bot, for a NAS or any always-on machine. The container is the Bots' sandbox: they get full access to what you mount into it, and nothing else. See [`docker/README.md`](docker/README.md).
+
 ## Setup
 
 I strongly recommend that you set up your other bots and group chats by just talking to a bot.
@@ -84,7 +88,7 @@ The plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`d
 
 ## Acknowledgments
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot is a DSH session and uses the DSH tools and models.
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot works in DSH sessions and uses the DSH tools and models.
 - [esbuild](https://esbuild.github.io/): bundles the plugin's interface code.
 - Thanks to these projects for the ideas they published. DS Bot learned from their designs and does not contain their code:
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo): the Markdown format of Bot memory.
