@@ -443,3 +443,30 @@ test('a Bot the Main Bot creates runs on its creator\'s model unless one is name
   assert.equal(await env.tool('create_bot', { name: 'Tester', role: 'Test', instructions: 'Test', model: 'official/pro' }, 'a'), 'Created Tester. It is greeting the user now.')
   assert.equal(made('Tester').model, 'official/pro')
 })
+
+// A fresh part takes several awaits; a Bot deleted meanwhile must not leave it behind.
+test('a Bot deleted while its chat moves to a new folder leaves no fresh part behind', async (t) => {
+  const { ctx, call, agentOf, project, state, stop } = await start()
+  t.after(stop)
+  const archived = []
+  ctx.workspaceRegistry.archiveSession = async (sessionId) => { archived.push(sessionId) }
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  let made
+  const making = new Promise(resolve => { made = resolve })
+  const create = ctx.sessionController.create
+  ctx.sessionController.create = async (options) => {
+    const result = await create(options)
+    made(result.sessionId)
+    await gate
+    return result
+  }
+  assert.equal((await call('update-bot', { id: 'b', workDir: project })).ok, true)
+  const fresh = await making
+  assert.equal((await call('delete-bot', { id: 'b' })).ok, true)
+  release()
+  await until(() => archived.includes(fresh))
+  await settle()
+  assert.equal(state().bots.b, undefined)
+  assert.equal(handoffOf(agentOf(fresh)), undefined)
+})
