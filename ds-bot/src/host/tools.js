@@ -125,6 +125,7 @@ export function install(rt) {
       const target = rt.findBot(args.to)
       if (target === undefined) return `No Bot named ${args.to}. Team: ${Object.values(state.bots).map(bot => bot.name).join(', ')}`
       if (target.id === sender.id) return 'You cannot message yourself.'
+      if (String(args.message ?? '').trim() === '') return 'Write a message to send.'
       const hop = nextHop(exec)
       if (hop > MAX_HOPS) return CHAIN_TOO_LONG
       checkUnattended()
