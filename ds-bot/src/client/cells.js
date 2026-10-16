@@ -380,8 +380,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
         // A post past what a message holds came as a file, with its start only.
         const file = source.length === undefined ? undefined : (data.content ?? []).find(block => block?.type === 'file')?.attachment
         const text = stripHeader(contentText(data.content))
+        // A trigger's data carries no turn; its event seq is the one durable name of this post.
         return h(GroupMessage, {
-          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:${data.turn}:post`, useUi,
+          bot: poster, text: file ? stripLongNote(text) : text, room, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi,
           whole: file ? { length: source.length, load: () => actions.fileText(file) } : undefined,
         })
       }

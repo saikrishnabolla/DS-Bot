@@ -4294,7 +4294,7 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
           room: room2,
           roster,
           actions,
-          msgKey: `${sessionId}:${data.turn}:post`,
+          msgKey: `${sessionId}:post:${data.seq ?? node.key}`,
           useUi,
           whole: file ? { length: source.length, load: () => actions.fileText(file) } : void 0
         });
