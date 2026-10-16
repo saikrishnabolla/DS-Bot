@@ -513,24 +513,30 @@ async function handedOn({ agents, emit, tool }) {
 test('a Bot\'s answer waits for the work it handed on, and carries what came back', async (t) => {
   const team = await start(threeBots())
   t.after(team.stop)
-  const { agents, tool } = team
+  const { agents, tool, call } = team
+  const shown = async () => { const { value } = await call('state', {}); return [value.activity.b === 'waiting', value.work.waiting] }
   const { take, end, handed } = await handedOn(team)
+  assert.deepEqual(await shown(), [false, {}])
   assert.match(handed, /When you have handed on everything, end your turn: each reply brings you back to this work, and your answer goes to Chief once all of it is back\.$/)
   end('b', 'handed it to Tester')
   // Nothing goes up yet; Writer waits, and the team can see it.
   assert.match(await tool('list_bots', {}, 'a'), /- Writer \(Write\)\n {2}now: waiting for Tester to hand back work, for Chief\n/)
   assert.deepEqual(Object.values(await worksIn(team)).map(work => [work.from, work.to, work.open.length, work.held]), [['a', 'b', 1, 'handed it to Tester'], ['b', 'c', 0, undefined]])
   assert.deepEqual(callsOf(agents, 'a'), [])
+  // Its mark shows it waits, and its row whom for.
+  assert.deepEqual(await shown(), [true, { b: { bots: ['c'], rooms: [], for: ['a'] } }])
 
   take('c')
   end('c', 'two things to fix')
   await settled(() => callsOf(agents, 'b').length === 2)
   const back = take('b')
+  assert.deepEqual(await shown(), [false, {}])
   assert.equal(textOf(back.content), '[Reply from Tester · for the work Chief asked you for; your answer goes to Chief once everything you handed on is back]\ntwo things to fix')
   end('b', 'fixed both')
   await settled(() => callsOf(agents, 'a').length === 1)
   assert.equal(textOf(callsOf(agents, 'a')[0][1].content), '[Reply from Writer]\nfixed both\n\n[Handed back to Writer for this work]\n\nTester:\ntwo things to fix')
   assert.match(await tool('list_bots', {}, 'a'), /- Writer \(Write\)\n {2}now: idle\n/)
+  assert.deepEqual(await shown(), [false, {}])
   assert.deepEqual(await worksIn(team), {})
 })
 
