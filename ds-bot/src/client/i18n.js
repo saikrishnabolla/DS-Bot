@@ -13,6 +13,7 @@ const ZH = {
   Search: '搜索',
   'New chat': '新对话',
   'New…': '新建',
+  'Collapse sidebar': '收起侧边栏',
   'Animation': '动画',
   'Bot animation': 'Bot 动画',
   'Quiet': '安静',
@@ -379,6 +380,9 @@ const ZH = {
   'Bot exchange transcript': 'Bot 间对话记录',
   'No messages yet': '还没有消息',
   'Close Chat': '关闭',
+  'Show all · {count} characters': '显示全部 · {count} 字',
+  'Showing the first {count} characters': '只显示前 {count} 字',
+  'Only the start of this message is kept here': '这里只保留了这条消息的开头',
 
   // Time and usage
   'Today {time}': '今天 {time}',
