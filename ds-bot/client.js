@@ -2151,9 +2151,9 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-exchange .bt-dialog{position:relative}
 .bt-exchange .bt-dialog-log{max-width:none;margin:0;padding:39px max(16px,calc((100% - 960px)/2)) 76px;scrollbar-width:thin}
 .bt-exchange .bt-tools{display:none}
-.bt-exchange .bt-whole{align-self:flex-start;margin-left:30px}
-.bt-exchange .bt-whole[data-note]{cursor:default}
-.bt-exchange .bt-whole[data-note]:hover{color:var(--bt-ink-3)}
+.bt-whole{display:block;align-self:flex-start;margin-left:30px}
+.bt-whole[data-note]{cursor:default}
+.bt-whole[data-note]:hover{color:var(--bt-ink-3)}
 .bt-exchange .bt-dialog-foot{position:absolute;left:0;right:0;bottom:0;height:76px;box-sizing:border-box;align-items:flex-end;padding:0 0 28px;background:var(--bt-main);z-index:3;animation:bt-foot-in .3s cubic-bezier(.22,1,.36,1) .3s both}
 .bt-exchange .bt-dialog-foot::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:40px;background:linear-gradient(to top,var(--bt-main),transparent);pointer-events:none}
 .bt-exchange[data-leaving] .bt-dialog-foot{animation:bt-foot-out .22s cubic-bezier(.4,0,1,1) forwards}
@@ -3997,6 +3997,27 @@ function EventLine({ prefix, bots, joiner = t("and"), onOpen, whole = false }) {
   });
   return (0, import_react6.createElement)("div", { className: "bt-event" }, parts);
 }
+function WholeNote({ length, kept, read, onShow }) {
+  if (read === void 0 || read === "loading") {
+    return (0, import_react6.createElement)("button", { type: "button", className: "bt-more bt-whole", disabled: read === "loading", onClick: onShow }, t("Show all · {count} characters", { count: length.toLocaleString() }));
+  }
+  if (read.whole) return null;
+  const note = typeof read.text === "string" && read.text.length > kept.length ? t("Showing the first {count} characters", { count: read.text.length.toLocaleString() }) : t("Only the start of this message is kept here");
+  return (0, import_react6.createElement)("span", { className: "bt-more bt-whole", "data-note": "" }, note);
+}
+function LongPost({ file, length, ...props }) {
+  const [read, setRead] = (0, import_react6.useState)();
+  const show = async () => {
+    setRead("loading");
+    setRead(await props.actions.fileText(file) ?? { whole: false });
+  };
+  return (0, import_react6.createElement)(
+    import_react6.Fragment,
+    null,
+    (0, import_react6.createElement)(GroupMessage, { ...props, text: typeof read?.text === "string" ? read.text : props.text }),
+    (0, import_react6.createElement)(WholeNote, { length, kept: props.text, read, onShow: show })
+  );
+}
 function GroupMessage({ bot, text, texts: texts2 = [text], room: room2, roster, actions, msgKey, useUi }) {
   const lead = (0, import_react6.createElement)(
     "button",
@@ -4180,7 +4201,9 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
         if (source.failed !== void 0 || source.resumed === true || source.stopped === true) return null;
         const room2 = roster.roomsById[sessionId];
         const poster = roster.byId[source.senderSessionId] ?? { id: source.senderSessionId, name: source.senderName ?? t("a Bot"), color: "gray" };
-        return (0, import_react6.createElement)(GroupMessage, { bot: poster, text: stripHeader(contentText(data.content)), room: room2, roster, actions, msgKey: `${sessionId}:${data.turn}:post`, useUi });
+        const post = { bot: poster, text: stripHeader(contentText(data.content)), room: room2, roster, actions, msgKey: `${sessionId}:${data.turn}:post`, useUi };
+        const file = source.length === void 0 ? void 0 : (data.content ?? []).find((block) => block?.type === "file")?.attachment;
+        return file ? (0, import_react6.createElement)(LongPost, { ...post, file, length: source.length }) : (0, import_react6.createElement)(GroupMessage, post);
       }
       if (source.role === "report") {
         return (0, import_react6.createElement)(GroupEvent, { prefix: t("Replies from"), room: roster.roomsById[source.roomId], name: t("a group chat"), roster, actions });
@@ -8618,14 +8641,6 @@ ${listed}`, { axis: "y", ...QUICK_EDGES });
 // src/client/exchange.js
 var import_react21 = require("react");
 var SHEET_EXIT_MS = 220;
-function WholeNote({ entry, read, onShow }) {
-  if (read === void 0 || read === "loading") {
-    return (0, import_react21.createElement)("button", { type: "button", className: "bt-more bt-whole", disabled: read === "loading", onClick: onShow }, t("Show all · {count} characters", { count: entry.length.toLocaleString() }));
-  }
-  if (read.whole) return null;
-  const note = typeof read.text === "string" && read.text.length > entry.text.length ? t("Showing the first {count} characters", { count: read.text.length.toLocaleString() }) : t("Only the start of this message is kept here");
-  return (0, import_react21.createElement)("span", { className: "bt-more bt-whole", "data-note": "" }, note);
-}
 function ExchangeDialog({ pair, roster, actions }) {
   const [entries2, setEntries] = (0, import_react21.useState)(null);
   const [leaving, setLeaving] = (0, import_react21.useState)(false);
@@ -8699,7 +8714,7 @@ function ExchangeDialog({ pair, roster, actions }) {
               { className: "bt-group-msg" },
               (0, import_react21.createElement)("span", { className: "bt-group-name", style: { color: inkText(colorOf(bot)) } }, bot.name),
               (0, import_react21.createElement)(Bubbles, { texts: [text], roster, selfId: bot.id, actions, lead: (0, import_react21.createElement)("span", { className: "bt-lead" }, (0, import_react21.createElement)(BotMark, { bot, size: 22 })) }),
-              cut ? (0, import_react21.createElement)(WholeNote, { entry, read, onShow: () => showAll(entry.id) }) : null
+              cut ? (0, import_react21.createElement)(WholeNote, { length: entry.length, kept: entry.text, read, onShow: () => showAll(entry.id) }) : null
             )
           );
         })
@@ -13955,6 +13970,7 @@ function apply(ctx) {
     scheduleDelete: (sessionId, id) => call("schedule-delete", { sessionId, id }),
     exchange: (a, b) => call("exchange", { a, b }).catch(() => []),
     exchangeText: (id) => call("exchange-text", { id }).catch(() => void 0),
+    fileText: (file) => call("file-text", { file }).catch(() => void 0),
     roomProgress: (roomId) => call("room-progress", { roomId }).catch(() => []),
     earlier: (sessionId, cursor) => call("earlier", { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.

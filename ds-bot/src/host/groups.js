@@ -483,9 +483,11 @@ export function install(rt) {
         // A file stays with its line and reaches each member the line is shown to.
         const readings = post.images === undefined ? [] : await rt.imagesForGroup(post.images, room.id)
         const text = [post.text, ...readings, ...(post.files ?? []).map(fileLine)].filter(Boolean).join('\n')
-        appendRoom(room, post.botId
-          ? { who: rt.botOf(post.botId)?.name ?? post.name ?? 'Bot', botId: post.botId, text }
-          : { who: 'User', text, ...(post.files === undefined ? {} : { files: post.files }) })
+        appendRoom(room, {
+          ...(post.botId ? { who: rt.botOf(post.botId)?.name ?? post.name ?? 'Bot', botId: post.botId } : { who: 'User' }),
+          text,
+          ...(post.files === undefined ? {} : { files: post.files }),
+        })
       }
       if (posts.some(post => !post.botId && !post.kickoff)) {
         room.botRounds = 0
@@ -658,10 +660,10 @@ export function install(rt) {
   }
 
   // A Bot's message into the group's own Session, which relays it as a new round.
-  async function postToRoom(room, sender, text, extra = {}) {
+  async function postToRoom(room, sender, text, extra = {}, files = []) {
     const agent = await rt.resolveAgent(room.id)
     agent.followup(createUserMessage({
-      content: [{ type: 'text', text: `[Group post from ${sender.name}]\n${text}` }],
+      content: [{ type: 'text', text: `[Group post from ${sender.name}]\n${text}` }, ...files.map(attachment => ({ type: 'file', attachment }))],
       source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, hop: 0, ...extra },
     }))
     await ctx.sessions.flush(agent.session)

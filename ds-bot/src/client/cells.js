@@ -171,6 +171,31 @@ function EventLine({ prefix, bots, joiner = t('and'), onOpen, whole = false }) {
 }
 
 // One Bot message inside a group chat: avatar, name (with its group role), bubble.
+// Under a long message that shows only its start: the button that reads it whole, or
+// why only part of it shows. `kept` is the text shown before; `read` what came back.
+export function WholeNote({ length, kept, read, onShow }) {
+  if (read === undefined || read === 'loading') {
+    return h('button', { type: 'button', className: 'bt-more bt-whole', disabled: read === 'loading', onClick: onShow }, t('Show all · {count} characters', { count: length.toLocaleString() }))
+  }
+  if (read.whole) return null
+  const note = typeof read.text === 'string' && read.text.length > kept.length
+    ? t('Showing the first {count} characters', { count: read.text.length.toLocaleString() })
+    : t('Only the start of this message is kept here')
+  return h('span', { className: 'bt-more bt-whole', 'data-note': '' }, note)
+}
+
+// A Bot's post past what a message holds came as a file: its start shows, all of it on request.
+function LongPost({ file, length, ...props }) {
+  const [read, setRead] = useState()
+  const show = async () => {
+    setRead('loading')
+    setRead(await props.actions.fileText(file) ?? { whole: false })
+  }
+  return h(Fragment, null,
+    h(GroupMessage, { ...props, text: typeof read?.text === 'string' ? read.text : props.text }),
+    h(WholeNote, { length, kept: props.text, read, onShow: show }))
+}
+
 function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi }) {
   const lead = h('button', { type: 'button', className: 'bt-lead', 'aria-label': t("Open {name}'s chat", { name: bot.name }), onClick: () => actions.openSession(bot.id) },
     h(BotMark, { bot, size: 22 }))
@@ -356,7 +381,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
         if (source.failed !== undefined || source.resumed === true || source.stopped === true) return null
         const room = roster.roomsById[sessionId]
         const poster = roster.byId[source.senderSessionId] ?? { id: source.senderSessionId, name: source.senderName ?? t('a Bot'), color: 'gray' }
-        return h(GroupMessage, { bot: poster, text: stripHeader(contentText(data.content)), room, roster, actions, msgKey: `${sessionId}:${data.turn}:post`, useUi })
+        const post = { bot: poster, text: stripHeader(contentText(data.content)), room, roster, actions, msgKey: `${sessionId}:${data.turn}:post`, useUi }
+        const file = source.length === undefined ? undefined : (data.content ?? []).find(block => block?.type === 'file')?.attachment
+        return file ? h(LongPost, { ...post, file, length: source.length }) : h(GroupMessage, post)
       }
       if (source.role === 'report') {
         return h(GroupEvent, { prefix: t('Replies from'), room: roster.roomsById[source.roomId], name: t('a group chat'), roster, actions })

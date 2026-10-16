@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
-import { fakeContext } from './fake-ctx.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // A fake team of two Bots in one group; member answers are played back through the
 // session/event listener, so a round runs with no model. Prompts land in the
@@ -455,3 +455,36 @@ test('a file the user sends in a group reaches each member the line is shown to,
   await running
 })
 
+// #206: a Bot's post past 20,000 characters goes as a file; the line keeps the file and
+// each member it is shown to gets it with its prompt.
+test('a long post goes to the group as a file, and reaches the member with its prompt', async (t) => {
+  const { call, emit, relay, answer, stop, sent, ctx, rt } = start()
+  t.after(stop)
+  const store = fakeAttachments()
+  ctx.get = name => (name === 'attachments' ? store : undefined)
+  const room = await team(call, sent)
+  const chief = rt.state.mainBotIds[0]
+  const long = `${Array.from({ length: 400 }, (_, at) => `第 ${at + 1} 行：${'报告内容。'.repeat(10)}`).join('\n')}\n结尾`
+  const posted = await ctx.registeredTools.get('post_to_group').execute({ group: 'R1', message: long }, { agent: { id: rt.chatOf(chief) } })
+  assert.match(posted, /^Posted in "R1"/)
+  const post = sent.find(entry => entry.sessionId === room.id && entry.message.source.role === 'post')
+  const file = post.message.content.find(block => block.type === 'file')?.attachment
+  assert.equal(file?.name, 'Post from Chief.txt')
+  assert.equal(post.message.source.length, long.length)
+  assert.equal(new TextDecoder().decode(store.files.get(file.attachmentId)), long)
+
+  sent.length = 0
+  await emit(room.id, { type: 'user/message', data: { source: post.message.source, content: post.message.content } })
+  const running = relay(room.id, 'relay')
+  const turn = await turnFor(sent)
+  assert.deepEqual(turn.message.content.filter(block => block.type === 'file').map(block => block.attachment), [file])
+  const prompt = turn.message.content[0].text
+  assert.ok(prompt.includes(`Chief: [A long message: ${long.length} characters.`))
+  assert.ok(prompt.includes(`[File "Post from Chief.txt" (${file.bytes} bytes) attached]`))
+  assert.ok(prompt.length < 6000, `the prompt has ${prompt.length} characters`)
+  await answer(turn.sessionId, turn.message.source.exchangeId, 'Read it.', 1)
+  await running
+  const line = rt.state.rooms[room.id].log.find(entry => entry.botId === chief)
+  assert.deepEqual(line.files, [file])
+  assert.equal(line.length, undefined, 'the line is short; no file of its own')
+})
