@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { apply } from '../index.js'
-import { fakeContext } from './fake-ctx.js'
+import { fakeAttachments, fakeContext } from './fake-ctx.js'
 import { install as installTurns } from '../src/host/turns.js'
 import { install as installParts } from '../src/host/parts.js'
 import { MAX_HOPS, MAX_UNATTENDED_MESSAGES, REPLY_KIND, SOURCE_KIND } from '../src/host/constants.js'
@@ -620,4 +620,102 @@ test('a request the model keeps turning down moves the Bot on, without its lates
   await failTurn('s2', 'INVALID_REQUEST')
   await delay(30)
   assert.equal(made, 2)
+})
+
+// #206: a message between Bots used to go whole into state.json, which is written whole
+// on every save; an empty one started a turn on nothing.
+test('message_bot turns down an empty message', async (t) => {
+  const { agentOf, tool, exchanges, stop } = await start(team())
+  t.after(stop)
+  for (const message of ['', '   \n\t ']) assert.equal(await tool('message_bot', { to: 'Writer', message }, 'a'), 'Write a message to send.')
+  assert.deepEqual(agentOf('b').calls, [])
+  assert.deepEqual(await exchanges(), [])
+})
+
+test('a long message between Bots keeps its start in state.json and is read back whole from the Session', async (t) => {
+  const { ctx, agentOf, tool, call, exchanges, home, stop } = await start(team())
+  t.after(stop)
+  const long = `${'长'.repeat(15_000)}结尾`
+  await tool('message_bot', { to: 'Writer', message: long }, 'a')
+  const [, delivered] = agentOf('b').calls.find(([kind]) => kind === 'steer' || kind === 'followup')
+  assert.ok(delivered.content[0].text.endsWith(long), 'the recipient gets it whole')
+  const [entry] = await exchanges()
+  assert.equal(entry.text.length, 2000)
+  assert.equal(entry.length, long.length)
+  assert.equal(entry.sessionId, 'b')
+  const file = join(home, 'state.json')
+  for (let at = 0; at < 100 && !readFileSync(file, 'utf8').includes(entry.id); at += 1) await delay(20)
+  const saved = readFileSync(file, 'utf8')
+  assert.ok(saved.length < 10_000, `state.json is ${saved.length} characters`)
+  assert.ok(!saved.includes('\n'), 'state.json is written without indentation')
+
+  // The dialog reads the whole text back from the Session it was delivered to.
+  agentOf('b').session.seq = 2
+  ctx.sessionController.page = async ({ address }) => ({
+    records: agentOf(address.sessionId).calls.map(([, message], index) => ({ event: { type: 'user/message', seq: index + 1, data: { content: message.content, source: message.source } } })),
+    hasMore: false,
+  })
+  assert.deepEqual((await call('exchange-text', { id: entry.id })).value, { text: long, whole: true })
+  // A Session that cannot be read leaves the start, said to be only that.
+  ctx.sessionController.page = async () => { throw new Error('gone') }
+  assert.deepEqual((await call('exchange-text', { id: entry.id })).value, { text: entry.text, whole: false })
+})
+
+test('a team saved with long messages whole keeps only their start after it loads', async (t) => {
+  const seed = team()
+  seed.exchanges = [{ id: 'x1', from: 'a', to: 'b', text: 'y'.repeat(5000), role: 'request', time: 1 }]
+  const { exchanges, stop } = await start(seed)
+  t.after(stop)
+  const [entry] = await exchanges()
+  assert.equal(entry.text, 'y'.repeat(2000))
+  assert.equal(entry.length, 5000)
+})
+
+// #206: a message past 20,000 characters went whole into every Session it reached and
+// into the model's context at once. It now goes as a DSH file the recipient reads.
+test('a message past 20,000 characters goes as a file, which the exchange dialog reads back', async (t) => {
+  const { ctx, agentOf, tool, call, exchanges, stop } = await start(team())
+  t.after(stop)
+  const store = fakeAttachments()
+  ctx.get = name => (name === 'attachments' ? store : undefined)
+  const lines = Array.from({ length: 400 }, (_, at) => `第 ${at + 1} 行：${'长消息的一行。'.repeat(8)}`)
+  const long = `${lines.join('\n')}\n结尾`
+  assert.ok(long.length > 20_000)
+  const answer = await tool('message_bot', { to: 'Writer', message: long }, 'a')
+  assert.match(answer, /^Delivered to Writer/)
+  const [, delivered] = agentOf('b').calls.find(([kind]) => kind === 'steer' || kind === 'followup')
+  const [text, file] = delivered.content
+  assert.ok(text.text.startsWith(`[Message from Chief]\n[A long message: ${long.length} characters. Its start is below; all of it is in the attached file. Read the file before you act on it.]\n第 1 行`))
+  assert.ok(!text.text.includes('shell command'), 'no line is past what the read tool shows')
+  assert.ok(text.text.length < 1200)
+  assert.equal(file.type, 'file')
+  assert.equal(file.attachment.name, 'Message from Chief.txt')
+  assert.equal(new TextDecoder().decode(store.files.get(file.attachment.attachmentId)), long)
+
+  const [entry] = await exchanges()
+  assert.equal(entry.length, long.length)
+  assert.deepEqual(entry.files, [file.attachment])
+  assert.deepEqual((await call('exchange-text', { id: entry.id })).value, { text: long, whole: true })
+  assert.deepEqual((await call('file-text', { file: file.attachment })).value, { text: long, whole: true })
+})
+
+test('a long message with a line past what the read tool shows says how to read it', async (t) => {
+  const { ctx, agentOf, tool, stop } = await start(team())
+  t.after(stop)
+  ctx.get = name => (name === 'attachments' ? fakeAttachments() : undefined)
+  await tool('message_bot', { to: 'Writer', message: 'x'.repeat(25_000) }, 'a')
+  const [, delivered] = agentOf('b').calls.find(([kind]) => kind === 'steer' || kind === 'followup')
+  assert.match(delivered.content[0].text, /Some lines are longer than the 2000 characters the read tool shows of a line; read those with a shell command\./)
+})
+
+test('without file storage a message past 20,000 characters is not sent', async (t) => {
+  const { agentOf, tool, exchanges, stop } = await start(team())
+  t.after(stop)
+  const answer = await tool('message_bot', { to: 'Writer', message: 'x'.repeat(20_001) }, 'a')
+  assert.equal(answer, 'Not sent: the message has 20001 characters, more than 20000, and this DeepSeek Harness cannot send it as a file. Write it to a file in your working folder and send its path instead.')
+  assert.deepEqual(agentOf('b').calls, [])
+  assert.deepEqual(await exchanges(), [])
+  // 20,000 characters still go as they are.
+  await tool('message_bot', { to: 'Writer', message: 'x'.repeat(20_000) }, 'a')
+  assert.equal(agentOf('b').calls.length, 1)
 })
