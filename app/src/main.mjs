@@ -1,7 +1,7 @@
 // Electron main process: one window for the Bot team, served by the app's own DSH Host.
 // The dsh-app scheme and the request forwarding follow DeepSeek Harness
 // apps/desktop/src/main.ts (MIT); see NOTICE.
-import { app, BrowserWindow, dialog, Menu, nativeTheme, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, protocol, screen, shell } from 'electron'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,10 +11,15 @@ import { APP_ORIGIN, authenticateWebHost, forwardWebRequest, serveFile } from '.
 
 // DSH writes dsh-app://app/ into workspace file URLs and Markdown file links, so the window keeps that scheme.
 const SCHEME = 'dsh-app'
+// The window has no title bar: its page draws a band this high along the top (--dsb-band
+// in ui/src/app.css), and the system's window buttons sit in it.
+const BAND = 48
 
 const here = dirname(fileURLToPath(import.meta.url))
 // The window is the app's own build (ui/, `npm run build`); everything under /api/ goes to the Host.
 const uiDist = join(here, '..', 'ui', 'dist')
+// Drawn by scripts/icon.mjs. Windows takes the .ico for its several sizes.
+const iconFile = join(here, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
 const dataDir = process.env.DS_BOT_HOME || join(homedir(), '.ds-bot')
 if (process.env.DS_BOT_SHELL_DATA) app.setPath('userData', process.env.DS_BOT_SHELL_DATA)
 
@@ -73,14 +78,31 @@ function start() {
   })
 
   setMenu()
+  // A packaged app has the icon in its bundle; Electron's own run shows Electron's.
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(iconFile)
   createWindow()
+  nativeTheme.on('updated', () => {
+    if (mainWindow === undefined) return
+    mainWindow.setBackgroundColor(windowFill())
+    if (process.platform !== 'darwin') mainWindow.setTitleBarOverlay(windowButtons())
+  })
 }
 
+const windowFill = () => (nativeTheme.shouldUseDarkColors ? '#141414' : '#fcfcfc')
+// Clear, so the buttons sit on the page's own colors; the symbols take its text color.
+const windowButtons = () => ({ color: '#00000000', symbolColor: nativeTheme.shouldUseDarkColors ? '#f2f2f2' : '#141414', height: BAND })
+
 function createWindow() {
+  const area = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({
-    width: 1320, height: 860, minWidth: 720, minHeight: 480,
-    title: 'DeepSeek Bot', show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141414' : '#fcfcfc',
+    width: Math.min(1320, Math.round(area.width * 0.9)), height: Math.min(860, Math.round(area.height * 0.9)),
+    minWidth: 720, minHeight: 480,
+    title: 'DeepSeek Bot', show: false, icon: iconFile,
+    titleBarStyle: 'hidden',
+    // macOS keeps its traffic lights, centered in the band; Windows and Linux draw their
+    // buttons over the band's right end.
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 18, y: (BAND - 12) / 2 } } : { titleBarOverlay: windowButtons() }),
+    backgroundColor: windowFill(),
     webPreferences: { contextIsolation: true, sandbox: true },
   })
   mainWindow.once('ready-to-show', () => { mainWindow?.show() })
