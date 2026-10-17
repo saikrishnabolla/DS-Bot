@@ -8,20 +8,26 @@
   "type": "module",
   "main": "src/main.mjs",
   "scripts": {
-    "start": "electron .",
-    "shot": "node scripts/shot.mjs"
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "shot": "node scripts/shot.mjs",
+    "icon": "node scripts/icon.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",
     "@deepseek-ai/dsh-app-boot": "0.2.0-rc.2",
     "@deepseek-ai/dsh-base": "0.2.0-rc.2",
     "@deepseek-ai/dsh-web-app": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-web-frontend": "0.2.0-rc.2",
     "ds-bot": "file:../ds-bot",
     "pnpm": "11.7.0"
   },
   "devDependencies": {
-    "electron": "44.7.0"
+    "electron": "44.7.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "vite": "8.3.4"
   },
   "overrides": {
     "@deepseek-ai/cordis": "4.0.4",

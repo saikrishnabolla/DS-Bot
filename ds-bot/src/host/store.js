@@ -296,6 +296,7 @@ export function install(rt) {
         await rename(temp, statePath)
         seen = stamp()
         rt.capabilitiesStateSaved?.()
+        rt.stateSaved?.()
       } catch (error) {
         await unlink(temp).catch(() => {})
         throw error
