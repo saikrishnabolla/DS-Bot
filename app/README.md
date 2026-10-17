@@ -38,7 +38,7 @@ Never point `DS_BOT_HOME` at `~/.dsh` or at the data of an app that you use.
 
 | File | What it does |
 |---|---|
-| `src/main.mjs` | Main process: one instance, the `dsh-app://app` scheme (the window's build, and `/api/` forwarded to the Host), the window |
+| `src/main.mjs` | Main process: one instance, the `dsh-app://app` scheme (the window's build, and `/api/` forwarded to the Host), the window. The window has no title bar: a band along the top of the page moves it, and the system's window buttons sit in that band |
 | `src/host-process.mjs` | Starts the Host in Electron's Node mode and owns its exit |
 | `src/host.mjs` | The Host: creates the profile `ds-bot` (`dsh-base`, `dsh-web-app`, `ds-bot`), boots it with `runProfile()` on a loopback port and reports the launch URL |
 | `src/web.mjs` | The window's files, the launch-token cookie exchange and the request forwarding |
