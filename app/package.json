@@ -10,7 +10,8 @@
   "scripts": {
     "build": "vite build",
     "start": "vite build && electron .",
-    "shot": "node scripts/shot.mjs"
+    "shot": "node scripts/shot.mjs",
+    "icon": "node scripts/icon.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",
