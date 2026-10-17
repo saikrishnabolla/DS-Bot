@@ -3067,9 +3067,11 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-line{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font-size:11px;line-height:14px;color:var(--bt-ink-3)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
 `;
+var PLUGIN_ID = "ds-bot";
 function installStyles(text, tag) {
   const style = document.createElement("style");
   style.dataset.dshBot = tag;
+  style.dataset.plugin = PLUGIN_ID;
   style.textContent = text;
   document.head.appendChild(style);
   return style;
@@ -3103,8 +3105,11 @@ function compileFragmentSelectors(text, names) {
 }
 function installCompiledStyles(text, tag) {
   const style = installStyles("", tag);
+  let disposed = false;
   const cache = /* @__PURE__ */ new WeakMap();
   const render = () => {
+    if (disposed) return;
+    if (!style.isConnected) document.head.appendChild(style);
     const names = /* @__PURE__ */ new Set();
     for (const sheet of document.styleSheets) {
       if (sheet.ownerNode?.dataset?.dshBot) continue;
@@ -3129,11 +3134,13 @@ function installCompiledStyles(text, tag) {
   };
   const shell = (node) => node.dataset?.dshBot === void 0;
   const observer = new MutationObserver((records) => {
+    if (records.some((record) => [...record.removedNodes].includes(style))) render();
     if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some(shell))) schedule();
   });
   observer.observe(document.head, { childList: true });
   document.addEventListener("load", onLoad, true);
   return () => {
+    disposed = true;
     observer.disconnect();
     document.removeEventListener("load", onLoad, true);
     clearTimeout(timer);
@@ -9379,16 +9386,33 @@ var presetDanger = (value) => DANGER.has(value);
 var presetName = (value, catalog) => LABELS[value] ? t(LABELS[value]) : catalog?.options?.find((option) => option.value === value)?.name ?? value;
 function PermissionPicker({ catalog, saved, onPick, repick = false }) {
   const [pending, setPending] = (0, import_react24.useState)(null);
+  const flight = (0, import_react24.useRef)({ value: void 0, latest: void 0 });
   (0, import_react24.useEffect)(() => {
-    if (pending === saved) setPending(null);
+    const flying = flight.current.value;
+    if (pending === saved && (flying === void 0 || flying === pending)) setPending(null);
   }, [pending, saved]);
+  const send = (value) => {
+    flight.current.value = value;
+    void Promise.resolve(onPick(value)).then((done) => done !== false, () => false).then((ok) => {
+      const wanted = flight.current.latest;
+      flight.current.latest = void 0;
+      if (wanted !== void 0 && !(wanted === value && ok)) {
+        send(wanted);
+        return;
+      }
+      flight.current.value = void 0;
+      if (!ok) setPending(null);
+    });
+  };
   const current = pending ?? saved;
   const pick2 = (value) => {
     if (value === current && !repick) return;
     setPending(value);
-    void Promise.resolve(onPick(value)).then((done) => {
-      if (done === false) setPending(null);
-    });
+    if (flight.current.value !== void 0) {
+      flight.current.latest = value;
+      return;
+    }
+    send(value);
   };
   return (0, import_react24.createElement)(
     Segmented,
@@ -11703,7 +11727,7 @@ function MemberState({ entry, bot, room: room2, roster }) {
 }
 function StopMemberWork({ entry, bot, room: room2, actions }) {
   const [stopping, setStopping] = (0, import_react32.useState)(false);
-  if (entry?.state !== "work" || !entry.here) return null;
+  if (!entry?.here || entry.state !== "work" && entry.state !== "ask") return null;
   const stop = () => {
     setStopping(true);
     void Promise.resolve(actions.stopMemberWork(room2.id, bot.id)).catch((error) => actions.reportError(error, "stop")).finally(() => setStopping(false));
@@ -12187,10 +12211,7 @@ var roomRule = () => {
   if (live && !selector) return room.rule;
   const declarations2 = room.rule?.style.cssText ?? "";
   room.rule?.parentStyleSheet?.ownerNode?.remove();
-  const style = document.createElement("style");
-  style.dataset.dshBot = "chat-room";
-  style.textContent = `${selector || '[class*="_centerCol"]'}{${declarations2}}`;
-  document.head.append(style);
+  const style = installStyles(`${selector || '[class*="_centerCol"]'}{${declarations2}}`, "chat-room");
   room.rule = style.sheet.cssRules[0];
   room.selector = selector;
   return room.rule;
@@ -14493,10 +14514,7 @@ function apply(ctx) {
     () => shadow("conversation.input.dock", { id: "bot-question", order: -100, inject: face }, QuestionDock),
     () => shadow("conversation.input.dock", { id: "bot-secret", order: -90, inject: face }, SecretDock)
   ];
-  ctx.effect(() => {
-    const style = installStyles(RETURN_CSS, "return");
-    return () => style.remove();
-  }, "ds-bot: return styles");
+  ctx.effect(() => installCompiledStyles(RETURN_CSS, "return"), "ds-bot: return styles");
   shadow("sidebar.footer.action", { id: "bot-return", order: -300, inject: face }, BotReturn);
   ctx.effect(() => {
     let previous;
