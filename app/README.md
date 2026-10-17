@@ -42,7 +42,7 @@ Never point `DS_BOT_HOME` at `~/.dsh` or at the data of an app that you use.
 | `src/host-process.mjs` | Starts the Host in Electron's Node mode and owns its exit |
 | `src/host.mjs` | The Host: creates the profile `ds-bot` (`dsh-base`, `dsh-web-app`, `ds-bot`), boots it with `runProfile()` on a loopback port and reports the launch URL |
 | `src/web.mjs` | The window's files, the launch-token cookie exchange and the request forwarding |
-| `ui/` | The window: React, built with Vite (`vite.config.js`) into `ui/dist`. It uses ds-bot's `api/bot` channel and its live feed `api/bot/feed`, and takes the Bot marks, themes and copy from `../ds-bot/src/client/` |
+| `ui/` | The window: React, built with Vite (`vite.config.js`) into `ui/dist`. It draws the plugin's own Bot views from `../ds-bot/src/client/` (sidebar, chat rows, docks, dialogs and their stylesheets) and puts its own Markdown in place of DSH's. It uses ds-bot's `api/bot` channel and its live feed `api/bot/feed` |
 
 The Host installs plugins with the app's own pnpm (`node_modules/pnpm`).
 
