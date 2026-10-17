@@ -1,6 +1,6 @@
 import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
 import { isMainOf } from './sources.js'
-import { HEADER, currentPart, stripHeader, usageOf } from './text.js'
+import { HEADER, currentPart, runStatsOf, stripHeader, usageOf } from './text.js'
 import { PlusIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
 import { botState, BotMark, BotAvatar } from './mark.js'
 import { GlobeIcon, Favicon } from './browser-pane.js'
@@ -42,6 +42,28 @@ function PermissionRow({ bot, roster, actions, run }) {
     h('div', { className: 'bt-section-title' }, t('Permissions')),
     // A Bot without its own preset may run on another one set in DSH, so its first pick always applies.
     h(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === undefined, onPick: permission => run(actions.updateBot(bot.id, { permission })) }))
+}
+
+// The current part's turns, speed, cache hits and context, for a window without DSH's
+// status bar (actions.runStats). It reads them again when a turn starts or ends.
+function RunStats({ bot, part, running, actions }) {
+  const [values, setValues] = useState(null)
+  useEffect(() => {
+    if (!actions.runStats) return undefined
+    let current = true
+    actions.runStats(bot.id).then(
+      (next) => { if (current) setValues(next) },
+      // The line stays as it was until the next read works.
+      () => {},
+    )
+    return () => { current = false }
+  }, [bot.id, part, running])
+  const shown = runStatsOf(values)
+  if (shown.length === 0) return null
+  return h('div', { className: 'bt-run-stats' },
+    shown.map((entry, index) => h(Fragment, { key: entry.key },
+      index > 0 ? h('span', { className: 'bt-run-sep', 'aria-hidden': true }, '·') : null,
+      h('span', { title: entry.title }, entry.text))))
 }
 
 // The Bot's browser inside the details page: its tabs as small window cards on
@@ -238,6 +260,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
       errorLine,
       room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
       bot && tab === 'details' ? [
+        h(RunStats, { key: 'stats', bot, part, running, actions }),
         h('div', { key: 'model', className: 'bt-drawer-model' },
           h('div', { className: 'bt-section-title' }, t('Model')),
           h(ModelMenu, { bot, roster, actions, run, wide: true }),
