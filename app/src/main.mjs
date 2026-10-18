@@ -5,17 +5,22 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, sessi
 import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { getDshRuntimeVersion } from '@deepseek-ai/dsh-app-boot'
-import { chooseLocations, text } from './first-run.mjs'
+import electronUpdater from 'electron-updater'
+import { chooseLocations, localeText, text } from './first-run.mjs'
 import { HostProcess } from './host-process.mjs'
 import { importTeam } from './import.mjs'
+import { UPDATE_TEXT, watchUpdates } from './updates.mjs'
 import { APP_ORIGIN, authenticateWebHost, forwardWebRequest, serveWebDocument } from './web.mjs'
 
 // DSH writes dsh-app://app/ into workspace file URLs and Markdown file links, so the window keeps that scheme.
 const SCHEME = 'dsh-app'
 const IPC = { boot: 'ds-bot:boot', bootFailed: 'ds-bot:boot-failed' }
 const STATIC_PATHS = new Set(['/', '/index.html', '/manifest.webmanifest'])
+const UPDATE_CHECK_WAIT_MS = 15_000
+const UPDATE_DOWNLOAD_WAIT_MS = 15 * 60_000
 
 const here = dirname(fileURLToPath(import.meta.url))
 const webDist = join(dirname(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-web-frontend/package.json')), 'dist')
@@ -31,6 +36,8 @@ protocol.registerSchemesAsPrivileged([{
 let mainWindow
 let host
 let hostState
+let hostStop
+let updates
 let stopping = false
 let stopped = false
 let failed = false
@@ -44,10 +51,15 @@ if (!app.requestSingleInstanceLock()) {
     if (stopped || host === undefined) return
     event.preventDefault()
     if (stopping) return
-    stopping = true
-    host.stop().catch((error) => { console.error(error) }).finally(() => { stopped = true; app.quit() })
+    void stopHost().then(() => { app.quit() })
   })
   app.whenReady().then(start).catch(fail)
+}
+
+function stopHost() {
+  stopping = true
+  hostStop ??= (host?.stop() ?? Promise.resolve()).catch((error) => { console.error(error) }).finally(() => { stopped = true })
+  return hostStop
 }
 
 function start() {
@@ -64,6 +76,9 @@ function start() {
   })
   const ready = (async () => {
     if (where.import) await copyTeam(where, newHost)
+    // Not during the import, which a restart would cut short; before the Host, so that an
+    // update can still come when this version's Host does not start.
+    updates = startUpdates()
     host = newHost()
     const started = await host.start()
     hostState = { ...started, cookie: await authenticateWebHost(started.url) }
@@ -124,6 +139,24 @@ async function copyTeam(where, newHost) {
   }
 }
 
+// The installed app on Windows updates itself. A run on throwaway folders (DS_BOT_HOME) checks
+// only the feed it is given (DS_BOT_UPDATE_URL) and never asks, so the update waits for the quit.
+function startUpdates() {
+  const feed = process.env.DS_BOT_UPDATE_URL || undefined
+  const throwaway = Boolean(process.env.DS_BOT_HOME)
+  if (!app.isPackaged || process.platform !== 'win32' || (throwaway && feed === undefined)) return undefined
+  return watchUpdates({ updater: electronUpdater.autoUpdater, feed, ask: throwaway ? undefined : askRestart, beforeInstall: stopHost })
+}
+
+async function askRestart(version) {
+  // After a failed start, fail() installs the update itself.
+  if (failed) return false
+  const t = localeText(UPDATE_TEXT)
+  const options = { type: 'info', title: 'DeepSeek Bot', message: t.ready(version), detail: t.readyDetail, buttons: [t.restart, t.later], defaultId: 0, cancelId: 1, noLink: true }
+  const { response } = await (mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options))
+  return response === 0
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1320, height: 860, minWidth: 720, minHeight: 480,
@@ -155,7 +188,7 @@ function setMenu() {
 }
 
 function focusWindow() {
-  if (mainWindow === undefined) return
+  if (mainWindow === undefined || failed) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
@@ -171,10 +204,22 @@ function openOutside(url) {
   if (/^https?:\/\//iu.test(url)) void shell.openExternal(url)
 }
 
-function fail(error) {
+// A new version may fix what keeps this one from starting. So a failed start waits for the
+// newest update check and, when it found a version, for its download; the installer then
+// opens the app again.
+async function fail(error) {
   console.error(error)
   if (failed || stopping) return
   failed = true
-  dialog.showErrorBox('DeepSeek Bot', `DeepSeek Bot could not start.\n\n${error instanceof Error ? error.message : String(error)}`)
+  const found = await Promise.race([updates?.latest() ?? null, sleep(UPDATE_CHECK_WAIT_MS).then(() => null)])
+  const next = found ? `\n\n${localeText(UPDATE_TEXT).onFailure(found.version)}` : ''
+  dialog.showErrorBox('DeepSeek Bot', `${text().notStarted}\n\n${error instanceof Error ? error.message : String(error)}${next}`)
+  if (found) {
+    mainWindow?.hide()
+    if (await Promise.race([found.downloaded, sleep(UPDATE_DOWNLOAD_WAIT_MS).then(() => false)])) {
+      await updates.install()
+      return
+    }
+  }
   app.quit()
 }
