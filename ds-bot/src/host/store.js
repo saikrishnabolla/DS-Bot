@@ -300,7 +300,7 @@ export function install(rt) {
         ensureLock()
         await writeFile(temp, snapshot, 'utf8')
         ensureLock()
-        await replaceFile(temp, statePath)
+        await replaceFile(temp, statePath, ensureLock)
         seen = stamp()
         rt.capabilitiesStateSaved?.()
         rt.stateSaved?.()
