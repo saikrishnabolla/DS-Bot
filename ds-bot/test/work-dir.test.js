@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { homedir, hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { apply } from '../index.js'
@@ -29,7 +29,8 @@ const TEAM = {
 // DSH_HOME, the team's data inside it, and a project folder beside it. Every Session
 // starts in the team workspace unless it is made with a cwd. `services` are what
 // ctx.get finds, such as the sandbox policy and approvals.
-async function start({ services = {}, workspaces = [], llm, team: saved = TEAM } = {}) {
+// `locked`: another dsh holds the team, so this one only shows it.
+async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, locked = false } = {}) {
   // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
   const dsh = join(root, 'dsh')
@@ -38,6 +39,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM }
   const project = join(root, 'project')
   for (const dir of [team, project]) mkdirSync(dir, { recursive: true })
   writeFileSync(join(home, 'state.json'), JSON.stringify(saved))
+  if (locked) writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other' }))
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = dsh
 
@@ -607,4 +609,149 @@ test('a Bot deleted while its chat moves to a new folder leaves no fresh part be
   await settle()
   assert.equal(state().bots.b, undefined)
   assert.equal(handoffOf(agentOf(fresh)), undefined)
+})
+
+// DSH 0.2.1's working_directory, run through ds-bot's tools/execute listeners as DSH runs
+// them; the last step is the tool, which changes the Session's folder in place.
+async function changeDirectory(ctx, service, agent, cd) {
+  let ran = false
+  const tool = async () => {
+    ran = true
+    const cwd = resolve(service.get(agent.session), cd)
+    await service.set(agent, cwd)
+    return { isError: false, value: { cwd } }
+  }
+  const exec = { name: 'working_directory', arguments: { cd }, agent, callId: 'c1', signal: AbortSignal.timeout(60_000) }
+  const run = ctx.listeners.get('tools/execute').reduceRight((next, listener) => () => listener(exec, next), tool)
+  try {
+    return { result: await run(), ran }
+  } catch (error) {
+    return { error: error.message, ran }
+  }
+}
+
+test('a Bot that changes to a folder inside its working folder only moves that Session there', async (t) => {
+  const { service } = folderService()
+  const { requests, services } = approvalServices('rejected')
+  const { ctx, agentOf, team, created, state, preStep, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  mkdirSync(join(team, 'site'))
+  agentOf('b').status = 'running'
+  const moved = await changeDirectory(ctx, service, agentOf('b'), 'site')
+  assert.deepEqual(moved, { result: { isError: false, value: { cwd: join(team, 'site') } }, ran: true })
+  assert.equal(state().bots.b.workDir, undefined)
+  assert.equal(requests.length, 0)
+  assert.equal(await preStep('b'), 'next')
+  assert.deepEqual(created, [])
+})
+
+test('a Bot that changes to a folder outside its working folder makes it its working folder and goes on in a fresh part there', async (t) => {
+  const { service } = folderService()
+  const { requests, services } = approvalServices('allowed-once')
+  const { ctx, agentOf, project, created, state, preStep, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  agentOf('b').status = 'running'
+  const moved = await changeDirectory(ctx, service, agentOf('b'), project)
+  assert.deepEqual(moved, { result: { isError: false, value: { cwd: project } }, ran: true })
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].toolName, 'working_directory')
+  assert.equal(requests[0].reason, `Let Writer work in ${project}? Files there can then be changed.`)
+  assert.equal(state().bots.b.workDir, project)
+
+  const input = { id: 'm1', role: 'user', content: [{ type: 'text', text: 'Now build it' }], source: { kind: 'user' } }
+  assert.deepEqual(await preStep('b', [input]), { kind: 'reject' })
+  await until(() => state().bots.b.sessionId === 's1')
+  assert.deepEqual(created, [{ cwd: project }])
+  await until(() => handoffOf(agentOf('s1')) !== undefined)
+  assert.match(handoffOf(agentOf('s1')), new RegExp(`because your working folder changed to ${escapeRegExp(project)}\\.`))
+})
+
+test('a change out of the working folder that is not allowed changes nothing', async (t) => {
+  const { service } = folderService()
+  const { services } = approvalServices('rejected')
+  const { ctx, agentOf, dsh, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  assert.deepEqual(await changeDirectory(ctx, service, agentOf('b'), project), { error: notAllowed(project), ran: false })
+  const guarded = await changeDirectory(ctx, service, agentOf('b'), dsh)
+  assert.match(guarded.error, /holds DeepSeek Harness data, so Bots cannot work there/)
+  assert.equal(guarded.ran, false)
+  assert.equal(state().bots.b.workDir, undefined)
+})
+
+test('in a group with a folder of its own a member stays inside it; without one the member\'s own folder changes', async (t) => {
+  const { service } = folderService()
+  const { services } = approvalServices('allowed-once')
+  const { ctx, call, agentOf, team, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  assert.equal((await call('update-room', { id: 'r1', workDir: project })).ok, true)
+  mkdirSync(join(project, 'src'))
+  const inside = await changeDirectory(ctx, service, agentOf('gb'), join(project, 'src'))
+  assert.equal(inside.ran, true)
+  const out = await changeDirectory(ctx, service, agentOf('gb'), team)
+  assert.deepEqual(out, { error: `Every member of "Ops" works in ${project} here, so you stay inside it. The user or a Main Bot can change the group's folder.`, ran: false })
+  assert.equal(state().bots.b.workDir, undefined)
+
+  assert.equal((await call('update-room', { id: 'r1', workDir: '' })).ok, true)
+  const own = await changeDirectory(ctx, service, agentOf('gb'), project)
+  assert.equal(own.ran, true)
+  assert.equal(state().bots.b.workDir, project)
+  assert.equal(state().rooms.r1.workDir, undefined)
+})
+
+test('Sessions that are not a Bot\'s keep DSH\'s own working_directory', async (t) => {
+  const { service } = folderService()
+  const { requests, services } = approvalServices('rejected')
+  const { ctx, agentOf, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  assert.deepEqual(await changeDirectory(ctx, service, agentOf('x'), project), { result: { isError: false, value: { cwd: project } }, ran: true })
+  assert.equal(requests.length, 0)
+  assert.deepEqual(Object.values(state().bots).map(bot => bot.workDir), [undefined, undefined])
+})
+
+test('while another dsh has the team open, a Bot cannot leave its working folder', async (t) => {
+  const { service } = folderService()
+  const { services } = approvalServices('allowed-once')
+  const { ctx, agentOf, team, project, state, stop } = await start({ services: { ...services, workingDirectory: service }, locked: true })
+  t.after(stop)
+  mkdirSync(join(team, 'site'))
+  assert.equal((await changeDirectory(ctx, service, agentOf('b'), 'site')).ran, true)
+  const out = await changeDirectory(ctx, service, agentOf('b'), project)
+  assert.match(out.error, /^Your working folder cannot change now: The Bot team in .* is open in another dsh/)
+  assert.equal(out.ran, false)
+  assert.equal(state().bots.b.workDir, undefined)
+})
+
+// The trimmed path names no folder, so a check of it would let DSH move out unchecked.
+test('the folder is checked as DSH gets it, spaces and all', { skip: process.platform === 'win32' && 'Windows drops trailing spaces from names' }, async (t) => {
+  const { service } = folderService()
+  const { services } = approvalServices('allowed-once')
+  const { ctx, agentOf, root, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  const spaced = join(root, 'outside ')
+  mkdirSync(spaced)
+  assert.deepEqual(await changeDirectory(ctx, service, agentOf('b'), spaced), { error: `${JSON.stringify(spaced)} cannot be a working folder: its name starts or ends with a space or a quote mark.`, ran: false })
+  assert.equal(state().bots.b.workDir, undefined)
+})
+
+test('a Bot changes back to the team workspace when the team workspace is known by a link', async (t) => {
+  const { service } = folderService()
+  const { requests, services } = approvalServices('rejected')
+  const { ctx, call, agentOf, root, team, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  t.after(stop)
+  const link = join(root, 'team-link')
+  symlinkSync(team, link, 'junction')
+  ctx.workspaceRegistry.get('w1').path = link
+  mkdirSync(join(team, 'site'))
+  // The team workspace widens nothing, so nobody is asked, also for a folder inside it.
+  assert.equal((await call('update-bot', { id: 'b', workDir: project })).ok, true)
+  await until(() => state().bots.b.sessionId === 's1')
+  assert.equal((await changeDirectory(ctx, service, agentOf('s1'), join(team, 'site'))).ran, true)
+  assert.equal(state().bots.b.workDir, join(team, 'site'))
+
+  assert.equal((await call('update-bot', { id: 'b', workDir: project })).ok, true)
+  await until(() => state().bots.b.workDir === project)
+  const back = await changeDirectory(ctx, service, agentOf('s1'), team)
+  assert.equal(back.ran, true)
+  assert.equal(state().bots.b.workDir, undefined)
+  assert.equal(requests.length, 0)
 })
