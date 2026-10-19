@@ -384,6 +384,8 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bt-kv{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:20px;color:var(--bt-ink-2)}
 .bt-kv span:last-child{color:var(--bt-ink);font-variant-numeric:tabular-nums}
+.bt-run-stats{display:flex;flex-wrap:wrap;justify-content:center;gap:0 6px;margin-top:-6px;font-size:12px;line-height:18px;color:var(--bt-ink-2);font-variant-numeric:tabular-nums}
+.bt-run-sep{color:var(--bt-ink-3)}
 .bt-danger{color:var(--bt-danger)}
 
 /* Bot settings: fields, the avatar editor popover, and the details-pane sub-view. */
@@ -873,7 +875,7 @@ header[class*="_header"] .bt-head{flex:1 1 auto;width:100%}
 .bt-typing-text{display:flex;align-items:center;flex:1 1 auto;min-width:0;animation:bt-typing-label .22s ease-out .2s backwards}
 .bt-typing-label{display:inline-flex;align-items:center;gap:6px;min-width:0;animation:bt-typing-label .22s ease-out backwards}
 .bt-typing-label>.bt-shimmer{font-size:14px;line-height:22px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-typing-time{flex-shrink:0;font-size:12px;line-height:22px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bt-typing-time{flex-shrink:0;margin-left:6px;font-size:12px;line-height:22px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 @keyframes bt-typing-in{from{opacity:0;transform:scale(.9)}}
 @keyframes bt-typing-out{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.92);filter:blur(3px)}}
 @keyframes bt-typing-label{from{opacity:0;filter:blur(5px);transform:translateY(3px)}}
@@ -1006,9 +1008,15 @@ div:has(> nav [class*="_marks"]){display:none!important}
 
 // -------------------------------------------------------------------------
 
+// DSH's ClientModuleSystem claims every <style> without a `data-plugin` for the module
+// it is materializing and deletes a module's styles when it unloads. Ours carry our
+// module id from the start, so another plugin's claim or teardown never takes them.
+const PLUGIN_ID = 'ds-bot'
+
 export function installStyles(text, tag) {
   const style = document.createElement('style')
   style.dataset.dshBot = tag
+  style.dataset.plugin = PLUGIN_ID
   style.textContent = text
   document.head.appendChild(style)
   return style
@@ -1048,8 +1056,12 @@ function compileFragmentSelectors(text, names) {
 
 export function installCompiledStyles(text, tag) {
   const style = installStyles('', tag)
+  let disposed = false
   const cache = new WeakMap()
   const render = () => {
+    if (disposed) return
+    // A tag removed out from under us (not by the module system, which owns it) goes back.
+    if (!style.isConnected) document.head.appendChild(style)
     const names = new Set()
     for (const sheet of document.styleSheets) {
       if (sheet.ownerNode?.dataset?.dshBot) continue
@@ -1066,14 +1078,17 @@ export function installCompiledStyles(text, tag) {
   const schedule = () => { clearTimeout(timer); timer = setTimeout(render, 120) }
   const onLoad = (event) => { if (event.target instanceof HTMLLinkElement) schedule() }
   // Our own sheets name no shell classes, so adding one (the panel's first open adds the
-  // chat column's rule) recompiles nothing.
+  // chat column's rule) recompiles nothing. Our own node coming out is a removal to undo,
+  // which render sees without a recompile.
   const shell = node => node.dataset?.dshBot === undefined
   const observer = new MutationObserver((records) => {
+    if (records.some(record => [...record.removedNodes].includes(style))) render()
     if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(shell))) schedule()
   })
   observer.observe(document.head, { childList: true })
   document.addEventListener('load', onLoad, true)
   return () => {
+    disposed = true
     observer.disconnect()
     document.removeEventListener('load', onLoad, true)
     clearTimeout(timer)

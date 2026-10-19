@@ -2,7 +2,7 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useR
 import { createPortal } from 'react-dom'
 import { MarkdownText } from './dsh-primitives.js'
 import { inkText } from './inks.js'
-import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts } from './text.js'
+import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel } from './text.js'
 import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, MemoryIcon } from './icons.js'
 import { colorOf, toolState, BotMark, RoomAvatar } from './mark.js'
 import { AnsweredCell, SettledQuestion, PendingQuestion } from './questions.js'
@@ -413,6 +413,8 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       // The secret card itself shows what the user did; the note to the Bot stays out.
       if (source.role === 'secret' || deferred) return null
       if (source.role === 'post') {
+        // A post logged into a running round already shows there, not again as a trigger.
+        if (source.logged !== undefined) return null
         // A member's late failure, its work picked up after a restart, its work the user
         // stopped, or the end of its work shows as an event of the round it opens.
         if (source.failed !== undefined || source.resumed === true || source.stopped === true || source.done === true) return null
@@ -554,6 +556,23 @@ export function TurnTailCell({ turn: location, sessionId, useTurnClock, useUi, a
 
 export function Shimmer({ children }) {
   return h('span', { className: 'bt-shimmer' }, children)
+}
+
+// The time since `at`, from 1s. It ticks on its own whole seconds, so its parent does
+// not render again each second.
+export function Elapsed({ at, className }) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    let timer = 0
+    const tick = () => {
+      const time = Date.now()
+      setNow(time)
+      timer = setTimeout(tick, 1000 - (((time - at) % 1000) + 1000) % 1000)
+    }
+    tick()
+    return () => clearTimeout(timer)
+  }, [at])
+  return h('span', { className }, `· ${elapsedLabel(Math.max(1000, now - at))}`)
 }
 
 // Status phrases. A running tool names what it does; otherwise one
