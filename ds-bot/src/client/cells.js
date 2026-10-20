@@ -8,8 +8,9 @@ import { colorOf, toolState, BotMark, RoomAvatar } from './mark.js'
 import { AnsweredCell, SettledQuestion, PendingQuestion } from './questions.js'
 import { SecretToolCell } from './secret-card.js'
 import { dateLocale, t } from './i18n.js'
+import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
-import { turnReasoning } from './turn-reasoning.js'
+import { turnReasoning, thinkingStep } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { heldCardKey } from './sources.js'
 
@@ -115,10 +116,29 @@ function MessageTools({ text, name, sessionId, react, actions }) {
       item(t('Copy'), CopyIcon, copy), item(t('Download'), DownloadIcon, download)), document.body) : null)
 }
 
+// A Turn's settled thinking time, fetched per count of settled steps: while a turn
+// runs each new settled step refetches; scrolling back to a loaded turn reuses it.
+const thinkingTimes = new Map()
+function useThinkingMs({ sessionId, turn, settledSteps, skip }) {
+  const key = `${sessionId}:${turn}:${settledSteps}`
+  const [ms, setMs] = useState(() => thinkingTimes.get(key))
+  useEffect(() => {
+    if (skip || thinkingTimes.has(key)) { setMs(thinkingTimes.get(key)); return undefined }
+    const control = new AbortController()
+    call('thinking', { sessionId, turn }, control.signal)
+      .then(value => { thinkingTimes.set(key, value?.ms); setMs(value?.ms) })
+      .catch(() => {})
+    return () => control.abort()
+  }, [key, skip])
+  return ms
+}
+
 // The row starts closed. Few readers go through a whole chain of thought, so when opened
 // it shows the last lines and the box scrolls for the rest. It stays at the end as later
-// steps add reasoning, unless the reader has scrolled up.
-export function ThinkingRow({ text }) {
+// steps add reasoning, unless the reader has scrolled up. While a step of the turn is
+// thinking the row shows immediately and ticks (`at` backs the live clock so it counts
+// the settled steps too); settled, it shows the turn's exact thinking time if known.
+export function ThinkingRow({ text, live, at, ms }) {
   const box = useRef(null)
   const atEnd = useRef(true)
   const [open, setOpen] = useState(false)
@@ -140,9 +160,11 @@ export function ThinkingRow({ text }) {
     if (atEnd.current) el.scrollTop = el.scrollHeight
     measure()
   }, [text, open])
-  const title = t('Thought it through')
+  const title = live ? t('Thinking') : t('Thought it through')
   return h('details', { className: 'bt-think', onToggle: toggle },
-    h('summary', null, title),
+    h('summary', null, title,
+      live && at !== undefined ? h(Elapsed, { at, className: 'bt-think-time' }) : null,
+      !live && ms !== undefined ? h('span', { className: 'bt-think-time' }, `· ${elapsedLabel(Math.max(1000, ms))}`) : null),
     h('div', { ref: box, className: 'bt-think-text', role: 'region', 'aria-label': title, tabIndex: 0, 'data-fade': fade, onScroll: measure }, text))
 }
 
@@ -168,10 +190,16 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   const hidden = Boolean(roster.roomsById[sessionId]) || isHiddenTurn(roster, sessionId, data.turn)
   const texts = groupPart === 'reasoning' ? [] : data.blocks.filter(block => block.kind === 'text' && block.text.trim() !== '').map(block => block.text)
   const running = data.status === 'running'
-  // A streaming reply stands in for the activity row.
-  useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts.length > 0 ? { text: true } : null)
-  if (hidden) return null
+  const members = steps.length ? steps : [data]
   const reasoning = groupPart === 'response' ? '' : turnReasoning(steps, data)
+  // A live step of the same Turn keeps the row ticking even when it sits on an
+  // earlier step's cell.
+  const thinking = groupPart === 'response' ? undefined : thinkingStep(members)
+  const ms = useThinkingMs({ sessionId, turn: data.turn, settledSteps: members.filter(step => step.status !== 'running').length, skip: hidden || reasoning === '' })
+  // A streaming reply — or a live reasoning row — stands in for the activity row.
+  useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts.length > 0 ? { text: true } : null)
+  useLiveNote(actions, sessionId, `think:${node.key ?? data.seq}`, !hidden && thinking !== undefined && reasoning !== '' ? { text: true } : null)
+  if (hidden) return null
   // A relay spliced mid-turn is a 'context' node, hidden from the chat flow on
   // DSH 0.2; the step that answers it shows the event line where it was read,
   // once, in the step's first cell.
@@ -190,7 +218,12 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
         whole: true,
       })
     }),
-    reasoning ? h(ThinkingRow, { text: reasoning }) : null,
+    reasoning ? h(ThinkingRow, {
+      text: reasoning, live: thinking !== undefined,
+      // The live clock counts the settled steps too: backing `at` by the settled
+      // time makes one Elapsed show settled + running.
+      ...(thinking !== undefined ? { at: typeof thinking.time === 'number' ? thinking.time - (ms ?? 0) : undefined } : { ms }),
+    }) : null,
     texts.length ? h(Bubbles, { texts, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ''}`, useUi, mentions, fold: FOLD_HUGE }) : null)
 }
 
