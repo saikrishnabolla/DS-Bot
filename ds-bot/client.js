@@ -2440,6 +2440,9 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-send:disabled{opacity:.35;cursor:default}
 .bt-error{padding:0 14px 10px;color:var(--bt-danger);font-size:12px}
 
+/* Side panels stay clear of the Windows caption buttons; a host may set the chrome top to 0
+   so that dialog masks also cover the caption band. */
+html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel){top:var(--dsh-windows-titlebar-height,0px)}
 .bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-dialog .bt-head{height:62px}
@@ -4183,7 +4186,7 @@ var SECRET_CSS = `
 // src/client/turn-reasoning.js
 function turnReasoning(steps, current) {
   const members = steps.length ? steps : [current];
-  if (members.find((step) => stepReasoning(step) !== "")?.step !== current.step) return "";
+  if (members.findLast((step) => stepReasoning(step) !== "")?.step !== current.step) return "";
   return members.map(stepReasoning).filter(Boolean).join("\n\n");
 }
 var thinkingStep = (steps) => steps.find(thinkingLive);
@@ -4418,32 +4421,42 @@ function useThinkingMs({ sessionId, turn, settledSteps, skip }) {
   }, [key, skip]);
   return ms;
 }
-function ThinkingRow({ text, live, at, ms }) {
+var rowViews = /* @__PURE__ */ new Map();
+function ThinkingRow({ text, live, at, ms, viewKey }) {
   const box = (0, import_react8.useRef)(null);
-  const atEnd = (0, import_react8.useRef)(true);
-  const [open, setOpen] = (0, import_react8.useState)(false);
+  const view = (0, import_react8.useRef)(rowViews.get(viewKey));
+  const atEnd = (0, import_react8.useRef)(view.current?.atEnd ?? true);
+  const [open, setOpen] = (0, import_react8.useState)(view.current?.open ?? false);
   const [fade, setFade] = (0, import_react8.useState)(void 0);
+  const remember = (patch) => {
+    if (viewKey !== void 0) rowViews.set(viewKey, { ...rowViews.get(viewKey), ...patch });
+  };
   const measure = () => {
     const el = box.current;
     atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 2;
+    remember({ atEnd: atEnd.current, top: el.scrollTop });
     const above = el.scrollTop > 0;
     setFade(above && !atEnd.current ? "both" : above ? "top" : !atEnd.current ? "bottom" : void 0);
   };
   const toggle = (event) => {
     const next = event.currentTarget.open;
     if (next) atEnd.current = true;
+    remember({ open: next });
     setOpen(next);
   };
   (0, import_react8.useLayoutEffect)(() => {
     if (!open) return;
     const el = box.current;
+    const restore = view.current;
+    view.current = void 0;
     if (atEnd.current) el.scrollTop = el.scrollHeight;
+    else if (restore?.top !== void 0) el.scrollTop = restore.top;
     measure();
   }, [text, open]);
   const title = live ? t("Thinking") : t("Thought it through");
   return (0, import_react8.createElement)(
     "details",
-    { className: "bt-think", onToggle: toggle },
+    { className: "bt-think", open, onToggle: toggle },
     (0, import_react8.createElement)(
       "summary",
       null,
@@ -4502,6 +4515,7 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
     reasoning ? (0, import_react8.createElement)(ThinkingRow, {
       text: reasoning,
       live: thinking !== void 0,
+      viewKey: `${sessionId}:${data.turn}`,
       // The live clock counts the settled steps too: backing `at` by the settled
       // time makes one Elapsed show settled + running.
       ...thinking !== void 0 ? { at: typeof thinking.time === "number" ? thinking.time - (ms ?? 0) : void 0 } : { ms }
