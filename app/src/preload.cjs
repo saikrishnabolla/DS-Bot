@@ -1,15 +1,12 @@
-// Gives the DSH Web entry the boot handshake it uses inside an app window. On Windows it also
-// marks the page for the frameless window the way DSH Desktop's preload does
+// Gives the page that the app's Host serves the app's own bridge. On Windows it also marks the
+// page for the frameless window the way DSH Desktop's preload does
 // (apps/desktop/src/preload-windows.ts, preload-platform.ts and preload-theme.ts; see NOTICE),
 // but without data-platform: that puts DSH's shortcuts on native menu input, which this
 // window does not have.
 const { contextBridge, ipcRenderer } = require('electron')
 
-if (location.protocol === 'dsh-app:' && location.hostname === 'app') {
-  contextBridge.exposeInMainWorld('dshDesktopBoot', {
-    ready: () => ipcRenderer.invoke('ds-bot:boot'),
-    failed: (message) => ipcRenderer.invoke('ds-bot:boot-failed', String(message)),
-  })
+const host = process.argv.find(value => value.startsWith('--ds-bot-origin='))?.slice('--ds-bot-origin='.length)
+if (host !== undefined && location.origin === host) {
   // DS Bot's settings show and move the app's data location through this.
   contextBridge.exposeInMainWorld('dsBotApp', {
     dataLocation: () => ipcRenderer.invoke('ds-bot:data-location'),
@@ -35,6 +32,9 @@ function frameless(height, mica) {
   const root = document.documentElement
   root.dataset.windowsTitlebar = ''
   root.style.setProperty('--dsh-windows-titlebar-height', `${height}px`)
+  // DSH keeps the dialog mask off the caption band, which then stays bright above a dimmed
+  // page; here the band is part of the page, so the mask covers it too.
+  root.style.setProperty('--dsh-frame-chrome-top', '0px')
   let theme
   const sendTheme = () => {
     const value = root.getAttribute('data-ds-theme-source')
@@ -63,6 +63,23 @@ function captionColors(mica) {
     const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
     return alpha === 0 ? undefined : `rgb(${red}, ${green}, ${blue})`
   }
+  // The surface's color with the layers above the caption buttons (a dialog's mask) painted over it.
+  const covered = (base, frame) => {
+    const layers = []
+    for (const element of document.elementsFromPoint(innerWidth - 1, 1)) {
+      if (frame !== null && (element === frame || element.contains(frame) || frame.contains(element))) break
+      for (const pseudo of ['::after', null, '::before']) layers.push(getComputedStyle(element, pseudo).backgroundColor)
+    }
+    context.clearRect(0, 0, 1, 1)
+    context.fillStyle = base
+    context.fillRect(0, 0, 1, 1)
+    for (const color of layers.reverse()) {
+      context.fillStyle = color
+      context.fillRect(0, 0, 1, 1)
+    }
+    const [red, green, blue] = context.getImageData(0, 0, 1, 1).data
+    return `rgb(${red}, ${green}, ${blue})`
+  }
   const column = () => {
     if (!mica) return document.querySelector('div[class*="_sidebarCol"]')
     const right = document.querySelector('div[class*="_rightbarCol"]')
@@ -78,7 +95,7 @@ function captionColors(mica) {
     }
     for (let element = start; element !== null; element = element.parentElement) {
       const color = opaque(getComputedStyle(element).backgroundColor)
-      if (color !== undefined) return [color, opaque(getComputedStyle(element).color)]
+      if (color !== undefined) return [covered(color, frame ?? null), opaque(getComputedStyle(element).color)]
     }
     return undefined
   }
@@ -96,8 +113,15 @@ function captionColors(mica) {
     sent = current
     ipcRenderer.send('ds-bot:caption-colors', ...colors)
   }
-  const observer = new MutationObserver(send)
-  observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'] })
+  // A dialog mounts anywhere in the page, which changes all the time; one look per frame.
+  let queued = false
+  const queue = () => {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(() => { queued = false; send() })
+  }
+  const observer = new MutationObserver(queue)
+  observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'], childList: true, subtree: true })
   observer.observe(document.head, { childList: true, subtree: true, characterData: true })
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-ds-theme-source', 'style'] })
   // A stylesheet link is added before it loads; its rules apply without another mutation.
