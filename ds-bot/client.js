@@ -4183,7 +4183,7 @@ var SECRET_CSS = `
 // src/client/turn-reasoning.js
 function turnReasoning(steps, current) {
   const members = steps.length ? steps : [current];
-  if (members.find((step) => stepReasoning(step) !== "")?.step !== current.step) return "";
+  if (members.findLast((step) => stepReasoning(step) !== "")?.step !== current.step) return "";
   return members.map(stepReasoning).filter(Boolean).join("\n\n");
 }
 var thinkingStep = (steps) => steps.find(thinkingLive);
