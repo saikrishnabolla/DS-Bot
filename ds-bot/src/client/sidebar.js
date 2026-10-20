@@ -244,8 +244,10 @@ function useListGlide(listRef, layout, key) {
 }
 
 export function TeamSidebar(props) {
-  const { wide, useRoster, useUi, useSessions, actions } = props
+  const { wide, expandSidebar, useRoster, useUi, useSessions, actions } = props
   const listRef = useRef(null)
+  const closing = useRef(false)
+  useLayoutEffect(() => { closing.current = false })
   const roster = useRoster(value => value)
   const markedUnread = useUi(value => value.unread)
   props.useRegistry(value => value)
@@ -267,7 +269,26 @@ export function TeamSidebar(props) {
   const main = roster.byId[roster.mainBotId]
   useListGlide(listRef, wide, order.map(entry => entry.item.id).join(','))
   useLandOnMainBot(roster, useSessions, actions)
-  const rowProps = { roster, actions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide }
+  // The shell keeps wide content during its collapse fade. Normalize through its
+  // public expansion action before toggling; coalesce synchronous activations
+  // until React commits the result.
+  const navigate = (open, id) => {
+    const result = open(id)
+    if (wide && window.innerWidth < 1024 && !closing.current) {
+      closing.current = true
+      expandSidebar?.()
+      actions.toggleSidebar()
+    }
+    return result
+  }
+  const rowActions = {
+    ...actions,
+    openSession: id => navigate(actions.openSession, id),
+    openAgent: id => navigate(actions.openAgent, id),
+    openAgentSession: id => navigate(actions.openAgentSession, id),
+    newAgentSession: id => navigate(actions.newAgentSession, id),
+  }
+  const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide }
   // Typing while the sidebar has focus starts a search.
   const typeToSearch = (event) => {
     if (event.defaultPrevented || event.key.length !== 1 || event.key === ' ' || event.metaKey || event.ctrlKey || event.altKey || event.nativeEvent.isComposing) return

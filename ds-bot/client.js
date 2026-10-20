@@ -5537,8 +5537,12 @@ function useListGlide(listRef, layout, key) {
   }, [layout, key]);
 }
 function TeamSidebar(props) {
-  const { wide, useRoster, useUi, useSessions, actions } = props;
+  const { wide, expandSidebar, useRoster, useUi, useSessions, actions } = props;
   const listRef = (0, import_react9.useRef)(null);
+  const closing = (0, import_react9.useRef)(false);
+  (0, import_react9.useLayoutEffect)(() => {
+    closing.current = false;
+  });
   const roster = useRoster((value) => value);
   const markedUnread = useUi((value) => value.unread);
   props.useRegistry((value) => value);
@@ -5560,7 +5564,23 @@ function TeamSidebar(props) {
   const main = roster.byId[roster.mainBotId];
   useListGlide(listRef, wide, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
-  const rowProps = { roster, actions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide };
+  const navigate = (open, id) => {
+    const result = open(id);
+    if (wide && window.innerWidth < 1024 && !closing.current) {
+      closing.current = true;
+      expandSidebar?.();
+      actions.toggleSidebar();
+    }
+    return result;
+  };
+  const rowActions = {
+    ...actions,
+    openSession: (id) => navigate(actions.openSession, id),
+    openAgent: (id) => navigate(actions.openAgent, id),
+    openAgentSession: (id) => navigate(actions.openAgentSession, id),
+    newAgentSession: (id) => navigate(actions.newAgentSession, id)
+  };
+  const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide };
   const typeToSearch = (event) => {
     if (event.defaultPrevented || event.key.length !== 1 || event.key === " " || event.metaKey || event.ctrlKey || event.altKey || event.nativeEvent.isComposing) return;
     if (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable]")) return;
