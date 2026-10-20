@@ -11,6 +11,7 @@ import { dateLocale, t } from './i18n.js'
 import { failureLabel } from './diagnostics.js'
 import { turnReasoning } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
+import { heldCardKey } from './sources.js'
 
 // -------------------------------------------------------------------------
 // Chat cells
@@ -743,7 +744,7 @@ export function callTree(root) {
 }
 
 // Tells the docks which card calls the transcript draws, so a card shows in one place.
-// A layout effect: the dock drops its copy of the card before the first paint.
+// A layout effect: an untouched dock drops its copy before the first paint.
 function useShownCards(actions, sessionId, callIds) {
   const key = JSON.stringify(callIds)
   useLayoutEffect(() => {
@@ -754,7 +755,7 @@ function useShownCards(actions, sessionId, callIds) {
   }, [sessionId, key])
 }
 
-function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot }) {
+function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot, heldCards }) {
   const tool = toolName(call)
   const done = call.kind === 'tool-result'
   const { text: arg, value: argValue } = toolArgs(call)
@@ -804,10 +805,11 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot 
       const question = roster.questions?.[sessionId]
       // Answered or closed: the card leaves no gap where it was.
       if (!question || question.callId !== call.callId) return h('span', { className: 'bt-q-gone', hidden: true })
-      return h(PendingQuestion, { sessionId, question, actions, inline: true })
+      if (heldCards?.[heldCardKey('question', question.id)] > 0) return null
+      return h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true })
     }
     case 'request_secret':
-      return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions })
+      return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions, heldCards })
     case 'ask_user_question': {
       if (!done) return null
       let parsed = null
@@ -830,8 +832,9 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot 
   }
 }
 
-export function ToolCell({ node, sessionId, useRoster, useUi, useWork, actions }) {
+export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCards, actions }) {
   const roster = useRoster(value => value)
+  const heldCards = useHeldCards?.(state => state[sessionId])
   const root = node.data.root
   const turn = node.location?.turn?.turn ?? root.turn
   const hidden = isHiddenTurn(roster, sessionId, turn)
@@ -845,6 +848,6 @@ export function ToolCell({ node, sessionId, useRoster, useUi, useWork, actions }
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note)
   useShownCards(actions, sessionId, drawn.filter(call => CARDS.has(toolName(call)) && call.callId).map(call => call.callId))
   if (drawn.length === 0) return null
-  const env = { sessionId, roster, actions, useUi, useWork, findBot }
+  const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards }
   return h(Fragment, null, drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
 }

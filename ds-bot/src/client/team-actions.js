@@ -1,11 +1,11 @@
-import { countCards } from './sources.js'
+import { countCards, heldCardKey } from './sources.js'
 import { noteClientError } from './diagnostics.js'
 
 // The actions every window that draws the Bot views shares: dialogs and panels (the `ui`
 // source), requests to the host, and the notes the transcript keeps. The shell around the
 // views adds navigation and its own panels. `after` reads the team again once a request
 // is done; `partFor` maps a Bot id, or any part of its chat, to its current part.
-export function teamActions({ call, after, partFor, roster, ui, live, cards, turnClock }) {
+export function teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock }) {
   return {
     openNewChat: (mode) => { ui.set(state => ({ ...state, newChat: mode, menu: null, palette: null })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },
@@ -139,6 +139,9 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, tur
     },
     noteCards: (sessionId, callIds, delta) => {
       if (sessionId !== undefined) cards.set(state => countCards(state, sessionId, callIds, delta))
+    },
+    noteHeldCard: (sessionId, kind, requestId, delta) => {
+      if (sessionId !== undefined) heldCards.set(state => countCards(state, sessionId, [heldCardKey(kind, requestId)], delta))
     },
     clearLive: sessionId => live.set((state) => {
       if (!state[sessionId]) return state

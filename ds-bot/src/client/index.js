@@ -107,6 +107,9 @@ export function apply(ctx) {
   // Per Session, the ask_user and request_secret calls its transcript draws; the
   // docks carry the cards of the other calls.
   const cards = createSource({})
+  // Edited dock cards keep their component when history arrives. This source
+  // holds only request identities and counts, never drafts or secret values.
+  const heldCards = createSource({})
   // Per Session, the first visible time and the end time of each turn the transcript
   // has rendered; time separators compare one turn's end with the next turn's start.
   const turnClock = createSource({})
@@ -345,7 +348,7 @@ export function apply(ctx) {
   const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id
   const show = listedOpener({ list: ctx.sessions.list, refresh: () => Promise.resolve(ctx.sessions.refresh?.()).catch(quietly('refresh sessions')), open: (target) => { expected = target; ctx.uiWorkspace.openSession(target) }, current: mainView })
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui, live, cards, turnClock }),
+    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock }),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
     isAgentSession: id => isAgentSessionId(id),
@@ -564,7 +567,7 @@ export function apply(ctx) {
   }
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
-  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, browserPages, browserTabs, surface, update } })
+  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, surface, update } })
   ctx.effect(() => noticeApprovals({
     work,
     roster,
