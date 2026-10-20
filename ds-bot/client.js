@@ -95,7 +95,6 @@ var ZH = {
   "Bot list": "Bot 列表",
   "Setting up your Main Bot…": "正在设置你的主 Bot…",
   "Connect plugins": "连接插件",
-  "Plugin compatibility is not fully verified.": "插件兼容性未完全验证",
   "Automation tasks": "自动化任务",
   Connectors: "连接器",
   "Search connectors": "搜索连接器",
@@ -2276,10 +2275,6 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 .bt-connect:hover{background:var(--bt-hover)}
 .bt-connect svg{flex:none;width:15px;height:15px}
 .bt-connect-wrap{position:relative;display:flex;flex:1 1 auto;min-width:0}
-.bt-connect-warn{flex:none;width:16px;height:16px;border-radius:50%;background:#E5484D;color:#fff;font-size:11px;line-height:16px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
-.bt-connect-tip{position:fixed;box-sizing:border-box;width:max-content;max-width:260px;padding:8px 12px;border-radius:10px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 8px 24px -4px rgba(0,0,0,.14);color:var(--bt-ink);font-size:12px;line-height:17px;white-space:normal;text-align:center;z-index:70;transform-origin:bottom left;animation:bt-tip-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
-@keyframes bt-tip-in{from{opacity:0;transform:scale(.96);filter:blur(4px)}}
-@media (prefers-reduced-motion:reduce){.bt-connect-tip{animation:none}}
 
 .bt-head{position:relative;display:flex;justify-content:center;align-items:center;height:40px;flex:none;pointer-events:none}
 .bt-pill{pointer-events:auto;display:inline-flex;align-items:center;gap:8px;height:40px;padding:7.5px 13.5px 7.5px 7.5px;border-radius:999px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 2px 8px -1px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);color:var(--bt-ink);font-family:inherit;font-size:14px;line-height:20px;cursor:pointer;max-width:70%;box-sizing:border-box;transition:background-color .12s ease,transform ${SPRING_TAP.duration}ms ${SPRING_TAP.easing}}
@@ -2935,6 +2930,8 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
 `;
 var CONVERSATION_CSS = `
 .bt-think{font-size:13px;line-height:18px;color:var(--bt-ink-2);margin:2px 0 4px;max-width:min(560px,78%)}
+.bt-think summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px}
+.bt-think summary::-webkit-details-marker{display:none}
 /* Five lines of the 18px line height; the rest scrolls inside the box. */
 .bt-think-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px;padding-left:10px;border-left:2px solid var(--bt-line-2);max-height:90px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;outline:none}
 .bt-think-text:focus-visible{border-left-color:var(--bt-ink-2)}
@@ -4403,6 +4400,7 @@ function MessageTools({ text, name, sessionId, react, actions }) {
 function ThinkingRow({ text }) {
   const box = (0, import_react8.useRef)(null);
   const atEnd = (0, import_react8.useRef)(true);
+  const [open, setOpen] = (0, import_react8.useState)(false);
   const [fade, setFade] = (0, import_react8.useState)(void 0);
   const measure = () => {
     const el = box.current;
@@ -4410,16 +4408,22 @@ function ThinkingRow({ text }) {
     const above = el.scrollTop > 0;
     setFade(above && !atEnd.current ? "both" : above ? "top" : !atEnd.current ? "bottom" : void 0);
   };
+  const toggle = (event) => {
+    const next = event.currentTarget.open;
+    if (next) atEnd.current = true;
+    setOpen(next);
+  };
   (0, import_react8.useLayoutEffect)(() => {
+    if (!open) return;
     const el = box.current;
     if (atEnd.current) el.scrollTop = el.scrollHeight;
     measure();
-  }, [text]);
+  }, [text, open]);
   const title = t("Thought it through");
   return (0, import_react8.createElement)(
-    "div",
-    { className: "bt-think" },
-    (0, import_react8.createElement)("div", { className: "bt-think-title" }, title),
+    "details",
+    { className: "bt-think", onToggle: toggle },
+    (0, import_react8.createElement)("summary", null, title),
     (0, import_react8.createElement)("div", { ref: box, className: "bt-think-text", role: "region", "aria-label": title, tabIndex: 0, "data-fade": fade, onScroll: measure }, text)
   );
 }
@@ -5780,52 +5784,20 @@ function UpdateButton({ useUpdate, actions }) {
   );
 }
 function ConnectPlugins({ wide, actions }) {
-  const tipId = (0, import_react10.useId)();
-  const [tip, setTip] = (0, import_react10.useState)(false);
-  const timer = (0, import_react10.useRef)(0);
-  const button = (0, import_react10.useRef)(null);
-  const [box, setBox] = (0, import_react10.useState)(null);
-  (0, import_react10.useEffect)(() => () => clearTimeout(timer.current), []);
   if (!wide) return null;
-  const show = () => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const rect = button.current?.getBoundingClientRect();
-      if (!rect) return;
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - 268));
-      setBox({ left, bottom: window.innerHeight - rect.top + 10 });
-      setTip(true);
-    }, 250);
-  };
-  const hide = () => {
-    clearTimeout(timer.current);
-    setTip(false);
-  };
   return (0, import_react10.createElement)(
     "span",
     { className: "bt-connect-wrap" },
     (0, import_react10.createElement)(
       "button",
       {
-        ref: button,
         type: "button",
         className: "bt-connect bt-connect-foot",
-        "aria-describedby": tip ? tipId : void 0,
-        onMouseEnter: show,
-        onMouseLeave: hide,
-        onFocus: show,
-        onBlur: hide,
         onClick: () => actions.selectPanel("plugins")
       },
       (0, import_react10.createElement)(PlugIcon),
-      t("Connect plugins"),
-      (0, import_react10.createElement)("span", { className: "bt-connect-warn", "aria-hidden": true }, "!")
-    ),
-    tip && box ? (0, import_react_dom3.createPortal)((0, import_react10.createElement)(
-      "span",
-      { role: "tooltip", id: tipId, className: "bt-connect-tip", style: box },
-      t("Plugin compatibility is not fully verified.")
-    ), document.body) : null
+      t("Connect plugins")
+    )
   );
 }
 function YouAvatar() {
