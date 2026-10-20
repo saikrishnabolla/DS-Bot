@@ -10,7 +10,7 @@ CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 
 - 官方的 DSH Desktop，版本和 README 里写的一致（现在是 `0.2.1-rc.2`）。只从 DeepSeek Harness 官方渠道下载。
 - 要发的包：在 `ds-bot/` 里运行 `npm pack`，得到 `ds-bot-<版本>.tgz`。
 - 桌面应用的安装包：在 `app/` 里运行 `npm run dist`，得到 `app/dist-pack/DeepSeek-Bot-<版本>-win-x64.exe`。`app/package.json` 和 `ds-bot/package.json` 的版本号要一样。
-- 也可以用发版工作流的试运行：在 GitHub 的 Actions 里选 Release → Run workflow，勾着 dry run 运行。跑完后在这次运行的页面下载 Windows 安装包和两个 DMG（保留 7 天）。它们和 Release 里的文件在同样的 runner 上、用同样的方法打包，不发布任何东西。
+- 也可以用发版工作流的试运行：在 GitHub 的 Actions 里选 Release → Run workflow，勾着 dry run 运行。跑完后在这次运行的页面下载 Windows 安装包和两个 Mac 的 zip（保留 7 天）。它们和 Release 里的文件在同样的 runner 上、用同样的方法打包，不发布任何东西。
 - 一个能用的模型（DeepSeek API key 或账号）。测试里要填的密钥都用**假值**。
 - 想保留现有数据，先备份数据目录：Windows 是 `C:\Users\<用户名>\.dsh\`，macOS 是 `~/.dsh/`。最好用一台没有自己团队数据的机器或账户来测。
 
@@ -154,12 +154,12 @@ CI 只跑单元测试和 Linux 上的测试台。窗口外框、输入法、高 
 
 ## 13. 桌面应用（macOS）
 
-13.2–13.6 在 Apple 芯片和 Intel Mac 上分别做一次。13.6 要上一个发布版本有这台 Mac 的 DMG；没有时跳过。
+13.2–13.6 在 Apple 芯片和 Intel Mac 上分别做一次。13.6 要上一个发布版本有这台 Mac 的 zip；没有时跳过。
 
 | # | 步骤 | 期望 | 结果 |
 |---|---|---|---|
-| 13.1 | 发布 Release，等工作流传完文件 | Release 里有 arm64 和 x64 两个 DMG | |
-| 13.2 | 用浏览器从 Release 页下载这台 Mac 的 DMG，打开，把 DeepSeek Bot 拖到「应用程序」，第一次打开 | Gatekeeper 拦下，不说「已损坏」；到「系统设置 → 隐私与安全性」点「仍要打开」后能打开 | |
+| 13.1 | 发布 Release，等工作流传完文件 | Release 里有 arm64 和 x64 两个 zip | |
+| 13.2 | 用 Safari 从 Release 页下载这台 Mac 的 zip（Safari 会自动解压），把 DeepSeek Bot 拖到「应用程序」，第一次打开 | Gatekeeper 拦下，不说「已损坏」；到「系统设置 → 隐私与安全性」点「仍要打开」后能打开 | |
 | 13.3 | 第一次打开：选数据位置和总工作区；有 DSH 团队时选复制；给一个 Bot 发消息 | 团队、对话、模型设置都在；收到回复；关于页写「随 DeepSeek Bot 应用一起更新。」 | |
 | 13.4 | 设置 → 通用 →「位置」：把总工作区换到另一个文件夹，给 Bot 发消息；再把数据位置换到一个空文件夹 | 总工作区换完，Bot 的下一轮在新文件夹里；数据复制完 App 自己重启，团队和对话都在，「位置」里是新的数据位置，旧文件夹还在 | |
 | 13.5 | 关闭窗口 | 应用退出，Dock 里不留着 | |
