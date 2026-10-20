@@ -3719,16 +3719,272 @@ function AnsweredCell({ node }) {
   })));
 }
 
+// src/shared/views.js
+var COMPONENTS = ["stack", "text", "metric", "table", "options", "confirm", "form", "progress"];
+var TONES = ["good", "warn", "bad"];
+var INTERACTIVE = /* @__PURE__ */ new Set(["options", "confirm", "form"]);
+var PROPS = {
+  stack: ["children"],
+  text: ["text"],
+  metric: ["label", "value", "tone"],
+  table: ["columns", "rows"],
+  options: ["id", "options", "multi"],
+  confirm: ["id", "confirmLabel", "cancelLabel"],
+  form: ["id", "fields", "submitLabel"],
+  progress: ["label", "percent"]
+};
+var MAX_DEPTH = 8;
+var MAX_NODES = 64;
+var MAX_CHILDREN = 16;
+var MAX_TEXT = 2e3;
+var MAX_CELL = 200;
+var MAX_COLUMNS = 8;
+var MAX_ROWS = 50;
+var MAX_OPTIONS = 8;
+var MAX_FIELDS = 6;
+var SUMMARY_PART = 40;
+var SUMMARY_COUNT = 8;
+var VIEW_BYTE_LIMIT = 8192;
+var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+var quoted = (value) => JSON.stringify(value);
+var allowed = (list) => list.join(", ");
+function viewBytes(title, view) {
+  return new TextEncoder().encode(`${JSON.stringify(view) ?? ""}${title ?? ""}`).length;
+}
+function normalizeView(value) {
+  if (Array.isArray(value)) return value.map(normalizeView);
+  if (!isRecord(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 1 && keys[0] === "item") {
+    const inner = normalizeView(value.item);
+    if (Array.isArray(inner)) return inner;
+  }
+  const out = {};
+  for (const key of keys) out[key] = normalizeView(value[key]);
+  for (const field of ["value", "percent"]) {
+    if (typeof out[field] === "string" && out[field].trim() !== "" && !Number.isNaN(Number(out[field]))) out[field] = Number(out[field]);
+  }
+  return out;
+}
+function validateView(view) {
+  const ctx = { ids: /* @__PURE__ */ new Set(), nodes: 0, interactive: false };
+  const error = checkNode(view, "view", 1, ctx);
+  return error === void 0 ? { ok: true, interactive: ctx.interactive } : { ok: false, error };
+}
+function checkNode(node, path, depth, ctx) {
+  if (!isRecord(node)) return `${path}: expected a component object`;
+  if (depth > MAX_DEPTH) return `${path}: ${depth} levels exceeds the limit of ${MAX_DEPTH}`;
+  ctx.nodes += 1;
+  if (ctx.nodes > MAX_NODES) return `${path}: ${ctx.nodes} components exceeds the limit of ${MAX_NODES}`;
+  const type = node.type;
+  if (!COMPONENTS.includes(type)) return `${path}.type: unknown component ${quoted(type)}; allowed: ${allowed(COMPONENTS)}`;
+  const props = PROPS[type];
+  for (const key of Object.keys(node)) {
+    if (key === "type" || props.includes(key)) continue;
+    return `${path}.${key}: unknown property ${quoted(key)}; allowed: ${allowed(props)}`;
+  }
+  if (INTERACTIVE.has(type)) ctx.interactive = true;
+  if (type === "stack") return checkStack(node, path, depth, ctx);
+  if (type === "text") return checkText(node, path);
+  if (type === "metric") return checkMetric(node, path);
+  if (type === "table") return checkTable(node, path);
+  if (type === "options") return checkOptions(node, path, ctx);
+  if (type === "confirm") return checkConfirm(node, path, ctx);
+  if (type === "form") return checkForm(node, path, ctx);
+  return checkProgress(node, path);
+}
+function checkStack(node, path, depth, ctx) {
+  if (!Array.isArray(node.children)) return `${path}.children: expected an array of 1 to ${MAX_CHILDREN} components`;
+  if (node.children.length < 1 || node.children.length > MAX_CHILDREN) return `${path}.children: expected 1 to ${MAX_CHILDREN} children; got ${node.children.length}`;
+  for (let index = 0; index < node.children.length; index += 1) {
+    const error = checkNode(node.children[index], `${path}.children[${index}]`, depth + 1, ctx);
+    if (error !== void 0) return error;
+  }
+  return void 0;
+}
+function checkText(node, path) {
+  if (typeof node.text !== "string") return `${path}.text: expected a string`;
+  if (node.text.length > MAX_TEXT) return `${path}.text: ${node.text.length} characters exceeds the limit of ${MAX_TEXT}`;
+  return void 0;
+}
+function checkMetric(node, path) {
+  if (typeof node.label !== "string") return `${path}.label: expected a string`;
+  if (typeof node.value !== "string" && typeof node.value !== "number") return `${path}.value: expected a string or a number`;
+  if (typeof node.value === "number" && !Number.isFinite(node.value)) return `${path}.value: expected a finite number`;
+  if (node.tone !== void 0 && !TONES.includes(node.tone)) return `${path}.tone: unknown tone ${quoted(node.tone)}; allowed: ${allowed(TONES)}`;
+  return void 0;
+}
+function checkTable(node, path) {
+  if (!Array.isArray(node.columns)) return `${path}.columns: expected an array of at most ${MAX_COLUMNS} columns`;
+  if (node.columns.length > MAX_COLUMNS) return `${path}.columns: ${node.columns.length} columns exceeds the limit of ${MAX_COLUMNS}`;
+  for (let index = 0; index < node.columns.length; index += 1) {
+    const column = node.columns[index];
+    const at = `${path}.columns[${index}]`;
+    if (!isRecord(column)) return `${at}: expected a column object`;
+    for (const key of Object.keys(column)) {
+      if (key !== "key" && key !== "label") return `${at}.${key}: unknown property ${quoted(key)}; allowed: key, label`;
+    }
+    if (typeof column.key !== "string" || column.key === "") return `${at}.key: expected a non-empty string`;
+    if (typeof column.label !== "string") return `${at}.label: expected a string`;
+  }
+  if (!Array.isArray(node.rows)) return `${path}.rows: expected an array of at most ${MAX_ROWS} rows`;
+  if (node.rows.length > MAX_ROWS) return `${path}.rows: ${node.rows.length} rows exceeds the limit of ${MAX_ROWS}`;
+  for (let row = 0; row < node.rows.length; row += 1) {
+    const cells = node.rows[row];
+    if (!Array.isArray(cells)) return `${path}.rows[${row}]: expected an array of cells`;
+    for (let column = 0; column < cells.length; column += 1) {
+      const text = cellText(cells[column]);
+      if (text.length > MAX_CELL) return `${path}.rows[${row}][${column}]: ${text.length} characters exceeds the limit of ${MAX_CELL}`;
+    }
+  }
+  return void 0;
+}
+function checkOptions(node, path, ctx) {
+  const idError = checkId(node, path, ctx);
+  if (idError !== void 0) return idError;
+  if (node.multi !== void 0 && typeof node.multi !== "boolean") return `${path}.multi: expected a boolean`;
+  if (!Array.isArray(node.options)) return `${path}.options: expected an array of 1 to ${MAX_OPTIONS} options`;
+  if (node.options.length < 1 || node.options.length > MAX_OPTIONS) return `${path}.options: expected 1 to ${MAX_OPTIONS} options; got ${node.options.length}`;
+  const labels = /* @__PURE__ */ new Set();
+  for (let index = 0; index < node.options.length; index += 1) {
+    const option = node.options[index];
+    const at = `${path}.options[${index}]`;
+    if (!isRecord(option)) return `${at}: expected an option object`;
+    for (const key of Object.keys(option)) {
+      if (key !== "label" && key !== "description") return `${at}.${key}: unknown property ${quoted(key)}; allowed: label, description`;
+    }
+    if (typeof option.label !== "string" || option.label.trim() === "") return `${at}.label: expected a non-empty string`;
+    if (labels.has(option.label)) return `${at}.label: duplicate label ${quoted(option.label)}`;
+    labels.add(option.label);
+    if (option.description !== void 0 && typeof option.description !== "string") return `${at}.description: expected a string`;
+  }
+  return void 0;
+}
+function checkConfirm(node, path, ctx) {
+  const idError = checkId(node, path, ctx);
+  if (idError !== void 0) return idError;
+  if (node.confirmLabel !== void 0 && typeof node.confirmLabel !== "string") return `${path}.confirmLabel: expected a string`;
+  if (node.cancelLabel !== void 0 && typeof node.cancelLabel !== "string") return `${path}.cancelLabel: expected a string`;
+  return void 0;
+}
+function checkForm(node, path, ctx) {
+  const idError = checkId(node, path, ctx);
+  if (idError !== void 0) return idError;
+  if (node.submitLabel !== void 0 && typeof node.submitLabel !== "string") return `${path}.submitLabel: expected a string`;
+  if (!Array.isArray(node.fields)) return `${path}.fields: expected an array of at most ${MAX_FIELDS} fields`;
+  if (node.fields.length > MAX_FIELDS) return `${path}.fields: ${node.fields.length} fields exceeds the limit of ${MAX_FIELDS}`;
+  const seen = /* @__PURE__ */ new Set();
+  for (let index = 0; index < node.fields.length; index += 1) {
+    const field = node.fields[index];
+    const at = `${path}.fields[${index}]`;
+    if (!isRecord(field)) return `${at}: expected a field object`;
+    for (const key of Object.keys(field)) {
+      if (key !== "id" && key !== "label" && key !== "placeholder") return `${at}.${key}: unknown property ${quoted(key)}; allowed: id, label, placeholder`;
+    }
+    if (typeof field.id !== "string" || field.id === "") return `${at}.id: expected a non-empty string`;
+    if (seen.has(field.id)) return `${at}.id: duplicate field id ${quoted(field.id)}`;
+    seen.add(field.id);
+    if (typeof field.label !== "string") return `${at}.label: expected a string`;
+    if (field.placeholder !== void 0 && typeof field.placeholder !== "string") return `${at}.placeholder: expected a string`;
+  }
+  return void 0;
+}
+function checkProgress(node, path) {
+  if (node.label !== void 0 && typeof node.label !== "string") return `${path}.label: expected a string`;
+  if (typeof node.percent !== "number" || !Number.isFinite(node.percent) || node.percent < 0 || node.percent > 100) return `${path}.percent: expected a number from 0 to 100`;
+  return void 0;
+}
+function checkId(node, path, ctx) {
+  if (typeof node.id !== "string" || node.id === "") return `${path}.id: expected a non-empty string`;
+  if (ctx.ids.has(node.id)) return `${path}.id: duplicate id ${quoted(node.id)}`;
+  ctx.ids.add(node.id);
+  return void 0;
+}
+function cellText(value) {
+  if (typeof value === "string") return value;
+  const text = JSON.stringify(value);
+  return typeof text === "string" ? text : "";
+}
+function clip(text) {
+  const flat = String(text).replace(/\s+/g, " ").trim();
+  return flat.length <= SUMMARY_PART ? flat : flat.slice(0, SUMMARY_PART);
+}
+function componentSummary(node) {
+  if (node.type === "text") return `text: ${node.text ?? ""}`;
+  if (node.type === "metric") return `metric: ${node.label}=${node.value}`;
+  if (node.type === "table") return `table: ${(Array.isArray(node.columns) ? node.columns : []).map((column) => column?.label ?? column?.key ?? "").filter(Boolean).join("/")}`;
+  if (node.type === "options") return `options: ${(Array.isArray(node.options) ? node.options : []).map((option) => option?.label).filter(Boolean).join("/")}`;
+  if (node.type === "confirm") return "confirm";
+  if (node.type === "form") return `form: ${(Array.isArray(node.fields) ? node.fields : []).map((field) => field?.label ?? field?.id).filter(Boolean).join("/")}`;
+  if (node.type === "progress") return `progress: ${node.label ? `${node.label} ` : ""}${node.percent}%`;
+  return void 0;
+}
+function viewSummary(view) {
+  const parts = [];
+  const visit = (node) => {
+    if (parts.length >= SUMMARY_COUNT || !isRecord(node)) return;
+    const line = componentSummary(node);
+    if (line !== void 0) parts.push(clip(line));
+    if (parts.length >= SUMMARY_COUNT || node.type !== "stack" || !Array.isArray(node.children)) return;
+    for (const child of node.children) visit(child);
+  };
+  visit(view);
+  return parts.join("; ");
+}
+function interactiveNodes(node, found = []) {
+  if (!isRecord(node)) return found;
+  if (INTERACTIVE.has(node.type)) found.push(node);
+  if (node.type === "stack" && Array.isArray(node.children)) {
+    for (const child of node.children) interactiveNodes(child, found);
+  }
+  return found;
+}
+function validateViewAnswer(view, action, values) {
+  const nodes = interactiveNodes(view);
+  if (typeof action !== "string" || action === "") return { error: `action: expected an interactive component id; allowed: ${allowed(nodes.map((node2) => node2.id))}` };
+  const node = nodes.find((item) => item.id === action);
+  if (node === void 0) return { error: `action: no interactive component with id ${quoted(action)}; allowed: ${allowed(nodes.map((item) => item.id))}` };
+  if (!isRecord(values)) return { error: "values: expected an object" };
+  if (node.type === "options") return validateOptions(node, values);
+  if (node.type === "confirm") return validateConfirm(values);
+  return validateForm(node, values);
+}
+function validateOptions(node, values) {
+  if (!Array.isArray(values.selected)) return { error: "values.selected: expected an array of option labels" };
+  const labels = new Set((node.options ?? []).map((option) => option?.label));
+  const picked = values.selected.filter((label) => typeof label === "string" && labels.has(label));
+  const selected = node.multi === true ? [...new Set(picked)] : picked.slice(0, 1);
+  if (selected.length === 0) return { error: "values.selected: select at least one option" };
+  return { selected };
+}
+function validateConfirm(values) {
+  if (typeof values.confirmed !== "boolean") return { error: "values.confirmed: expected a boolean" };
+  return { confirmed: values.confirmed };
+}
+function validateForm(node, values) {
+  if (!isRecord(values.fields)) return { error: "values.fields: expected an object of field ids to strings" };
+  const declared = (node.fields ?? []).map((field) => field?.id).filter((id) => typeof id === "string");
+  const allowedIds = new Set(declared);
+  const fields = {};
+  for (const [key, value] of Object.entries(values.fields)) {
+    if (!allowedIds.has(key)) return { error: `values.fields.${key}: unknown field; allowed: ${allowed(declared)}` };
+    if (typeof value !== "string") return { error: `values.fields.${key}: expected a string` };
+    if (value.length > MAX_TEXT) return { error: `values.fields.${key}: ${value.length} characters exceeds the limit of ${MAX_TEXT}` };
+    fields[key] = value;
+  }
+  return { fields };
+}
+
 // src/client/widget-cell.js
 var import_react5 = require("react");
 var mdLabels = () => ({ code: { copyLabel: t("Copy"), copiedLabel: t("Copied") }, footnotes: t("Footnotes") });
 var optionsOf2 = (node) => (Array.isArray(node?.options) ? node.options : []).map((option) => typeof option === "string" ? { label: option } : option).filter((option) => option !== null && typeof option === "object" && option.label !== void 0);
 var fieldsOf = (node) => (Array.isArray(node?.fields) ? node.fields : []).filter((field) => field !== null && typeof field === "object" && field.id !== void 0);
-var cellText = (value) => value === null || value === void 0 ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
-var INTERACTIVE = /* @__PURE__ */ new Set(["options", "confirm", "form"]);
+var cellText2 = (value) => value === null || value === void 0 ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+var INTERACTIVE2 = /* @__PURE__ */ new Set(["options", "confirm", "form"]);
 var hasInteractive = (node) => {
   if (node === null || typeof node !== "object") return false;
-  if (INTERACTIVE.has(node.type)) return true;
+  if (INTERACTIVE2.has(node.type)) return true;
   return (Array.isArray(node.children) ? node.children : []).some(hasInteractive);
 };
 var countType = (node, type) => {
@@ -3896,7 +4152,7 @@ function WidgetTable({ node }) {
       (0, import_react5.createElement)("tbody", null, rows.map((row, rowIndex) => (0, import_react5.createElement)(
         "tr",
         { key: rowIndex },
-        columns.map((column, columnIndex) => (0, import_react5.createElement)("td", { key: column.key ?? columnIndex }, cellText(Array.isArray(row) ? row[columnIndex] : void 0)))
+        columns.map((column, columnIndex) => (0, import_react5.createElement)("td", { key: column.key ?? columnIndex }, cellText2(Array.isArray(row) ? row[columnIndex] : void 0)))
       )))
     )
   );
@@ -3993,12 +4249,13 @@ function PendingView({ sessionId, view, actions, inline }) {
     (0, import_react5.createElement)(WidgetCard, { key: view.id, title: view.title ?? "", view: view.view, onSubmit, onDismiss, raised: !inline })
   );
 }
-function WidgetCell({ sessionId, callId, args, roster, actions }) {
+function WidgetCell({ sessionId, callId, args, done, isError, roster, actions }) {
   const record = roster.views?.[sessionId];
   if (record !== void 0 && record.callId === callId) {
     return (0, import_react5.createElement)(PendingView, { sessionId, view: record, actions, inline: true });
   }
-  const blueprint = args?.("view");
+  if (done && isError) return (0, import_react5.createElement)("span", { className: "bt-q-gone", hidden: true });
+  const blueprint = normalizeView(args?.("view"));
   if (args?.("await_reply") === true || hasInteractive(blueprint) || blueprint === null || typeof blueprint !== "object") {
     return (0, import_react5.createElement)("span", { className: "bt-q-gone", hidden: true });
   }
@@ -4326,7 +4583,7 @@ function SecretRow({ secret, roster, actions, run, open, onToggle }) {
     if (!open) setConfirm(false);
   }, [open]);
   const asker = secret.requestedBy ? roster.byId[secret.requestedBy]?.name ?? t("a deleted Bot") : t("you");
-  const allowed = secret.scope === "all" ? [] : secret.scope.map((id) => roster.byId[id]).filter(Boolean);
+  const allowed2 = secret.scope === "all" ? [] : secret.scope.map((id) => roster.byId[id]).filter(Boolean);
   const meta = [t("Asked by {name}", { name: asker }), t("added {time}", { time: when(secret.createdAt) }), secret.lastUsedAt ? t("last used {time}", { time: when(secret.lastUsedAt) }) : t("not used yet")].join(" · ");
   return (0, import_react6.createElement)(
     "div",
@@ -4343,7 +4600,7 @@ function SecretRow({ secret, roster, actions, run, open, onToggle }) {
       (0, import_react6.createElement)(
         "span",
         { className: "bt-set-control" },
-        secret.scope === "all" ? (0, import_react6.createElement)("span", { className: "bt-tag" }, t("All Bots")) : allowed.length === 0 ? (0, import_react6.createElement)("span", { className: "bt-tag" }, t("No Bot")) : (0, import_react6.createElement)("span", { className: "bt-secret-faces", title: allowed.map((bot) => bot.name).join(", ") }, allowed.slice(0, 5).map((bot) => (0, import_react6.createElement)(BotAvatar, { key: bot.id, bot, size: 20, badge: false, live: false })))
+        secret.scope === "all" ? (0, import_react6.createElement)("span", { className: "bt-tag" }, t("All Bots")) : allowed2.length === 0 ? (0, import_react6.createElement)("span", { className: "bt-tag" }, t("No Bot")) : (0, import_react6.createElement)("span", { className: "bt-secret-faces", title: allowed2.map((bot) => bot.name).join(", ") }, allowed2.slice(0, 5).map((bot) => (0, import_react6.createElement)(BotAvatar, { key: bot.id, bot, size: 20, badge: false, live: false })))
       )
     ),
     open ? (0, import_react6.createElement)(
@@ -5393,7 +5650,7 @@ function renderCall(call2, { sessionId, roster, actions, useUi, useWork, findBot
       return (0, import_react8.createElement)(PendingQuestion, { sessionId, question, actions, inline: true });
     }
     case "show_view":
-      return (0, import_react8.createElement)(WidgetCell, { sessionId, callId: call2.callId, args: argValue, roster, actions });
+      return (0, import_react8.createElement)(WidgetCell, { sessionId, callId: call2.callId, args: argValue, done, isError: call2.isError, roster, actions });
     case "request_secret":
       return (0, import_react8.createElement)(SecretToolCell, { sessionId, callId: call2.callId, name: arg("name"), done, content: call2.content, roster, actions });
     case "ask_user_question": {
@@ -13729,7 +13986,7 @@ ${fence}`;
     }
     return keep(lines.join("\n"));
   };
-  const cellText2 = (cell, ctx) => block(children(cell, ctx)).replace(/\n+/g, " <br> ").replace(/\|/g, "\\|");
+  const cellText3 = (cell, ctx) => block(children(cell, ctx)).replace(/\n+/g, " <br> ").replace(/\|/g, "\\|");
   const layoutTable = (table, rows) => {
     const role = table.getAttribute("role");
     if (role === "presentation" || role === "none") return true;
@@ -13763,7 +14020,7 @@ ${children(cell, ctx)}
       for (const cell of row.cells) {
         place();
         if (styleOf(cell).display === "none") continue;
-        const text2 = cellText2(cell, ctx);
+        const text2 = cellText3(cell, ctx);
         const span = Math.max(1, Math.min(limits.tableCols, Number(cell.colSpan) || 1));
         const down = Math.max(1, Math.min(limits.tableRows, Number(cell.rowSpan) || 1));
         for (let offset = 0; offset < span; offset += 1) {
@@ -13904,8 +14161,8 @@ ${"#".repeat(Math.min(6, Number(level) || 2))} ${title}${mark}
       return `${ticks}${code}${ticks}${mark}`;
     }
     if (tag === "blockquote") {
-      const quoted = block(body2);
-      return quoted ? keep(quoted.split("\n").map((line) => line ? `> ${line}` : ">").join("\n")) : "";
+      const quoted2 = block(body2);
+      return quoted2 ? keep(quoted2.split("\n").map((line) => line ? `> ${line}` : ">").join("\n")) : "";
     }
     const end = body2.trimEnd().length;
     const marked = mark ? `${body2.slice(0, end)}${mark}${body2.slice(end)}` : body2;

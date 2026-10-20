@@ -808,7 +808,7 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot 
       return h(PendingQuestion, { sessionId, question, actions, inline: true })
     }
     case 'show_view':
-      return h(WidgetCell, { sessionId, callId: call.callId, args: argValue, roster, actions })
+      return h(WidgetCell, { sessionId, callId: call.callId, args: argValue, done, isError: call.isError, roster, actions })
     case 'request_secret':
       return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions })
     case 'ask_user_question': {
