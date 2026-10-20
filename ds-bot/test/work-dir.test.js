@@ -574,6 +574,73 @@ test('a team copied from another DSH_HOME moves on to a fresh part in the folder
   assert.deepEqual(agentOf('s1').calls.map(([kind, message]) => [kind, message.source.role ?? textOf(message)]), [['followup', 'handoff'], ['followup', 'Hello again']])
 })
 
+test('the user moves the team workspace, and Bots without a folder of their own move on to a fresh part there at their next turn', async (t) => {
+  const { root, team, project, agentOf, created, state, preStep, call, stop } = await start()
+  t.after(stop)
+  await call('update-bot', { id: 'a', workDir: project })
+  const moved = join(root, 'moved')
+  assert.deepEqual((await call('team-workspace', { path: moved })).value, { team: moved })
+  assert.equal(state().workspaceId, 'w-new')
+  assert.equal(existsSync(team), true)
+  const input = { id: 'm1', role: 'user', content: [{ type: 'text', text: 'Hello again' }], source: { kind: 'user' } }
+  assert.deepEqual(await preStep('b', [input]), { kind: 'reject' })
+  await until(() => state().bots.b.sessionId !== 'b')
+  assert.equal(agentOf(state().bots.b.sessionId).session.header.cwd, moved)
+  assert.deepEqual(created.at(-1), { workspaceId: 'w-new' })
+  // A Bot with a folder of its own stays where it works.
+  assert.equal(state().bots.a.workDir, project)
+})
+
+test('the team workspace holds no DeepSeek Harness data, apart from the plugin\'s own default', async (t) => {
+  const { root, dsh, home, team, state, call, stop } = await start()
+  t.after(stop)
+  const error = async path => (await call('team-workspace', { path })).error?.message
+  assert.match(await error(join(dsh, 'inside')), /holds DeepSeek Harness data/)
+  assert.match(await error(root), /holds DeepSeek Harness data/)
+  assert.match(await error('relative'), /full path/)
+  assert.equal(existsSync(join(dsh, 'inside')), false)
+  // A folder to be made under a link into the data is refused before anything is made.
+  symlinkSync(dsh, join(root, 'dsh-link'), process.platform === 'win32' ? 'junction' : 'dir')
+  assert.match(await error(join(root, 'dsh-link', 'new')), /holds DeepSeek Harness data/)
+  assert.equal(existsSync(join(dsh, 'new')), false)
+  assert.equal(state().workspaceId, 'w1')
+  await call('team-workspace', { path: join(root, 'moved') })
+  assert.deepEqual((await call('team-workspace', { path: join(home, 'workspace') })).value, { team })
+  assert.equal(state().workspaceId, 'w1')
+  // The default replaced by a link into the data, to all of it or a part, is refused.
+  await call('team-workspace', { path: join(root, 'moved') })
+  rmSync(team, { recursive: true, force: true })
+  symlinkSync(home, team, process.platform === 'win32' ? 'junction' : 'dir')
+  assert.match(await error(team), /holds DeepSeek Harness data/)
+  rmSync(team, { recursive: true, force: true })
+  mkdirSync(join(dsh, 'profiles'))
+  symlinkSync(join(dsh, 'profiles'), team, process.platform === 'win32' ? 'junction' : 'dir')
+  assert.match(await error(team), /holds DeepSeek Harness data/)
+  assert.equal(state().workspaceId, 'w-new')
+})
+
+test('a copied team shows its default team workspace before the workspace is registered', async (t) => {
+  const copied = { ...TEAM }
+  delete copied.workspaceId
+  const { home, state, call, stop } = await start({ team: copied })
+  t.after(stop)
+  assert.equal(state().workspaceId, undefined)
+  assert.equal((await call('folders', {})).value.team, resolve(join(home, 'workspace')))
+})
+
+test('in the desktop app the user\'s own DSH data is no team workspace and no Bot\'s folder either', async (t) => {
+  const { root, state, call, stop } = await start()
+  t.after(stop)
+  const user = join(root, 'user-dsh')
+  mkdirSync(join(user, 'profiles'), { recursive: true })
+  process.env.DS_BOT_USER_DSH_HOME = user
+  t.after(() => { delete process.env.DS_BOT_USER_DSH_HOME })
+  assert.match((await call('team-workspace', { path: join(user, 'new') })).error?.message, /holds DeepSeek Harness data/)
+  assert.equal(existsSync(join(user, 'new')), false)
+  assert.equal((await call('update-bot', { id: 'b', workDir: join(user, 'profiles') })).error?.message, `${join(user, 'profiles')} holds DeepSeek Harness data, so Bots cannot work there`)
+  assert.equal(state().workspaceId, 'w1')
+})
+
 test('a team folder that was deleted is made again before DSH checks it', async (t) => {
   const { sets, service } = folderService()
   const { ctx, agentOf, team, stop } = await start({ services: { workingDirectory: service } })

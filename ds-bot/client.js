@@ -943,7 +943,12 @@ var ZH = {
   "Working folder: {folder}": "工作文件夹：{folder}",
   Folder: "文件夹",
   Folders: "文件夹",
-  "Team workspace": "团队工作区",
+  "Team workspace": "总工作区",
+  "Team workspace: {folder}": "总工作区：{folder}",
+  "Where Bots without a folder of their own work.": "没有单独设置文件夹的 Bot 在这里工作。",
+  Locations: "位置",
+  "Data location": "数据位置",
+  "Change…": "更改…",
   "Each Bot's own folder": "各 Bot 自己的文件夹",
   "Choose a folder…": "选择文件夹…",
   "Browse folders…": "浏览文件夹…",
@@ -1459,6 +1464,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     folders: () => call2("folders"),
     folderPick: () => call2("folder-pick"),
     folderList: (path) => call2("folder-list", { path: path ?? "" }),
+    setTeamWorkspace: (path) => after(call2("team-workspace", { path })),
     deleteBot: (id) => after(call2("delete-bot", { id })),
     duplicateBot: (id) => after(call2("duplicate-bot", { id })),
     setPrefs: (prefs) => after(call2("set-prefs", prefs)),
@@ -2608,6 +2614,8 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-set-copy{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
 .bt-set-hint{font-size:12px;line-height:16px;color:color-mix(in srgb,var(--bt-ink-2) 50%,var(--bt-ink-3))}
 .bt-set-control{flex:none;display:flex;align-items:center;gap:6px}
+.bt-set-places .bt-set-control{flex:0 1 auto;max-width:50%;min-width:0}
+.bt-set-places .bt-set-hint{overflow-wrap:anywhere}
 .bt-set-value{font-size:13px;color:var(--bt-ink-2);text-align:right}
 .bt-set-bot{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
 .bt-set-paste{flex-direction:column;align-items:stretch;gap:8px}
@@ -7231,7 +7239,7 @@ var import_react15 = require("react");
 var import_react_dom7 = require("react-dom");
 var folderName = (path) => String(path).replace(/[\\/]+$/, "").split(/[\\/]/).pop() || String(path);
 var Tick = ({ on }) => (0, import_react15.createElement)("span", { className: "bt-model-tick", "aria-hidden": true }, on ? (0, import_react15.createElement)(CheckIcon) : null);
-function FolderMenu({ value, group = false, actions, run, onPick, wide = false }) {
+function FolderMenu({ value, group = false, team = false, actions, run, onPick, wide = false, disabled = false }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu();
   const [info, setInfo] = (0, import_react15.useState)(null);
   const [view, setView] = (0, import_react15.useState)("list");
@@ -7273,7 +7281,7 @@ function FolderMenu({ value, group = false, actions, run, onPick, wide = false }
   const listView = (0, import_react15.createElement)(
     "div",
     { key: "list", className: "bt-folder-view" },
-    (0, import_react15.createElement)(
+    team ? null : (0, import_react15.createElement)(
       "button",
       { type: "button", role: "menuitemradio", "aria-checked": !value, title: group ? void 0 : info?.team ?? void 0, onClick: () => choose("") },
       (0, import_react15.createElement)("span", { className: "bt-menu-label" }, fallback),
@@ -7345,9 +7353,10 @@ function FolderMenu({ value, group = false, actions, run, onPick, wide = false }
         "data-wide": wide || void 0,
         "aria-haspopup": "menu",
         "aria-expanded": isOpen,
-        "aria-label": t("Working folder: {folder}", { folder: value ?? fallback }),
+        "aria-label": team ? t("Team workspace: {folder}", { folder: value ?? "" }) : t("Working folder: {folder}", { folder: value ?? fallback }),
         title: value,
-        onClick: toggle
+        onClick: toggle,
+        disabled
       },
       (0, import_react15.createElement)(
         "span",
@@ -7359,7 +7368,7 @@ function FolderMenu({ value, group = false, actions, run, onPick, wide = false }
     ),
     shownPlace ? (0, import_react_dom7.createPortal)((0, import_react15.createElement)(
       "div",
-      { ref: menu, className: `bt-menu bt-model-menu bt-folder-menu${shownPlace.bottom !== void 0 ? " bt-menu-up" : ""}`, role: "menu", "aria-label": t("Working folder"), style: shownPlace, "data-leaving": leaving || void 0 },
+      { ref: menu, className: `bt-menu bt-model-menu bt-folder-menu${shownPlace.bottom !== void 0 ? " bt-menu-up" : ""}`, role: "menu", "aria-label": team ? t("Team workspace") : t("Working folder"), style: shownPlace, "data-leaving": leaving || void 0 },
       shownView,
       problem ? (0, import_react15.createElement)("div", { className: "bt-folder-error", role: "alert" }, problem) : null
     ), document.body) : null
@@ -7376,6 +7385,7 @@ var FOLDER_CSS = `
 .bt-folder-input:focus{border-color:var(--bt-accent)}
 .bt-menu .bt-folder-use{justify-content:center;font-weight:500;color:var(--bt-accent)}
 .bt-menu .bt-folder-use:disabled{color:var(--bt-ink-3);cursor:default;background:none}
+.bt-model-trigger:disabled{opacity:.6;cursor:default}
 .bt-folder-error{padding:4px 8px;font-size:12px;line-height:16px;color:var(--bt-danger);overflow-wrap:anywhere}
 @media (prefers-reduced-motion:reduce){.bt-folder-view{animation:none}}
 `;
@@ -11483,8 +11493,8 @@ var import_react31 = require("react");
 var capitalize2 = (word) => word[0].toUpperCase() + word.slice(1);
 var SETTINGS_PAGES = [["general", "General"], ["models", "Models"], ["bots", "Bots"], ["groups", "Group chats"], ["connectors", "Connectors"], ["capabilities", "Capabilities"], ["schedules", "Scheduled tasks"], ["usage", "Usage"], ["secrets", "Secrets"], ["feedback", "Feedback"], ["about", "About DS Bot"]];
 var PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, connectors: ConnectorIcon, capabilities: PlugIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon };
-function SetSection({ title, children }) {
-  return (0, import_react31.createElement)("section", { className: "bt-set-section" }, (0, import_react31.createElement)("h3", null, title), (0, import_react31.createElement)("div", { className: "bt-set-card" }, children));
+function SetSection({ title, className = "", children }) {
+  return (0, import_react31.createElement)("section", { className: `bt-set-section ${className}`.trim() }, (0, import_react31.createElement)("h3", null, title), (0, import_react31.createElement)("div", { className: "bt-set-card" }, children));
 }
 function SetRow({ label, hint, children }) {
   return (0, import_react31.createElement)(
@@ -11552,8 +11562,50 @@ function GeneralPage({ roster, actions, run }) {
         { label: t("Classic Agent mode") },
         (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.setSurface("agent") }, t("Switch"))
       )
-    ) : null
+    ) : null,
+    (0, import_react31.createElement)(LocationsSection, { key: "places", actions, run })
   ];
+}
+function LocationsSection({ actions, run }) {
+  const app = globalThis.dsBotApp;
+  const [team, setTeam] = (0, import_react31.useState)(null);
+  const [data, setData] = (0, import_react31.useState)(null);
+  const [moving, setMoving] = (0, import_react31.useState)(false);
+  const busy = (0, import_react31.useRef)(false);
+  (0, import_react31.useEffect)(() => {
+    void Promise.resolve(actions.folders()).then((info) => setTeam(info?.team ?? null)).catch(() => {
+    });
+    if (app !== void 0) void Promise.resolve(app.dataLocation()).then(setData).catch(() => {
+    });
+  }, []);
+  const pickTeam = (path) => {
+    if (busy.current) return void 0;
+    busy.current = true;
+    setMoving(true);
+    return run(Promise.resolve(actions.setTeamWorkspace(path)).then((answer) => {
+      setTeam(answer.team);
+      app?.teamWorkspaceChanged(answer.team);
+    }).finally(() => {
+      busy.current = false;
+      setMoving(false);
+    }));
+  };
+  return (0, import_react31.createElement)(
+    SetSection,
+    { title: t("Locations"), className: "bt-set-places" },
+    (0, import_react31.createElement)(
+      SetRow,
+      { label: t("Team workspace"), hint: t("Where Bots without a folder of their own work.") },
+      team === null ? null : (0, import_react31.createElement)(FolderMenu, { value: team, team: true, actions, run, onPick: pickTeam, disabled: moving })
+    ),
+    data === null ? null : (0, import_react31.createElement)(
+      SetRow,
+      { label: t("Data location"), hint: data.path },
+      data.fixed ? null : (0, import_react31.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: moving, onClick: () => {
+        if (!busy.current) void run(app.moveData(team ?? void 0));
+      } }, t("Change…"))
+    )
+  );
 }
 function MainBotsSection({ roster, actions, run }) {
   const mains = (roster.mainBotIds ?? []).map((id) => roster.byId[id]).filter(Boolean);
