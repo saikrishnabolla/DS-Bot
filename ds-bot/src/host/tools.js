@@ -309,9 +309,12 @@ export function install(rt) {
         let avatar
         if (args.avatar !== undefined) {
           const input = typeof args.avatar === 'string' ? args.avatar.trim() : args.avatar
+          // The photo rides on the Bot's other avatar fields, as the settings page's
+          // upload does: setting one keeps a custom character, and clearing removes
+          // only the image so the character shows again.
           avatar = input === null || input === ''
-            ? null
-            : { image: await readAvatar(String(input), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent) }) }
+            ? { ...bot.avatar, image: null }
+            : { ...bot.avatar, image: await readAvatar(String(input), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent) }) }
         }
         const moving = typeof args.work_dir === 'string'
         const workDir = moving ? await rt.cleanWorkDir(args.work_dir) : undefined
