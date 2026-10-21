@@ -53,7 +53,9 @@ export function elapsedLabel(ms) {
 }
 
 export const contentText = content => (content ?? []).filter(block => block?.type === 'text').map(block => block.text).join('\n')
-export const HEADER = /^\[(Message from|Reply from|Group chat|Group post from|Bot team setup|Handoff · part|Secret card)[^\]]*\]\n?/
+// A name can contain brackets. Generated headers end at the newline; without a
+// newline, a legacy inline header still stops at its first closing bracket.
+export const HEADER = /^\[(Message from|Reply from|Group chat|Group post from|Bot team setup|Handoff · part|Secret card)(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/
 export const currentPart = bot => bot.sessionId ?? bot.id
 // The prompts in a due scheduled task's message. DSH frames it for the model: one
 // task as `reminder_prompt_json: "…"`, several as `reminders_json: [{reminder_prompt}]`.
@@ -108,10 +110,6 @@ export function isHiddenTurn(roster, sessionId, turn) {
 }
 
 export const toolName = root => root.name || root.call?.name
-
-// While a Session's history loads, a card asked in it may yet be drawn at its call,
-// so the docks hold it back until then.
-export const historyLoading = snapshot => snapshot?.openState === 'cold' || snapshot?.openState === 'loading'
 
 export function toolArgs(root) {
   if (typeof root.args?.text === 'function') {

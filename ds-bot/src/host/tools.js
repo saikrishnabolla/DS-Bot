@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readAvatar } from './avatar.js'
 import { COLORS, EXTRA_COLORS, MESSAGE_INLINE_MAX, ROOM_MODES, SOURCE_KIND } from './constants.js'
+import { within } from './folders.js'
 import { absoluteLinks } from './links.js'
 import { unquote } from './text.js'
 import { mentionSpans } from '../shared/mentions.js'
@@ -25,6 +26,7 @@ const AVATAR_PARAM = {
   type: 'string',
   description: 'Profile picture: a local image path (a relative path starts in your working folder), an http(s) link, or a data URL. PNG, JPEG, WebP, or GIF; square, 256x256 recommended, up to 120 KB. Images are not resized.',
 }
+const WORKING_DIRECTORY_TOOL = 'working_directory'
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -324,6 +326,34 @@ export function install(rt) {
     },
   }))
 
+  // DSH's working_directory changes a Session's folder in place, and the next part starts in
+  // the Bot's working folder again. A Bot that changes to a folder outside its working folder
+  // sets its working folder instead, with update_bot's checks, and goes on in a fresh part
+  // there; a folder inside it only moves this Session there.
+  ctx.on('tools/execute', async (exec, next) => {
+    // Resolved as DSH gets it, untrimmed, so that both mean the same folder.
+    const cd = exec.name === WORKING_DIRECTORY_TOOL && typeof exec.arguments?.cd === 'string' ? exec.arguments.cd : ''
+    const session = exec.agent?.session
+    if (cd === '' || session === undefined) return next()
+    await rt.load()
+    const bot = callerBot(exec)
+    if (bot === undefined) return next()
+    const room = rt.roomOf(rt.groupOwners.get(exec.agent.id)?.roomId)
+    const home = rt.workDirOf({ botId: bot.id, roomId: room?.id }) ?? rt.teamFolder()
+    const target = await rt.folderAt(rt.sessionFolder(session), cd)
+    if (target === undefined || !(await rt.isFolder(target)) || home === undefined || within(target, await rt.real(home))) return next()
+    if (room?.workDir) throw new Error(`Every member of "${room.name}" works in ${room.workDir} here, so you stay inside it. The user or a Main Bot can change the group's folder.`)
+    const readOnly = rt.readOnly()
+    if (readOnly !== undefined) throw new Error(`Your working folder cannot change now: ${readOnly}`)
+    // Saved folders are trimmed like typed ones, so such a name would save another folder.
+    if (unquote(target) !== target) throw new Error(`${JSON.stringify(target)} cannot be a working folder: its name starts or ends with a space or a quote mark.`)
+    const workDir = await rt.workFolder(target)
+    await rt.approveFolder(exec, { path: workDir, sessions: rt.sessionsOfBot(bot.id), who: { en: bot.name, zh: ` ${bot.name} ` } })
+    const result = await next()
+    if (result?.isError !== true) await rt.updateBot(bot.id, { workDir: workDir ?? '' })
+    return result
+  })
+
   ctx.tools.register(defineTool({
     name: 'list_models',
     description: 'List the models a Bot can run on, as provider/model refs for create_bot and update_bot. A model in use also lists the thinking levels it serves.',
@@ -554,7 +584,7 @@ export function install(rt) {
       await rt.load()
       const id = exec.agent?.id
       if (rt.groupOwners.has(id)) return 'Question cards only work in your own chat. In a group, ask in your message instead.'
-      if (!rt.chatOwners.has(id)) return 'Only Bots on the team can use ask_user.'
+      if (!rt.chatOwners.has(id)) return `Only Bots on the team can use ask_user. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
       const options = (Array.isArray(args.options) ? args.options : [])
         .map(option => (typeof option === 'string' ? { label: option } : option ?? {}))
         .map(option => ({
