@@ -7,7 +7,7 @@ import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, Memo
 import { colorOf, toolState, BotMark, RoomAvatar } from './mark.js'
 import { AnsweredCell, SettledQuestion, PendingQuestion } from './questions.js'
 import { SecretToolCell } from './secret-card.js'
-import { dateLocale, t } from './i18n.js'
+import { t } from './i18n.js'
 import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
 import { turnReasoning, thinkingStep } from './turn-reasoning.js'
@@ -730,7 +730,8 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
       const bot = roster.byId[reply.botId] ?? { id: reply.botId, name: reply.name, color: reply.color ?? 'gray' }
       if (reply.kind === 'user') {
         return h('div', { key: `user-${index}`, className: 'bt-urow' }, h('div', { className: 'bt-ububble' },
-          h(MarkdownText, { text: reply.text, labels: mdLabels(), variant: 'compact' })))
+          h(MarkdownText, { text: reply.text, labels: mdLabels(), variant: 'compact' }),
+          Number.isFinite(time) ? h('div', { className: 'bt-utime', title: clockLabel(time) }, messageClock(time)) : null))
       }
       if (reply.kind === 'failed') {
         return h('div', { key: `${reply.botId}-${index}`, className: 'bt-event bt-event-error', role: 'status', title: [reply.code, reply.status, reply.text].filter(Boolean).join(' · ') },
