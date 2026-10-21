@@ -860,7 +860,7 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot,
       return h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true })
     }
     case 'show_view':
-      return h(WidgetCell, { sessionId, callId: call.callId, args: argValue, done, isError: call.isError, roster, actions, heldCards })
+      return h(WidgetCell, { sessionId, callId: call.callId, args: { text: arg, value: argValue }, done, isError: call.isError, roster, actions, heldCards })
     case 'request_secret':
       return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions, heldCards })
     case 'ask_user_question': {
