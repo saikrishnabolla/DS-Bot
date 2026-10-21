@@ -264,7 +264,7 @@ export function install(rt) {
       await rt.load()
       if (!rt.isMain(rt.selfOf(exec.agent?.id))) return 'Only the Main Bot can create Bots. Ask the Main Bot instead.'
       try {
-        const avatar = args.avatar ? await readAvatar(String(args.avatar), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent) }) : undefined
+        const avatar = args.avatar ? await readAvatar(String(args.avatar), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent), isData: rt.inData }) : undefined
         const workDir = args.work_dir ? await rt.cleanWorkDir(args.work_dir) : undefined
         const name = String(args.name ?? '').trim()
         await rt.approveFolder(exec, { path: workDir, who: { en: `the new Bot ${name}`, zh: `新 Bot ${name} ` } })
@@ -309,7 +309,7 @@ export function install(rt) {
         let image
         if (args.avatar !== undefined) {
           const input = typeof args.avatar === 'string' ? args.avatar.trim() : args.avatar
-          image = input === null || input === '' ? null : await readAvatar(String(input), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent) })
+          image = input === null || input === '' ? null : await readAvatar(String(input), { baseDir: rt.sessionFolder?.(exec.agent?.session ?? exec.agent), isData: rt.inData })
         }
         const moving = typeof args.work_dir === 'string'
         const workDir = moving ? await rt.cleanWorkDir(args.work_dir) : undefined
