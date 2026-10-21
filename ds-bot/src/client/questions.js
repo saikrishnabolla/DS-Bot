@@ -1,8 +1,8 @@
-import { createElement as h, useEffect, useId, useRef, useState } from 'react'
+import { createElement as h, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { CloseIcon, CheckIcon } from './icons.js'
 import { t } from './i18n.js'
 import { useDockHold } from './card-hold.js'
-import { heldCardKey } from './sources.js'
+import { createSource, heldCardKey } from './sources.js'
 
 // -------------------------------------------------------------------------
 // Question cards. `ask_user` cards sit in the transcript and never block the Bot;
@@ -16,15 +16,22 @@ const isTypingTarget = node => node instanceof HTMLInputElement || node instance
 
 // A bare letter picks that option and the letter after the last one
 // jumps to the custom answer; never while typing or while a dialog is open.
+// The listener is document-wide, so two open cards with letter keys would both
+// answer the same key: each card registers here and the keys fire only while it
+// is the sole registered card. The count also drives the key hints.
+const optionKeyCards = createSource(0)
 export function useOptionKeys(count, onPick, ownRef) {
   const pick = useRef(onPick)
   pick.current = onPick
+  const listening = useSyncExternalStore(optionKeyCards.subscribe, optionKeyCards.getSnapshot)
   useEffect(() => {
     if (count === 0) return undefined
+    optionKeyCards.set(value => value + 1)
     const onKey = (event) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.key.length !== 1) return
       if (isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return
       if (document.querySelector('[role="dialog"], [aria-modal="true"]') !== null) return
+      if (optionKeyCards.getSnapshot() !== 1) return
       const index = event.key.toUpperCase().charCodeAt(0) - 65
       if (index >= 0 && index < count) {
         event.preventDefault()
@@ -35,8 +42,14 @@ export function useOptionKeys(count, onPick, ownRef) {
       }
     }
     document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      optionKeyCards.set(value => value - 1)
+    }
   }, [count, ownRef])
+  // Before the effect runs the card is not counted yet; read that as alone so a
+  // lone card's hints never flicker on mount.
+  return count > 0 && listening <= 1
 }
 
 // A question shows two ways: as a bubble in the transcript, and raised when it
