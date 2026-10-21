@@ -3816,6 +3816,20 @@ function validateView(view) {
   const error = checkNode(view, "view", 1, ctx);
   return error === void 0 ? { ok: true, interactive: ctx.interactive } : { ok: false, error };
 }
+function checkShownView(title, view) {
+  let bytes;
+  try {
+    bytes = viewBytes(title, view);
+  } catch {
+    return { error: "The view is not JSON data." };
+  }
+  if (bytes > VIEW_BYTE_LIMIT) return { error: `The view is ${bytes} bytes; the limit is ${VIEW_BYTE_LIMIT}.` };
+  const named = String(title ?? "").trim();
+  if (named === "") return { error: "Give the view a title." };
+  const checked = validateView(view);
+  if (!checked.ok) return { error: checked.error };
+  return { title: named, interactive: checked.interactive };
+}
 function checkNode(node, path, depth, ctx) {
   if (!isRecord(node)) return `${path}: expected a component object`;
   if (depth > MAX_DEPTH) return `${path}: ${depth} levels exceeds the limit of ${MAX_DEPTH}`;
@@ -3927,6 +3941,7 @@ function checkForm(node, path, ctx) {
       if (key !== "id" && key !== "label" && key !== "placeholder") return `${at}.${key}: unknown property ${quoted(key)}; allowed: id, label, placeholder`;
     }
     if (typeof field.id !== "string" || field.id === "") return `${at}.id: expected a non-empty string`;
+    if (field.id === "__proto__") return `${at}.id: "__proto__" cannot be an id`;
     if (seen.has(field.id)) return `${at}.id: duplicate field id ${quoted(field.id)}`;
     seen.add(field.id);
     if (typeof field.label !== "string") return `${at}.label: expected a string`;
@@ -3941,6 +3956,7 @@ function checkProgress(node, path) {
 }
 function checkId(node, path, ctx) {
   if (typeof node.id !== "string" || node.id === "") return `${path}.id: expected a non-empty string`;
+  if (node.id === "__proto__") return `${path}.id: "__proto__" cannot be an id`;
   if (ctx.ids.has(node.id)) return `${path}.id: duplicate id ${quoted(node.id)}`;
   ctx.ids.add(node.id);
   return void 0;
@@ -4026,12 +4042,6 @@ var mdLabels = () => ({ code: { copyLabel: t("Copy"), copiedLabel: t("Copied") }
 var optionsOf2 = (node) => (Array.isArray(node?.options) ? node.options : []).map((option) => typeof option === "string" ? { label: option } : option).filter((option) => option !== null && typeof option === "object" && option.label !== void 0);
 var fieldsOf = (node) => (Array.isArray(node?.fields) ? node.fields : []).filter((field) => field !== null && typeof field === "object" && field.id !== void 0);
 var cellText2 = (value) => value === null || value === void 0 ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
-var INTERACTIVE2 = /* @__PURE__ */ new Set(["options", "confirm", "form"]);
-var hasInteractive = (node) => {
-  if (node === null || typeof node !== "object") return false;
-  if (INTERACTIVE2.has(node.type)) return true;
-  return (Array.isArray(node.children) ? node.children : []).some(hasInteractive);
-};
 var countType = (node, type) => {
   if (node === null || typeof node !== "object") return 0;
   const children = Array.isArray(node.children) ? node.children : [];
@@ -4303,10 +4313,11 @@ function WidgetCell({ sessionId, callId, args, done, isError, roster, actions, h
   }
   if (done && isError) return (0, import_react6.createElement)("span", { className: "bt-q-gone", hidden: true });
   const blueprint = normalizeView(args?.("view"));
-  if (args?.("await_reply") === true || hasInteractive(blueprint) || blueprint === null || typeof blueprint !== "object") {
+  const shown = checkShownView(args?.("title"), blueprint);
+  if (shown.error !== void 0 || shown.interactive || args?.("await_reply") === true) {
     return (0, import_react6.createElement)("span", { className: "bt-q-gone", hidden: true });
   }
-  return (0, import_react6.createElement)("div", { className: "bt-q-inline" }, (0, import_react6.createElement)(WidgetCard, { title: args?.("title") ?? "", view: blueprint }));
+  return (0, import_react6.createElement)("div", { className: "bt-q-inline" }, (0, import_react6.createElement)(WidgetCard, { title: shown.title, view: blueprint }));
 }
 function WidgetDock({ sessionId, useRoster, useCards, useHeldCards, actions }) {
   const view = useRoster((value) => value.views?.[sessionId]);
