@@ -22,7 +22,7 @@ runInNewContext(bundle.outputFiles[0].text, {
     return platform[name]
   },
 })
-const { busyMembers, summaryText, MemberDock, MemberState, elapsedLabel } = module.exports
+const { busyMembers, summaryText, MemberDock, MemberState, StopMemberWork } = module.exports
 // Values from the bundle's realm compare by content only.
 const plain = value => JSON.parse(JSON.stringify(value))
 // The dock's capsule in an element tree.
@@ -57,6 +57,42 @@ const team = {
   byId: Object.fromEntries(Object.entries(names).map(([id, name]) => [id, { id, name }])),
   roomsById: { r1: { id: 'r1', name: 'Ops', members: ['a', 'b', 'c', 'd'] }, r2: { id: 'r2', name: 'Docs', members: ['a', 'b'] } },
 }
+
+// #156: a member waiting for an approval keeps its work here, so Stop stays.
+test('a member waiting for approval in this group can still be stopped', async () => {
+  const stopped = []
+  const room = team.roomsById.r1
+  const entry = busyMembers(room, { rooms: { r1: [{ botId: 'a', since: 1 }] }, approvals: [{ botId: 'a', roomId: 'r1', at: 1 }] }, team)[0]
+  assert.equal(entry.state, 'ask')
+  const node = StopMemberWork({ entry, bot: team.byId.a, room, actions: { stopMemberWork: (...args) => stopped.push(args) } })
+  assert.ok(node, 'waiting for approval must not hide Stop')
+  node.props.onClick()
+  await Promise.resolve()
+  assert.deepEqual(stopped, [['r1', 'a']])
+})
+
+test('an approval for work elsewhere never offers to stop work in this group', () => {
+  const room = team.roomsById.r1
+  const entry = busyMembers(room, { rooms: { r2: [{ botId: 'a', since: 1 }] }, approvals: [{ botId: 'a', roomId: 'r2', at: 1 }] }, team)[0]
+  assert.equal(StopMemberWork({ entry, bot: team.byId.a, room, actions: {} }), null)
+  // Work here stays stoppable while it runs.
+  const working = busyMembers(room, { rooms: { r1: [{ botId: 'a', since: 1 }] }, approvals: [] }, team)[0]
+  assert.ok(StopMemberWork({ entry: working, bot: team.byId.a, room, actions: {} }))
+})
+
+test('a failed stop is reported and never answers the approval', async () => {
+  const reported = []
+  const room = team.roomsById.r1
+  const entry = busyMembers(room, { rooms: { r1: [{ botId: 'a', since: 1 }] }, approvals: [{ botId: 'a', roomId: 'r1', at: 1 }] }, team)[0]
+  const node = StopMemberWork({ entry, bot: team.byId.a, room, actions: {
+    stopMemberWork: () => Promise.reject(new Error('connection lost')),
+    reportError: (error, action) => reported.push([error.message, action]),
+  } })
+  assert.ok(node)
+  node.props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(reported, [['connection lost', 'stop']])
+})
 // The capsule's label and what a click on it asks for.
 const dock = (sessionId, work) => {
   const calls = []
@@ -93,18 +129,13 @@ test('the capsule says what a member does in its call\'s own words, and that it 
   assert.equal(label({ tool: 'pwsh', said: '解压 Ghidra，顺便写脚本。', note: 'Expand-Archive' }), 'Anvil · 解压 Ghidra，顺便写脚本…')
 })
 
-test('elapsedLabel counts seconds first, then minutes and seconds, then hours', () => {
-  assert.equal(elapsedLabel(0), '0s')
-  assert.equal(elapsedLabel(1_000), '1s')
-  assert.equal(elapsedLabel(59_999), '59s')
-  assert.equal(elapsedLabel(60_000), '1m')
-  assert.equal(elapsedLabel(61_000), '1m 1s')
-  assert.equal(elapsedLabel(125_000), '2m 5s')
-  assert.equal(elapsedLabel(3_599_000), '59m 59s')
-  assert.equal(elapsedLabel(3_600_000), '1h')
-  assert.equal(elapsedLabel(3_900_000), '1h 5m')
-  const stateText = (entry, now) => MemberState({ entry, bot: { id: 'a', name: 'Anvil' }, room: { id: 'r1' }, roster: team, now }).children.map(child => (typeof child === 'string' ? child : child.children.join(''))).join('')
-  assert.equal(stateText({ state: 'work', doing: { roomId: 'r1', tool: 'pwsh', since: 1_000 } }, 1_500), 'Running shell commands…')
-  assert.equal(stateText({ state: 'work', doing: { roomId: 'r1', tool: 'pwsh', since: 1_000 } }, 9_000), 'Running shell commands… · 8s')
-  assert.equal(stateText({ state: 'ask', approvals: [{ at: 1_000 }] }, 75_000), 'Waiting for your approval · 1m 14s')
+test('a member\'s line runs a clock from its turn\'s start or its approval\'s', () => {
+  // The clock renders as `{since}` here; it ticks on its own.
+  const flat = node => (node === null || node === '' ? '' : typeof node === 'string' ? node
+    : node.props.at !== undefined ? `{${node.props.at}}` : node.children.map(flat).join(''))
+  const stateText = entry => flat(MemberState({ entry, bot: { id: 'a', name: 'Anvil' }, room: { id: 'r1' }, roster: team }))
+  assert.equal(stateText({ state: 'work', doing: { roomId: 'r1', tool: 'pwsh', since: 1_000 } }), 'Running shell commands…{1000}')
+  assert.equal(stateText({ state: 'work', doing: { roomId: 'r2', tool: 'pwsh', since: 1_000 } }), 'Running shell commands… in Docs{1000}')
+  assert.equal(stateText({ state: 'ask', approvals: [{ at: 2_000 }] }), 'Waiting for your approval{2000}')
+  assert.equal(flat(MemberState({ entry: { state: 'idle' }, bot: { id: 'a', name: 'Anvil', role: 'Writer' }, room: { id: 'r1' }, roster: team })), 'Writer')
 })

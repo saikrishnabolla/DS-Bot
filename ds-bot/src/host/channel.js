@@ -5,6 +5,7 @@ import { questionReply } from './parts.js'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
 
 const LANGUAGES = { zh: 'Chinese (简体中文)', en: 'English' }
+const RUN_STATS = ['sessionStats', 'tokenUsage', 'contextPressure']
 
 const invalid = message => Object.assign(new Error(message), { code: 'bot/invalid' })
 // Programming and file system errors are DS Bot's own faults, logged with their stack;
@@ -27,7 +28,7 @@ export function install(rt) {
   const fail = (message, code = 'bot/error') => ({ ok: false, error: { code, message, details: {} } })
   // Models come from DSH, not state.json, so a provider added in Harness settings
   // changes the view without a new revision.
-  const modelsKey = () => `${rt.cachedCatalog().map(entry => entry.reasoning ? `${entry.ref}:${JSON.stringify(entry.reasoning)}` : entry.ref).join(',')}|${rt.cachedDefault() ?? ''}`
+  const modelsKey = () => `${rt.cachedCatalog().map(entry => `${entry.ref}${entry.needsKey ? '!' : ''}${entry.reasoning ? `:${JSON.stringify(entry.reasoning)}` : ''}`).join(',')}|${rt.cachedDefault() ?? ''}`
   const view = () => ({
     revision: state.revision,
     workspaceId: state.workspaceId ?? null,
@@ -69,10 +70,11 @@ export function install(rt) {
   // What changes without a new revision, sent with every state answer. `memoryNews`:
   // per Bot or group chat, its latest memory change; `memoryReviews`: memory reviews waiting or
   // running; `work`: per Bot, the turn it runs and its tool; per group, the members whose
-  // turn there runs; the approvals waiting; and per Bot, who it waits for to hand back work.
+  // turn there runs; the approvals waiting; per Bot, who it waits for to hand back work;
+  // and per Session, when its running turn began.
   const live = () => ({
     activity: rt.activityView(),
-    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {} },
+    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
     connectors: rt.connectorsView(),
@@ -80,7 +82,7 @@ export function install(rt) {
   })
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'earlier', 'chat', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer'])
+  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking'])
 
   function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -119,6 +121,29 @@ export function install(rt) {
           return ok({ modelsKey: modelsKey() })
         case 'efforts':
           return ok(await rt.reasoningOf(String(body.ref ?? '')) ?? { efforts: [] })
+        // A Turn's exact thinking time, from the timed stream in its events; `ms`
+        // omitted when the stream carries no reasoning records.
+        case 'thinking': {
+          const sessionId = String(body.sessionId ?? '')
+          const turn = Number(body.turn)
+          if (!Number.isFinite(turn) || rt.selfOf(sessionId) === undefined) return ok(null)
+          await rt.load()
+          const ms = await rt.thinkingOf(sessionId, turn)
+          return ok(ms === undefined ? {} : { ms })
+        }
+        // Model providers and their keys, for a window without DSH's own Models page.
+        case 'providers':
+          return ok(await rt.providersView())
+        case 'provider-key':
+          if (body.value === null) await rt.clearProviderKey(String(body.provider ?? ''))
+          else await rt.setProviderKey(String(body.provider ?? ''), body.value)
+          return ok(await rt.providersView())
+        case 'provider-add':
+          return ok(await rt.addProvider(body))
+        case 'provider-models':
+          return ok(await rt.discoverModels(body))
+        case 'provider-remove':
+          return ok(await rt.removeProvider(String(body.provider ?? '')))
         case 'duplicate-bot':
           await rt.load()
           return ok(await rt.duplicateBot(body.id))
@@ -149,6 +174,17 @@ export function install(rt) {
         case 'chat':
           await rt.load()
           return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined))
+        // DSH's own whole-log figures for the current part of a Bot's chat, the ones its
+        // status bar shows; a window without that bar shows them in the Bot's details.
+        case 'run-stats': {
+          await rt.load()
+          const bot = rt.botOf(String(body.botId ?? ''))
+          if (bot === undefined) return fail('Unknown Bot', 'bot/not-found')
+          const projections = ctx.get?.('sessionProjections')
+          if (projections === undefined) return ok(null)
+          const agent = await rt.resolveAgent(rt.chatOf(bot.id))
+          return ok(projections.snapshot(agent.session, RUN_STATS).values)
+        }
         case 'usage':
           await rt.load()
           return ok(await rt.usageView({ timeZone: typeof body.timeZone === 'string' ? body.timeZone.slice(0, 64) : undefined }))
@@ -199,6 +235,9 @@ export function install(rt) {
         case 'folder-list':
           await rt.load()
           return ok(await rt.folderEndpoint(endpoint, body, signal))
+        case 'team-workspace':
+          await rt.load()
+          return ok({ team: await rt.setTeamWorkspace(String(body.path ?? '')) })
         case 'add-agent':
           await rt.load()
           return ok(await rt.addAgent())
@@ -234,7 +273,7 @@ export function install(rt) {
           return ok(await rt.stopMemberWork(String(body.roomId ?? ''), String(body.botId ?? '')))
         case 'dismiss-question':
           await rt.load()
-          if (state.questions[body.sessionId] !== undefined) {
+          if (rt.own(state.questions, body.sessionId) !== undefined) {
             delete state.questions[body.sessionId]
             await rt.save()
           }
@@ -272,7 +311,7 @@ export function install(rt) {
           await rt.load()
           const past = rt.pastOwners.get(body.sessionId)
           const sessionId = rt.botOf(body.sessionId) ? rt.chatOf(body.sessionId) : past && past.roomId === undefined ? rt.chatOf(past.botId) : body.sessionId
-          const question = state.questions[sessionId]
+          const question = rt.own(state.questions, sessionId)
           if (question === undefined || question.id !== body.questionId) return fail('This question is no longer open', 'bot/stale')
           const reply = questionReply(question, body.answer)
           if (reply === undefined) return fail('Nothing to send', 'bot/invalid')

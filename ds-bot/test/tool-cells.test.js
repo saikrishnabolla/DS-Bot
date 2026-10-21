@@ -95,9 +95,10 @@ test('a member\'s messages in a row stack under its name, and an event line star
   assert.deepEqual(JSON.parse(JSON.stringify(stackReplies(replies).map(item => [item.index, item.texts]))), [[0, ['a', 'b']], [2, []], [3, ['c']], [4, ['d']], [5, ['e']]])
 })
 
-const props = (root, { sessionId = chief.id, roster = team(), actions = {}, turn = 1 } = {}) => ({
+const props = (root, { sessionId = chief.id, roster = team(), actions = {}, turn = 1, held = {} } = {}) => ({
   node: { key: 'node', data: { root }, location: { turn: { turn } } }, sessionId,
   useRoster: select => select(roster), useUi: select => select({ reactions: {}, visits: {} }), actions,
+  useHeldCards: select => select(held),
 })
 const show = (root, options) => {
   const out = expand(ToolCell(props(root, options)))
@@ -260,10 +261,11 @@ test('a cell tells the docks which card calls it draws, until it unmounts', () =
   assert.deepEqual(JSON.parse(JSON.stringify(store.state)), { chief: {} })
 })
 
-const dockProps = (store, roster, { sessionId = chief.id, openState = 'open', actions = {} } = {}) => ({
+const dockProps = (store, roster, { sessionId = chief.id, openState = 'open', actions = {}, held = {} } = {}) => ({
   sessionId, actions,
   useRoster: select => select(roster),
   useCards: select => select(store.state),
+  useHeldCards: select => select(held),
   useSession: select => select({ openState }),
 })
 const docks = (store, roster, options) => {
@@ -286,14 +288,85 @@ test('a card whose call is not drawn waits in the dock; a drawn one shows only a
   assert.match(docks(store, roster), /Which draft\?.*Chief needs a key/)
 })
 
-test('the docks hold a card back while the history loads, and keep cards without a call', () => {
+test('the docks keep pending cards through history loading until their calls actually mount', () => {
   const store = cardStore()
   const roster = team({ questions: { chief: question('program:ptc:1') }, secretRequests: { chief: [request('program:ptc:2')] } })
+  for (const openState of ['cold', 'loading', 'open', 'error']) {
+    const waiting = docks(store, roster, { openState })
+    assert.equal(count(waiting, 'Which draft?'), 1, openState)
+    assert.equal(count(waiting, 'needs a key'), 1, openState)
+  }
+  const root = program([call('ask_user', 'program:ptc:1'), call('request_secret', 'program:ptc:2', { args: { name: 'DEMO_TOKEN' } })])
+  const { out, unmount } = draw(root, store, { roster })
   assert.equal(docks(store, roster, { openState: 'loading' }), '')
-  assert.equal(docks(store, roster, { openState: 'cold' }), '')
-  assert.match(docks(store, roster, { openState: 'error' }), /Which draft\?.*Chief needs a key/)
+  assert.equal(count(text(out), 'Which draft?'), 1)
+  assert.equal(count(text(out), 'needs a key'), 1)
+  unmount()
+  assert.match(docks(store, roster, { openState: 'loading' }), /Which draft\?.*Chief needs a key/)
   const free = team({ questions: { chief: question(undefined) }, secretRequests: { chief: [request(undefined)] } })
   assert.match(docks(store, free, { openState: 'loading' }), /Which draft\?.*Chief needs a key/)
+})
+
+test('an edited dock card stays there when its history call mounts, with no inline copy', () => {
+  const store = cardStore()
+  const roster = team({ questions: { chief: question('q-call') }, secretRequests: { chief: [request('s-call')] } })
+  const root = program([call('ask_user', 'q-call'), call('request_secret', 's-call')])
+  const held = { chief: { '["question","question"]': 1, '["secret","request"]': 1 } }
+  const { unmount } = draw(root, store, { roster })
+  assert.equal(shown(root, { roster, held }), '')
+  assert.match(docks(store, roster, { held, openState: 'loading' }), /Which draft\?.*Chief needs a key/)
+  unmount()
+  assert.match(docks(store, roster, { held, openState: 'loading' }), /Which draft\?.*Chief needs a key/)
+})
+
+test('dock ownership is isolated by session, request id and card kind, not the call id', () => {
+  const store = cardStore()
+  const roster = team({ questions: { chief: question('same-call', { id: 'same-id' }) }, secretRequests: { chief: [request('same-call', { id: 'same-id' })] } })
+  const root = program([call('ask_user', 'same-call'), call('request_secret', 'secret-call')])
+  // Duplicate call ids are coalesced by callTree, so check each kind separately.
+  const questionCall = call('ask_user', 'same-call')
+  const secretCall = call('request_secret', 'same-call')
+  const { unmount } = draw(root, store, { roster })
+  for (const held of [
+    { writer: { '["question","same-id"]': 1, '["secret","same-id"]': 1 } },
+    { chief: { '["question","old-id"]': 1, '["secret","old-id"]': 1 } },
+  ]) {
+    assert.match(shown(questionCall, { roster, held }), /Which draft\?/)
+    assert.match(shown(secretCall, { roster, held }), /needs a key/)
+    assert.equal(docks(store, roster, { held }), '')
+  }
+  const held = { chief: { '["question","same-id"]': 1 } }
+  assert.equal(shown(questionCall, { roster, held }), '')
+  assert.match(shown(secretCall, { roster, held }), /needs a key/)
+  assert.match(docks(store, roster, { held }), /Which draft\?/)
+  assert.doesNotMatch(docks(store, roster, { held }), /needs a key/)
+  unmount()
+})
+
+test('completed requests leave the dock and can show settled history even during ownership cleanup', () => {
+  const store = cardStore()
+  const held = { chief: { '["question","question"]': 1, '["secret","request"]': 1 } }
+  const roster = team({ secretRequests: { chief: [request('s-call', { status: 'canceled' })] } })
+  const root = program([call('ask_user', 'q-call'), call('request_secret', 's-call')])
+  assert.equal(docks(store, roster, { held }), '')
+  assert.match(shown(root, { roster, held }), /Chief asked for DEMO_TOKEN.*Canceled/)
+})
+
+test('a question can be answered and a secret request canceled before history arrives', async () => {
+  const store = cardStore()
+  const roster = team({ questions: { chief: question('question-call') }, secretRequests: { chief: [request('secret-call')] } })
+  const answers = []
+  const canceled = []
+  const actions = { answerQuestion: async (...args) => answers.push(args), secretCancel: async id => canceled.push(id) }
+  const asking = expand(QuestionDock(dockProps(store, roster, { openState: 'cold', actions })))
+  find(asking, node => node.type === 'button' && node.props.className === 'bt-q-opt').props.onClick()
+  await Promise.resolve()
+  assert.deepEqual(JSON.parse(JSON.stringify(answers)), [['chief', 'question', { selected: ['Short'], custom: '' }]])
+  const secret = expand(SecretDock(dockProps(store, roster, { openState: 'loading', actions })))
+  await find(secret, node => node.props['aria-label'] === 'Cancel the request').props.onClick()
+  assert.deepEqual(canceled, ['request'])
+  effects = []
+  assert.equal(docks(store, team(), { openState: 'loading' }), '')
 })
 
 test('a card from an earlier part waits in the dock even when a call here has the same id', () => {
@@ -349,6 +422,7 @@ test('PTC secret and question cards show at their sub-calls and act on their own
   const asking = show(program([call('ask_user', 'call-1-2:ptc:1')]), { roster, actions })
   assert.match(text(asking), /Which draft\?/)
   find(asking, node => node.type === 'button' && node.props.className === 'bt-q-opt').props.onClick()
+  await Promise.resolve()
   assert.deepEqual(JSON.parse(JSON.stringify(answers)), [['chief', 'question', { selected: ['Short'], custom: '' }]])
 
   const secret = show(program([call('request_secret', 'call-2-1:ptc:1', { args: { name: 'DEMO_TOKEN' }, running: true })], { running: true }), { roster, actions })

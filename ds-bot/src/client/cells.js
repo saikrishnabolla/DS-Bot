@@ -2,15 +2,17 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useR
 import { createPortal } from 'react-dom'
 import { MarkdownText } from './dsh-primitives.js'
 import { inkText } from './inks.js'
-import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts } from './text.js'
+import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel } from './text.js'
 import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, MemoryIcon } from './icons.js'
 import { colorOf, toolState, BotMark, RoomAvatar } from './mark.js'
 import { AnsweredCell, SettledQuestion, PendingQuestion } from './questions.js'
 import { SecretToolCell } from './secret-card.js'
 import { dateLocale, t } from './i18n.js'
+import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
-import { turnReasoning } from './turn-reasoning.js'
+import { turnReasoning, thinkingStep } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
+import { heldCardKey } from './sources.js'
 
 // -------------------------------------------------------------------------
 // Chat cells
@@ -114,27 +116,65 @@ function MessageTools({ text, name, sessionId, react, actions }) {
       item(t('Copy'), CopyIcon, copy), item(t('Download'), DownloadIcon, download)), document.body) : null)
 }
 
-// Few readers go through a whole chain of thought, so the row opens on its last lines;
-// the box scrolls for the rest. It stays at the end as later steps add reasoning,
-// unless the reader has scrolled up.
-function ThinkingRow({ text }) {
+// A Turn's settled thinking time, fetched per count of settled steps: while a turn
+// runs each new settled step refetches; scrolling back to a loaded turn reuses it.
+const thinkingTimes = new Map()
+function useThinkingMs({ sessionId, turn, settledSteps, skip }) {
+  const key = `${sessionId}:${turn}:${settledSteps}`
+  const [ms, setMs] = useState(() => thinkingTimes.get(key))
+  useEffect(() => {
+    if (skip || thinkingTimes.has(key)) { setMs(thinkingTimes.get(key)); return undefined }
+    const control = new AbortController()
+    call('thinking', { sessionId, turn }, control.signal)
+      .then(value => { thinkingTimes.set(key, value?.ms); setMs(value?.ms) })
+      .catch(() => {})
+    return () => control.abort()
+  }, [key, skip])
+  return ms
+}
+
+// The row starts closed. Few readers go through a whole chain of thought, so when opened
+// it shows the last lines and the box scrolls for the rest. It stays at the end as later
+// steps add reasoning, unless the reader has scrolled up. While a step of the turn is
+// thinking the row shows immediately and ticks (`at` backs the live clock so it counts
+// the settled steps too); settled, it shows the turn's exact thinking time if known.
+// A live turn's row moves to the step that reasons now, so whether the reader opened it
+// and where they scrolled is kept per turn (`viewKey`), not per row.
+const rowViews = new Map()
+export function ThinkingRow({ text, live, at, ms, viewKey }) {
   const box = useRef(null)
-  const atEnd = useRef(true)
+  const view = useRef(rowViews.get(viewKey))
+  const atEnd = useRef(view.current?.atEnd ?? true)
+  const [open, setOpen] = useState(view.current?.open ?? false)
   const [fade, setFade] = useState(undefined)
+  const remember = patch => { if (viewKey !== undefined) rowViews.set(viewKey, { ...rowViews.get(viewKey), ...patch }) }
   const measure = () => {
     const el = box.current
     atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 2
+    remember({ atEnd: atEnd.current, top: el.scrollTop })
     const above = el.scrollTop > 0
     setFade(above && !atEnd.current ? 'both' : above ? 'top' : !atEnd.current ? 'bottom' : undefined)
   }
+  const toggle = event => {
+    const next = event.currentTarget.open
+    if (next) atEnd.current = true
+    remember({ open: next })
+    setOpen(next)
+  }
   useLayoutEffect(() => {
+    if (!open) return
     const el = box.current
+    const restore = view.current
+    view.current = undefined
     if (atEnd.current) el.scrollTop = el.scrollHeight
+    else if (restore?.top !== undefined) el.scrollTop = restore.top
     measure()
-  }, [text])
-  const title = t('Thought it through')
-  return h('div', { className: 'bt-think' },
-    h('div', { className: 'bt-think-title' }, title),
+  }, [text, open])
+  const title = live ? t('Thinking') : t('Thought it through')
+  return h('details', { className: 'bt-think', open, onToggle: toggle },
+    h('summary', null, title,
+      live && at !== undefined ? h(Elapsed, { at, className: 'bt-think-time' }) : null,
+      !live && ms !== undefined ? h('span', { className: 'bt-think-time' }, `· ${elapsedLabel(Math.max(1000, ms))}`) : null),
     h('div', { ref: box, className: 'bt-think-text', role: 'region', 'aria-label': title, tabIndex: 0, 'data-fade': fade, onScroll: measure }, text))
 }
 
@@ -160,10 +200,16 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   const hidden = Boolean(roster.roomsById[sessionId]) || isHiddenTurn(roster, sessionId, data.turn)
   const texts = groupPart === 'reasoning' ? [] : data.blocks.filter(block => block.kind === 'text' && block.text.trim() !== '').map(block => block.text)
   const running = data.status === 'running'
-  // A streaming reply stands in for the activity row.
-  useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts.length > 0 ? { text: true } : null)
-  if (hidden) return null
+  const members = steps.length ? steps : [data]
   const reasoning = groupPart === 'response' ? '' : turnReasoning(steps, data)
+  // A live step of the same Turn keeps the row ticking even when it sits on an
+  // earlier step's cell.
+  const thinking = groupPart === 'response' ? undefined : thinkingStep(members)
+  const ms = useThinkingMs({ sessionId, turn: data.turn, settledSteps: members.filter(step => step.status !== 'running').length, skip: hidden || reasoning === '' })
+  // A streaming reply — or a live reasoning row — stands in for the activity row.
+  useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts.length > 0 ? { text: true } : null)
+  useLiveNote(actions, sessionId, `think:${node.key ?? data.seq}`, !hidden && thinking !== undefined && reasoning !== '' ? { text: true } : null)
+  if (hidden) return null
   // A relay spliced mid-turn is a 'context' node, hidden from the chat flow on
   // DSH 0.2; the step that answers it shows the event line where it was read,
   // once, in the step's first cell.
@@ -182,7 +228,12 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
         whole: true,
       })
     }),
-    reasoning ? h(ThinkingRow, { text: reasoning }) : null,
+    reasoning ? h(ThinkingRow, {
+      text: reasoning, live: thinking !== undefined, viewKey: `${sessionId}:${data.turn}`,
+      // The live clock counts the settled steps too: backing `at` by the settled
+      // time makes one Elapsed show settled + running.
+      ...(thinking !== undefined ? { at: typeof thinking.time === 'number' ? thinking.time - (ms ?? 0) : undefined } : { ms }),
+    }) : null,
     texts.length ? h(Bubbles, { texts, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ''}`, useUi, mentions, fold: FOLD_HUGE }) : null)
 }
 
@@ -413,6 +464,8 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       // The secret card itself shows what the user did; the note to the Bot stays out.
       if (source.role === 'secret' || deferred) return null
       if (source.role === 'post') {
+        // A post logged into a running round already shows there, not again as a trigger.
+        if (source.logged !== undefined) return null
         // A member's late failure, its work picked up after a restart, its work the user
         // stopped, or the end of its work shows as an event of the round it opens.
         if (source.failed !== undefined || source.resumed === true || source.stopped === true || source.done === true) return null
@@ -554,6 +607,23 @@ export function TurnTailCell({ turn: location, sessionId, useTurnClock, useUi, a
 
 export function Shimmer({ children }) {
   return h('span', { className: 'bt-shimmer' }, children)
+}
+
+// The time since `at`, from 1s. It ticks on its own whole seconds, so its parent does
+// not render again each second.
+export function Elapsed({ at, className }) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    let timer = 0
+    const tick = () => {
+      const time = Date.now()
+      setNow(time)
+      timer = setTimeout(tick, 1000 - (((time - at) % 1000) + 1000) % 1000)
+    }
+    tick()
+    return () => clearTimeout(timer)
+  }, [at])
+  return h('span', { className }, `· ${elapsedLabel(Math.max(1000, now - at))}`)
 }
 
 // Status phrases. A running tool names what it does; otherwise one
@@ -724,7 +794,7 @@ export function callTree(root) {
 }
 
 // Tells the docks which card calls the transcript draws, so a card shows in one place.
-// A layout effect: the dock drops its copy of the card before the first paint.
+// A layout effect: an untouched dock drops its copy before the first paint.
 function useShownCards(actions, sessionId, callIds) {
   const key = JSON.stringify(callIds)
   useLayoutEffect(() => {
@@ -735,7 +805,7 @@ function useShownCards(actions, sessionId, callIds) {
   }, [sessionId, key])
 }
 
-function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot }) {
+function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot, heldCards }) {
   const tool = toolName(call)
   const done = call.kind === 'tool-result'
   const { text: arg, value: argValue } = toolArgs(call)
@@ -785,10 +855,11 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot 
       const question = roster.questions?.[sessionId]
       // Answered or closed: the card leaves no gap where it was.
       if (!question || question.callId !== call.callId) return h('span', { className: 'bt-q-gone', hidden: true })
-      return h(PendingQuestion, { sessionId, question, actions, inline: true })
+      if (heldCards?.[heldCardKey('question', question.id)] > 0) return null
+      return h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true })
     }
     case 'request_secret':
-      return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions })
+      return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions, heldCards })
     case 'ask_user_question': {
       if (!done) return null
       let parsed = null
@@ -811,8 +882,9 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot 
   }
 }
 
-export function ToolCell({ node, sessionId, useRoster, useUi, useWork, actions }) {
+export function ToolCell({ node, sessionId, useRoster, useUi, useWork, useHeldCards, actions }) {
   const roster = useRoster(value => value)
+  const heldCards = useHeldCards?.(state => state[sessionId])
   const root = node.data.root
   const turn = node.location?.turn?.turn ?? root.turn
   const hidden = isHiddenTurn(roster, sessionId, turn)
@@ -826,6 +898,6 @@ export function ToolCell({ node, sessionId, useRoster, useUi, useWork, actions }
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note)
   useShownCards(actions, sessionId, drawn.filter(call => CARDS.has(toolName(call)) && call.callId).map(call => call.callId))
   if (drawn.length === 0) return null
-  const env = { sessionId, roster, actions, useUi, useWork, findBot }
+  const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards }
   return h(Fragment, null, drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
 }

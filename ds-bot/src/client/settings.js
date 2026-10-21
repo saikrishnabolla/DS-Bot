@@ -16,17 +16,20 @@ import { CapabilitiesPage } from './capability-settings.js'
 import { SchedulesPage } from './schedules.js'
 import { FeedbackIcon, FeedbackPage } from './feedback.js'
 import { AboutPage } from './about.js'
+import { ProvidersPage } from './providers-page.js'
+import { FolderMenu } from './folder-menu.js'
 import { t } from './i18n.js'
 
 const capitalize = word => word[0].toUpperCase() + word.slice(1)
 
 // Settings dialog: a 198px page list beside the page. Bots and group chats each list
 // their members, and one opens on its own settings form. Usage widens the dialog.
-const SETTINGS_PAGES = [['general', 'General'], ['bots', 'Bots'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['capabilities', 'Capabilities'], ['schedules', 'Scheduled tasks'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About DS Bot']]
-const PAGE_ICONS = { ...SETTINGS_ICONS, connectors: ConnectorIcon, capabilities: PlugIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
+// Models is there only in a window without DSH's own settings, which carry the providers.
+const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['bots', 'Bots'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['capabilities', 'Capabilities'], ['schedules', 'Scheduled tasks'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About DS Bot']]
+const PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, connectors: ConnectorIcon, capabilities: PlugIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
 
-function SetSection({ title, children }) {
-  return h('section', { className: 'bt-set-section' }, h('h3', null, title), h('div', { className: 'bt-set-card' }, children))
+function SetSection({ title, className = '', children }) {
+  return h('section', { className: `bt-set-section ${className}`.trim() }, h('h3', null, title), h('div', { className: 'bt-set-card' }, children))
 }
 function SetRow({ label, hint, children }) {
   return h('div', { className: 'bt-set-row' },
@@ -63,7 +66,41 @@ function GeneralPage({ roster, actions, run }) {
     actions.setSurface ? h(SetSection, { key: 'mode', title: t('Mode') },
       h(SetRow, { label: t('Classic Agent mode') },
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.setSurface('agent') }, t('Switch')))) : null,
+    h(LocationsSection, { key: 'places', actions, run }),
   ]
+}
+
+// The desktop app's preload hands its window `dsBotApp`; only there does the data location
+// show, since DSH keeps the plugin's data where it runs.
+function LocationsSection({ actions, run }) {
+  const app = globalThis.dsBotApp
+  const [team, setTeam] = useState(null)
+  const [data, setData] = useState(null)
+  // One change at a time: the data move checks the new folder against the team workspace, and
+  // a later team workspace must not finish before an earlier one.
+  const [moving, setMoving] = useState(false)
+  const busy = useRef(false)
+  useEffect(() => {
+    void Promise.resolve(actions.folders()).then(info => setTeam(info?.team ?? null)).catch(() => {})
+    if (app !== undefined) void Promise.resolve(app.dataLocation()).then(setData).catch(() => {})
+  }, [])
+  const pickTeam = (path) => {
+    if (busy.current) return undefined
+    busy.current = true
+    setMoving(true)
+    return run(Promise.resolve(actions.setTeamWorkspace(path)).then((answer) => {
+      setTeam(answer.team)
+      app?.teamWorkspaceChanged(answer.team)
+    }).finally(() => {
+      busy.current = false
+      setMoving(false)
+    }))
+  }
+  return h(SetSection, { title: t('Locations'), className: 'bt-set-places' },
+    h(SetRow, { label: t('Team workspace'), hint: t('Where Bots without a folder of their own work.') },
+      team === null ? null : h(FolderMenu, { value: team, team: true, actions, run, onPick: pickTeam, disabled: moving })),
+    data === null ? null : h(SetRow, { label: t('Data location'), hint: data.path },
+      data.fixed ? null : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: moving, onClick: () => { if (!busy.current) void run(app.moveData(team ?? undefined)) } }, t('Change…'))))
 }
 
 // The first Main Bot is the sidebar tile. Picking another Bot there hands it the role
@@ -158,9 +195,10 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   // A Bot or group deleted while its form is open leaves its page on the list.
   const bot = page === 'bots' && id ? roster.byId[id] : undefined
   const room = page === 'groups' && id ? roster.roomsById[id] : undefined
-  const shown = SETTINGS_PAGES.some(([key]) => key === page) ? page : 'general'
+  const pages = SETTINGS_PAGES.filter(([key]) => key !== 'models' || actions.providers !== undefined)
+  const shown = pages.some(([key]) => key === page) ? page : 'general'
   const usageFocus = shown === 'usage' && id ? id : null
-  const label = t(SETTINGS_PAGES.find(([key]) => key === shown)[1])
+  const label = t(pages.find(([key]) => key === shown)[1])
   const back = bot ? t('Back to Bots') : room ? t('Back to group chats') : usageFocus ? t('All usage') : null
   const nav = useGlide(shown, { axis: 'y' })
   // A page enters from the right when it is one level in, from the left when it comes
@@ -183,7 +221,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
     h('div', { className: 'bt-settings', role: 'dialog', 'aria-modal': true, 'aria-label': t('DS Bot settings') },
       h('nav', { ref: nav.box, className: 'bt-settings-nav', 'aria-label': t('Settings pages') },
         h('span', { ref: nav.thumb, className: 'bt-thumb', 'aria-hidden': true }),
-        SETTINGS_PAGES.map(([key, text]) => h('button', {
+        pages.map(([key, text]) => h('button', {
           key, type: 'button', className: 'bt-settings-item', 'aria-current': shown === key ? 'page' : undefined, onClick: () => actions.openSettings(key),
         }, h(PAGE_ICONS[key]), t(text))),
         actions.openHarnessSettings ? h('button', {
@@ -197,6 +235,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
         shown === 'usage' ? null : h('div', { key: pageKey, className: 'bt-settings-scroll bt-settings-page', 'data-move': last.current.move },
           errorLine,
           shown === 'general' ? h(GeneralPage, { roster, actions, run }) : null,
+          shown === 'models' ? h(ProvidersPage, { actions, run, Section: SetSection }) : null,
           bot ? h('div', { className: 'bt-settings-form' }, h(BotSettingsForm, { key: bot.id, bot, roster, actions, run })) : null,
           shown === 'bots' && !bot ? h(BotsPage, { roster, actions, run }) : null,
           room ? h('div', { className: 'bt-settings-form' }, h(GroupSettingsForm, { key: room.id, room, roster, actions, run })) : null,

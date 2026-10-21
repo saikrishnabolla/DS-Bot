@@ -298,6 +298,11 @@ export function install(rt) {
     return bots
   }
 
+  // Per Session, when its running turn began.
+  const turnsView = () => Object.fromEntries([...live]
+    .filter(([, entry]) => entry.turn !== undefined && entry.since !== undefined)
+    .map(([id, entry]) => [id, entry.since]))
+
   // Per group, the members whose turn there is running or who move on to a fresh part;
   // the round's current speaker is marked, since its round shows it.
   const roomWorkView = () => {
@@ -425,11 +430,12 @@ export function install(rt) {
           // A long post comes as a file (attachLong), which stays with its line.
           const files = (Array.isArray(event.data.content) ? event.data.content : []).filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment)
           queueRoomMessage(id, {
-            text: textOf(event.data.content).replace(/^\[Group post from [^\]]*\]\n?/, ''),
+            text: textOf(event.data.content).replace(/^\[Group post from (?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, ''),
             ...(files.length > 0 ? { files } : {}),
             botId: source.senderSessionId,
             name: source.senderName,
             reportBack: source.reportBack === true,
+            ...(source.member ? { member: true } : {}),
             ...(source.sub ? { sub: source.sub } : {}),
             ...(source.late ? { late: true } : {}),
             ...(source.progress ? { progress: true } : {}),
@@ -440,6 +446,9 @@ export function install(rt) {
             ...(source.stopped ? { stopped: true } : {}),
             ...(source.done ? { done: true } : {}),
             ...(source.askedBy ? { askedBy: source.askedBy } : {}),
+            // A post written into a running round already carries its log seq, or true
+            // when its event needed none; the relay must not write it again.
+            ...(source.logged !== undefined ? { logged: source.logged } : {}),
           })
         } else if (source?.kind === SOURCE_KIND && source.role === 'kickoff' && rt.roomOf(id)) {
           queueRoomMessage(id, { text: '', kickoff: true })
@@ -449,7 +458,7 @@ export function install(rt) {
           else if (source.work !== undefined && source.work !== rt.workOf?.(entry.info) && !expectsReply(source)) {
             // A result for other work than this turn's informs it, and comes back in a
             // turn of its own once this one ends, which goes on with that work.
-            entry.later = [...(entry.later ?? []), { info: source, text: textOf(event.data.content).replace(/^\[[^\]\n]*\]\n?/, '') }]
+            entry.later = [...(entry.later ?? []), { info: source, text: textOf(event.data.content).replace(/^\[(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, '') }]
           } else if (expectsReply(source) && !answersUser(source)
             && source.exchangeId !== entry.info?.exchangeId
             && !(entry.joined ?? []).some(joined => joined.info.exchangeId === source.exchangeId)) {
@@ -457,7 +466,7 @@ export function install(rt) {
             // answered in a hidden turn of its own once the work is done, so the
             // sender never gets the turn's text. A failed-switch resume message
             // re-sends the trigger's own source; the same exchangeId must not join twice.
-            const text = textOf(event.data.content).replace(/^\[[^\]\n]*\]\n?/, '')
+            const text = textOf(event.data.content).replace(/^\[(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/, '')
             entry.joined = [...(entry.joined ?? []), { info: source, text }]
           }
           // A mid-turn relay that owes no reply only informs the turn: it neither
@@ -627,5 +636,5 @@ export function install(rt) {
     }
   })
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, callDetail, doingOf, stopRoomTurn, releaseBot })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, callDetail, doingOf, stopRoomTurn, releaseBot })
 }

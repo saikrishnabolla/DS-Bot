@@ -7,6 +7,7 @@ import { createElement as h, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom'
 import { BotMark } from './mark.js'
 import { STORAGE } from './storage.js'
+import { installStyles } from './styles.js'
 import { SPRING_SHAPE, springEasing } from './motion.js'
 import { DetailsDrawer } from './details-drawer.js'
 import { t } from './i18n.js'
@@ -77,10 +78,7 @@ const roomRule = () => {
   if (live && !selector) return room.rule
   const declarations = room.rule?.style.cssText ?? ''
   room.rule?.parentStyleSheet?.ownerNode?.remove()
-  const style = document.createElement('style')
-  style.dataset.dshBot = 'chat-room'
-  style.textContent = `${selector || '[class*="_centerCol"]'}{${declarations}}`
-  document.head.append(style)
+  const style = installStyles(`${selector || '[class*="_centerCol"]'}{${declarations}}`, 'chat-room')
   room.rule = style.sheet.cssRules[0]
   room.selector = selector
   return room.rule
@@ -517,7 +515,7 @@ export const BROWSER_CSS = `
 .bt-ptab-new svg{width:15px;height:15px}
 .bt-ptab-ind{position:absolute;top:4px;bottom:4px;border-radius:9px;background:var(--bt-hover);opacity:0;pointer-events:none;z-index:0;transition:opacity .15s ease}
 .bt-ptab-close{flex:none;margin-left:2px}
-.bt-panel-ghost{position:absolute;top:44px;right:0;bottom:0;overflow:hidden;pointer-events:none;z-index:2}
+.bt-panel-ghost{position:absolute;top:calc(44px + var(--bt-caption-band,0px));right:0;bottom:0;overflow:hidden;pointer-events:none;z-index:2}
 .bt-panel-ghost>.bt-panel-view{position:absolute;inset:0}
 .bt-panel-view{flex:1;min-height:0;display:flex;flex-direction:column;animation:bt-panel-view-in .22s cubic-bezier(.16,1,.3,1)}
 @keyframes bt-panel-view-in{from{opacity:0}}
