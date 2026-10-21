@@ -99,7 +99,7 @@ For the test bench, add the DeepSeek Harness checkout next to the plugin folder 
 ```sh
 cd ..
 git clone https://github.com/deepseek-ai/deepseek-harness.git
-git -C deepseek-harness checkout dsh-v0.2.0-rc.2
+git -C deepseek-harness checkout dsh-v0.2.1-rc.2
 (cd deepseek-harness && pnpm install)
 ```
 
@@ -161,6 +161,7 @@ For a change to the Bot browser, check it in DSH Desktop. On Linux, the scripts 
 
 - Keep a change to one subject.
 - Do not edit `client.js` by hand. Change `src/client/`, run `npm run build` and commit both.
+- In `src/client/`, take colors from the `--bt-*` variables, corner radii from the steps 4, 6, 8, 10, 12, 16, 18, 20, 22, 999px and 50%, and springs from `motion.js`. A unit test checks this. The places written before the test are listed in `test/style-debt.json`; that list only gets shorter. When you remove one, run `node scripts/style-debt.mjs --write` to update it.
 - Follow the style of the code around your change. Write a comment only when the reason for the code is not clear from the code itself.
 - Write commit messages in English. Use a short subject in the imperative mood ("Keep group replies visible") and explain the reason in the body.
 - The author of a commit is the person who made the change. When an AI tool helped, do not add it as an author or with a `Co-authored-by` line; turn that setting off in the tool.

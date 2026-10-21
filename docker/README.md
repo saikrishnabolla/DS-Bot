@@ -142,8 +142,12 @@ UI, which writes the same config.
   profiles, settings and the login cookie key (`.credentials.yaml`).
 - `/workspace` (`WORKSPACE_DIR`) is the team workspace where the Bots work.
 
-**Backup**: stop the container, then copy `DATA_DIR`. Restore by putting the
-folder back and starting again.
+A rebuild reuses the persisted data and workspace. Keep their container
+destinations `/data` and `/workspace` unchanged when you rebuild or move the
+host directories; the team records those destinations, not the host paths.
+
+**Backup**: stop the container, then copy both `DATA_DIR` and `WORKSPACE_DIR`.
+Restore by putting both folders back and starting again.
 
 On every start, entries in `/data` with a different owner or group are assigned
 to `PUID`/`PGID`, including existing profiles and restored files. This scans the
@@ -159,24 +163,53 @@ docker compose build   # or: docker build -f docker/Dockerfile -t ds-bot:local .
 docker compose up -d
 ```
 
-DSH itself lives in the image and updates on rebuild. The plugin lives in the
-profile inside the data volume, so the entrypoint compares the installed ds-bot
-version with the image's on every start and reinstalls it into the web profile
-when they differ — a new image updates an existing volume automatically.
-Rebuilds with the same ds-bot version skip the reinstall; to force a fresh
-profile, stop the container and delete `DATA_DIR/profiles/web` (not the whole
-data dir). The image is built and tested with dsh `0.2.0-rc.2`, the version
+A rebuild changes the image and the DSH it contains. An existing persisted
+profile is reused, and the entrypoint does not manage plugin upgrades. The
+image is built and tested with dsh `0.2.0-rc.2`, the version
 DS Bot is verified with; a `DSH_VERSION` build arg exists, but other releases
 are untested and newer ones change how the server binds.
 
-## Importing an existing team
+## Prebuilt image
 
-To move a team from a dsh you already run: stop this container, then copy
-`bot/`, `sessions/` and `storages/` from the old `DSH_HOME` (`~/.dsh`) into
-`DATA_DIR` — but not `profiles/`, which the image seeds itself. The ds-bot
-README's "Move to another computer" caveat applies: workspace paths are stored
-as absolute paths, so this is safest between two Linux deployments (the
-container's workspace is always `/workspace`).
+GitHub Actions publishes the image to GHCR after the branch CI succeeds:
+`main` as `latest`, `dev` as `dev`, and every successful push also as
+`sha-<full commit SHA>`. Only the tested linux/amd64 image is published. The
+first publication happens only after this workflow is merged and a push
+succeeds. The maintainer must set the GHCR package visibility to Public once
+before anonymous pulls work.
+
+Save this as `compose.yml` in the directory you want to deploy from. Fill in
+the API key and your NAS host names before starting it. Running these commands
+from the repository root would use the local root Compose file instead.
+
+```yaml
+services:
+  ds-bot:
+    image: ghcr.io/fei2411/deepseek-bot:dev
+    ports:
+      - "13080:3080"
+    environment:
+      DEEPSEEK_API_KEY: ""
+      PUID: "1000"
+      PGID: "1000"
+      DSH_TRUSTED_HOST: "localhost,127.0.0.1"
+    volumes:
+      - ./data:/data
+      - ./workspace:/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    stop_grace_period: 15s
+```
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+The root `docker-compose.yml` and `docker/compose.yml` still build the local
+image. Choose one setup; do not run both against the same data directory. An
+existing persisted profile is not upgraded automatically.
 
 ## Limits
 
@@ -192,6 +225,7 @@ After building the image, run `node docker/test.mjs ds-bot:local` from the
 repository root. The test uses isolated, network-disabled containers and
 temporary Docker volumes, with no host directory mounts or model calls. It
 checks entrypoint permissions, first start, UID/GID changes, restored files,
-workspace ownership, offline plugin reinstall and web startup. All test
-containers and volumes are removed when it finishes. CI builds the image from
-the Linux checkout and runs this test as part of the required Test result check.
+workspace ownership and web startup. All test containers and volumes are
+removed when it finishes.
+CI builds the image from the Linux checkout and runs this test as part of the
+required Test result check.

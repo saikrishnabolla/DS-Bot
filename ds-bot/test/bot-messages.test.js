@@ -197,6 +197,27 @@ test('a request steered into a running turn is recorded once and answered in a t
   assert.deepEqual((await exchanges()).map(entry => entry.role), ['request', 'reply'])
 })
 
+test('a request from a name with brackets keeps its body when replayed after the current work', async (t) => {
+  const seed = team()
+  seed.bots.a.name = 'R]2'
+  const { agents, emit, tool, stop } = await start(seed)
+  t.after(stop)
+  const body = 'Check [notes](https://example.test)\n[Keep this line]'
+  emit('b', 'turn/start', { turn: 1 })
+  emit('b', 'user/message', { content: textBlock('write the letter'), source: { kind: 'user' } })
+  await tool('message_bot', { to: 'Writer', message: body }, 'a')
+  const steered = agents.get('b').calls[0][1]
+  assert.equal(steered.source.senderName, 'R]2')
+  emit('b', 'user/message', { content: steered.content, source: steered.source })
+  emit('b', 'assistant/message', assistantText('the letter'))
+  emit('b', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
+  await settled(() => agents.get('b').calls.length === 2)
+  const [kind, again] = agents.get('b').calls[1]
+  assert.equal(kind, 'followup')
+  assert.equal(again.source.exchangeId, steered.source.exchangeId)
+  assert.equal(textOf(again.content), `[Message from R]2 · you read it during your last task; answer it now]\n${body}`)
+})
+
 test('a message its recipient has not read yet takes in the next one, however many come', async (t) => {
   const { ctx, agentOf, emit, tool, exchanges, stop } = await start(team())
   t.after(stop)
@@ -587,7 +608,9 @@ test('a stopped turn answers at once, and what it handed on comes back to it alo
 })
 
 test('a result read during other work comes back in a turn of its own and goes on with its work', async (t) => {
-  const team = await start(threeBots())
+  const seed = threeBots()
+  seed.bots.a.name = 'Chief [ops]'
+  const team = await start(seed)
   t.after(team.stop)
   const { agents, emit } = team
   const { take, end, userTurn } = await handedOn(team)
@@ -603,7 +626,7 @@ test('a result read during other work comes back in a turn of its own and goes o
   await settled(() => callsOf(agents, 'b').length === 3)
   const [kind, again] = callsOf(agents, 'b')[2]
   assert.equal(kind, 'followup')
-  assert.equal(textOf(again.content), '[Reply from Tester · you read it during your last task; go on with the work it is for now · for the work Chief asked you for; your answer goes to Chief once everything you handed on is back]\nreviewed')
+  assert.equal(textOf(again.content), '[Reply from Tester · you read it during your last task; go on with the work it is for now · for the work Chief [ops] asked you for; your answer goes to Chief [ops] once everything you handed on is back]\nreviewed')
   assert.deepEqual(callsOf(agents, 'a'), [])
   take('b')
   end('b', 'done after the review')
@@ -654,12 +677,9 @@ test('Bots keep messaging and posting with no count of messages or rounds', asyn
   assert.equal(agents.get('r1').calls.length, 5)
 })
 
-test('an earlier part keeps the request its Bot answered', async () => {
+// A Writer whose earlier part b1 holds `events`.
+function earlierParts(events) {
   const writer = { id: 'b', name: 'Writer', createdAt: 1, sessionId: 'b2', segments: [{ sessionId: 'b1', endedAt: 2 }] }
-  const events = [
-    { type: 'user/message', seq: 1, time: 10, data: { turn: 1, content: [{ type: 'text', text: '[Message from Chief]\nDo not delete that' }], source: replySource('request') } },
-    { type: 'assistant/message', seq: 2, time: 11, data: { turn: 1, message: { content: [{ type: 'text', text: 'Understood, I stopped.' }] } } },
-  ]
   const rt = {
     ctx: { on() {}, effect() {}, get() {}, sessionController: { page: async () => ({ records: events.map(event => ({ event })), hasMore: false }) } },
     config: {},
@@ -672,9 +692,25 @@ test('an earlier part keeps the request its Bot answered', async () => {
     resolveAgent: async id => ({ session: { id, seq: 3 } }),
   }
   installParts(rt)
+  return rt
+}
+
+test('an earlier part keeps the request its Bot answered', async () => {
+  const rt = earlierParts([
+    { type: 'user/message', seq: 1, time: 10, data: { turn: 1, content: [{ type: 'text', text: '[Message from Chief]\nDo not delete that' }], source: replySource('request') } },
+    { type: 'assistant/message', seq: 2, time: 11, data: { turn: 1, message: { content: [{ type: 'text', text: 'Understood, I stopped.' }] } } },
+  ])
   const { items } = await rt.earlierPage('b2')
   assert.deepEqual(items.map(item => [item.kind, item.role ?? item.text]), [['event', 'request'], ['bot', 'Understood, I stopped.']])
   assert.equal(items[0].botId, 'a')
+})
+
+test('each text block of a Bot message is an entry of its own, as each is a bubble of its own', async () => {
+  const rt = earlierParts([
+    { type: 'assistant/message', seq: 1, time: 11, data: { turn: 1, message: { content: [{ type: 'text', text: 'First.' }, { type: 'tool-call', id: 'c1' }, { type: 'text', text: '  ' }, { type: 'text', text: 'Second.' }] } } },
+  ])
+  const { items } = await rt.earlierPage('b2')
+  assert.deepEqual(items.map(item => [item.kind, item.text, item.time]), [['bot', 'First.', 11], ['bot', 'Second.', 11]])
 })
 
 test('a request the model keeps turning down moves the Bot on, without its latest messages the second time; a connection failure does not', async (t) => {
