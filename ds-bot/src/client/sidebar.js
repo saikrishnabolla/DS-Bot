@@ -8,7 +8,7 @@ import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
 import { Shimmer, workPhrase } from './cells.js'
-import { springEasing, SPRING_SHAPE } from './motion.js'
+import { springEasing, SPRING_SHAPE, useViewport, viewBottom } from './motion.js'
 import { hostText, t } from './i18n.js'
 import { showsDshRow } from './dsh-offer.js'
 
@@ -349,11 +349,13 @@ function UpdateButton({ useUpdate, actions }) {
   const dshRow = showsDshRow(dsh, update?.app)
   if (!update?.available && !dshRow && phase === 'idle' && dshPhase === 'idle') return null
   const cloudPhase = phase === 'installing' || dshPhase === 'installing' ? 'installing' : phase !== 'idle' ? phase : dshPhase
-  const toggle = () => {
+  const tick = useViewport()
+  useLayoutEffect(() => {
+    if (!open) return
     const rect = button.current?.getBoundingClientRect()
     if (rect) setBox({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.bottom + 6 })
-    setOpen(value => !value)
-  }
+  }, [open, tick])
+  const toggle = () => setOpen(value => !value)
   const start = () => {
     setError('')
     void actions.installUpdate().catch(failure => setError(hostText(failure?.message ?? String(failure))))
@@ -554,11 +556,13 @@ export function AccountLauncher({ seat = true, settingsOpen, openSettings, openO
       setBusy(false)
     }
   }
-  const toggle = () => {
+  const tick = useViewport()
+  const anchor = () => {
     const rect = button.current?.getBoundingClientRect()
-    if (rect) setBox({ left: rect.left, bottom: window.innerHeight - rect.top + 5 })
-    setOpen(value => !value)
+    if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 })
   }
+  useLayoutEffect(() => { if (open) anchor() }, [open, tick])
+  const toggle = () => { if (!open) anchor(); setOpen(value => !value) }
   // Closing the menu drops a half-finished sign-out confirm with it.
   useEffect(() => {
     if (open) return
