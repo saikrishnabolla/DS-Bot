@@ -20,7 +20,7 @@ import { HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './cons
 import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, checkpointTailNote, checkpointText, linesFor, parseDecision, stewardRequest } from './steward.js'
 import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, splitRef, textOf } from './text.js'
-import { validateViewAnswer, viewSummary } from '../shared/views.js'
+import { checkShownView, normalizeView, validateViewAnswer, viewSummary } from '../shared/views.js'
 
 // An ask_user card as the user saw it. The user's reply is often just an option label,
 // which means nothing without the card. Arguments the tool would refuse (no question,
@@ -1223,6 +1223,20 @@ export function install(rt) {
         const content = Array.isArray(event.data?.message?.content) ? event.data.message.content : []
         for (const block of content) {
           if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') items.push({ kind: 'bot', text: block.text, time: event.time })
+        }
+        continue
+      }
+      if (event.type === 'tool/call') {
+        // Hidden turns and refused calls never showed a display card. Interactive
+        // cards live in the pending dock or on their answer message instead.
+        if (event.data?.name === 'show_view' && !hidden.has(event.data?.turn)) {
+          let args = event.data?.arguments
+          if (typeof args === 'string') { try { args = JSON.parse(args) } catch { args = undefined } }
+          const view = normalizeView(args?.view)
+          const shown = checkShownView(args?.title, view)
+          if (shown.error === undefined && !shown.interactive && args?.await_reply !== true) {
+            items.push({ kind: 'view', title: shown.title, view, callId: event.data?.callId ?? null, time: event.time })
+          }
         }
         continue
       }
