@@ -5524,6 +5524,9 @@ function chatRow(row, key, { sessionId, selfId, roster, actions, useUi }) {
       return (0, import_react9.createElement)(EarlierUser, { key, row });
     case "answer":
       return (0, import_react9.createElement)(AnsweredReply, { key, node: { data: row } });
+    // A display-only view replays from the blueprint the host kept on the call.
+    case "view":
+      return (0, import_react9.createElement)(WidgetCell, { key, sessionId, callId: row.callId, args: { text: (name) => name === "title" ? row.title : void 0, value: (name) => name === "view" ? row.view : void 0 }, done: true, isError: false, roster, actions });
     case "bot": {
       const bubbles = (0, import_react9.createElement)(Bubbles, { key, texts: row.texts, roster, selfId, actions, sessionId: useUi ? sessionId : void 0, msgKey: useUi ? `${sessionId}:${row.time}` : void 0, useUi, fold: FOLD_HUGE });
       const speaker = layoutOf(roster.prefs) === "flat" ? roster.byId[selfId] : void 0;
