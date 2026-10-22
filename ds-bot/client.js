@@ -247,6 +247,8 @@ var ZH = {
   "Who answers": "谁来回答",
   "Choose an admin first": "先选一个管理员",
   "@mentions always pick who answers.": "@提及总是指定由谁回答。",
+  "Pause Bot relays after": "Bot 接力几次后暂停",
+  "Counted since your last message in this group.": "从你在群里的上一条消息算起。",
   Notice: "群公告",
   "Shared instructions every member reads before speaking…": "每位成员发言前都会读到的共同说明…",
   "Group notice": "群公告",
@@ -559,6 +561,8 @@ var ZH = {
   "{name} looked up its own chat for “{text}”": "{name} 在自己的对话里查找「{text}」",
   "{name} is typing…": "{name} 正在输入…",
   "{name} didn't answer in time": "{name} 没有及时回应",
+  "Paused after {count} Bot relays. Waiting: {names}": "Bot 之间已接力 {count} 次，先停下了。还在等：{names}",
+  "Continue": "继续",
   "{name} paused for your approval": "{name} 停下来等你批准",
   "{name} started on it": "{name} 开始做了",
   "You stopped {name}'s work": "你停下了 {name} 的工作",
@@ -632,6 +636,7 @@ var ZH = {
   Canceled: "已取消",
   Done: "完成",
   "{bot} is using {name}": "{bot} 正在使用 {name}",
+  "{bot} could not ask for a key: this window can only view the team": "{bot} 没能要密钥：这个窗口只能查看团队",
   "a saved key": "一个已保存的密钥",
   "Chosen Bots": "指定的 Bot",
   "Who may use {name}": "谁可以用 {name}",
@@ -1484,6 +1489,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     setPrefs: (prefs) => after(call2("set-prefs", prefs)),
     setMain: (id, main = true, options = {}) => after(call2("set-main", { id, main, ...options })),
     updateRoom: (id, patch) => after(call2("update-room", { id, ...patch })),
+    continueRoom: (roomId) => after(call2("room-continue", { roomId })),
     send: (sessionId, text) => after(call2("send", { sessionId: partFor(sessionId), text })),
     answerQuestion: (sessionId, questionId, answer) => after(call2("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: (sessionId) => after(call2("dismiss-question", { sessionId })),
@@ -1495,7 +1501,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     secretSet: (payload) => after(call2("secret-set", payload)),
     secretAllow: (requestId) => after(call2("secret-allow", { requestId })),
     secretCancel: (requestId) => after(call2("secret-cancel", { requestId })),
-    secretUpdate: (name, scope) => after(call2("secret-update", { name, scope })),
+    secretUpdate: (name, { scope, purpose } = {}) => after(call2("secret-update", { name, scope, purpose })),
     secretDelete: (name) => after(call2("secret-delete", { name })),
     connectorConnect: (id, token) => after(call2("connector-connect", { id, token })),
     connectorDisconnect: (id) => after(call2("connector-disconnect", { id })),
@@ -3030,9 +3036,10 @@ var CONVERSATION_CSS = `
 .bt-think-text[data-fade=both]{mask-image:linear-gradient(to bottom,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
 .bt-event{display:flex;justify-content:center;align-items:center;gap:2px;min-height:24px;margin:2px 0;font-size:12px;line-height:16px;color:var(--bt-ink-2);flex-wrap:wrap}
 .bt-event>span{padding:0 2px}
-.bt-event button{border:0;background:none;color:inherit;font:inherit;display:inline-flex;align-items:center;gap:4px;cursor:pointer;height:24px;padding:4px 6px 4px 4px;border-radius:999px;box-sizing:border-box;transition:background-color .12s ease}
-.bt-event button:hover{background:var(--bt-hover)}
-.bt-event button:active{background:var(--bt-active)}
+.bt-event button:not(.bt-soft){border:0;background:none;color:inherit;font:inherit;display:inline-flex;align-items:center;gap:4px;cursor:pointer;height:24px;padding:4px 6px 4px 4px;border-radius:999px;box-sizing:border-box;transition:background-color .12s ease}
+.bt-event button:not(.bt-soft):hover{background:var(--bt-hover)}
+.bt-event button:not(.bt-soft):active{background:var(--bt-active)}
+.bt-event .bt-soft{margin-left:6px}
 .bt-event button.bt-event-whole{min-width:0;max-width:100%;padding:4px 6px 4px 8px}
 .bt-event-whole>*{flex:none}
 .bt-event-whole>span:first-child{margin-right:2px}
@@ -3560,6 +3567,7 @@ var PlugIcon = lineIcon(["M7 3v4M13 3v4", "M5 7h10v2.5a5 5 0 0 1-10 0z", "M10 14
 var CalendarIcon = lineIcon(["M5.5 5h9A1.5 1.5 0 0 1 16 6.5v8a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 14.5v-8A1.5 1.5 0 0 1 5.5 5z", "M4 8.75h12", "M7.25 3.5v3M12.75 3.5v3"]);
 var ConnectorIcon = lineIcon(["M7 10a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z", "M18 10a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z", "M7 10h6"]);
 var SwitchIcon = lineIcon(["M4 7h9.5M10.5 3.5L14 7l-3.5 3.5", "M16 13H6.5M9.5 9.5L6 13l3.5 3.5"]);
+var SignOutIcon = lineIcon(["M8.5 17H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2.5", "M10 10h6.5", "M13.5 7l3 3-3 3"]);
 var PaperclipIcon = lineIcon(["M15.5 9.5l-5.6 5.6a3.4 3.4 0 0 1-4.8-4.8l6.1-6.1a2.25 2.25 0 0 1 3.2 3.2l-6 6a1.1 1.1 0 0 1-1.6-1.6l5.5-5.5"]);
 var ClockIcon = lineIcon(["M10 3.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13z", "M10 6.5V10l2.5 1.5"]);
 var GearIcon = lineIcon(["M10 7.4a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2z", "M7.85 4.4l.29-1.87a7.7 7.7 0 0 1 3.72 0l.29 1.87a6 6 0 0 1 1.63.94l1.76-.69a7.7 7.7 0 0 1 1.86 3.23l-1.47 1.18a6 6 0 0 1 0 1.88l1.47 1.18a7.7 7.7 0 0 1-1.86 3.23l-1.76-.69a6 6 0 0 1-1.63.94l-.29 1.87a7.7 7.7 0 0 1-3.72 0l-.29-1.87a6 6 0 0 1-1.63-.94l-1.76.69a7.7 7.7 0 0 1-1.86-3.23l1.47-1.18a6 6 0 0 1 0-1.88L2.6 7.88a7.7 7.7 0 0 1 1.86-3.23l1.76.69a6 6 0 0 1 1.63-.94z"]);
@@ -4667,6 +4675,9 @@ function SecretToolCell({ sessionId, callId, name, done, content, roster, action
   if (done && /already saved/.test(contentText(content))) {
     return (0, import_react7.createElement)("div", { className: "bt-event" }, (0, import_react7.createElement)("span", { className: "bt-secret-event" }, (0, import_react7.createElement)(KeyIcon), t("{bot} is using {name}", { bot: bot.name, name: name ?? t("a saved key") })));
   }
+  if (done && contentText(content).startsWith("No card can be shown now")) {
+    return (0, import_react7.createElement)("div", { className: "bt-event" }, (0, import_react7.createElement)("span", { className: "bt-secret-event" }, (0, import_react7.createElement)(KeyIcon), t("{bot} could not ask for a key: this window can only view the team", { bot: bot.name })));
+  }
   return null;
 }
 function SecretDock({ sessionId, useRoster, useCards, useHeldCards, actions }) {
@@ -4710,6 +4721,21 @@ function ScopeEditor({ secret, roster, onSave }) {
       "div",
       { className: "bt-secret-row-actions" },
       (0, import_react7.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: same, onClick: () => onSave(mode === "all" ? "all" : picked) }, t("Save access"))
+    )
+  );
+}
+function PurposeEditor({ secret, onSave }) {
+  const [purpose, setPurpose] = (0, import_react7.useState)(secret.purpose ?? "");
+  const same = purpose.trim() === (secret.purpose ?? "");
+  return (0, import_react7.createElement)(
+    "div",
+    { className: "bt-secret-edit-block" },
+    (0, import_react7.createElement)("div", { className: "bt-secret-edit-label" }, t("What it is for")),
+    (0, import_react7.createElement)(
+      "div",
+      { className: "bt-secret-inline" },
+      (0, import_react7.createElement)("input", { className: "bt-input", "aria-label": t("What it is for"), placeholder: t("What it is for"), value: purpose, spellCheck: false, autoComplete: "off", onChange: (event) => setPurpose(event.target.value) }),
+      (0, import_react7.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: same, onClick: () => onSave(purpose.trim()) }, t("Save"))
     )
   );
 }
@@ -4772,7 +4798,8 @@ function SecretRow({ secret, roster, actions, run, open, onToggle }) {
     open ? (0, import_react7.createElement)(
       "div",
       { className: "bt-secret-edit" },
-      (0, import_react7.createElement)(ScopeEditor, { key: JSON.stringify(secret.scope), secret, roster, onSave: (scope) => run(actions.secretUpdate(secret.name, scope)) }),
+      (0, import_react7.createElement)(ScopeEditor, { key: JSON.stringify(secret.scope), secret, roster, onSave: (scope) => run(actions.secretUpdate(secret.name, { scope })) }),
+      (0, import_react7.createElement)(PurposeEditor, { key: secret.purpose ?? "", secret, onSave: (purpose) => run(actions.secretUpdate(secret.name, { purpose })) }),
       (0, import_react7.createElement)(ValueEditor, { secret, onSave: (value) => run(actions.secretSet({ name: secret.name, value })) }),
       (0, import_react7.createElement)(
         "div",
@@ -4895,6 +4922,7 @@ var SECRET_CSS = `
 .bt-secret-bot[aria-pressed=true]{background:var(--bt-active);color:var(--bt-ink);border-color:var(--bt-line-2)}
 .bt-secret-bot svg{width:13px;height:13px}
 .bt-secret-inline{display:flex;gap:8px;align-items:center}
+.bt-secret-inline .bt-input{flex:1;height:34px}
 .bt-secret-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .bt-secret-row-actions .bt-set-hint{flex:1}
 .bt-secret-danger{color:var(--bt-danger);display:inline-flex;align-items:center;gap:4px}
@@ -5768,6 +5796,14 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
       if (reply.kind === "missed") {
         return (0, import_react9.createElement)("div", { key: `${reply.botId}-${index}`, className: "bt-event" }, t("{name} didn't answer in time", { name: bot.name }));
       }
+      if (reply.kind === "paused") {
+        return (0, import_react9.createElement)(
+          "div",
+          { key: `paused-${index}`, className: "bt-event" },
+          (0, import_react9.createElement)("span", null, t("Paused after {count} Bot relays. Waiting: {names}", { count: reply.count, names: (reply.names ?? []).join(t(" and ")) })),
+          room2?.paused?.length > 0 ? (0, import_react9.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.continueRoom(sessionId) }, t("Continue")) : null
+        );
+      }
       if (reply.kind === "resumed") {
         return (0, import_react9.createElement)("div", { key: `${reply.botId}-${index}`, className: "bt-event" }, t("{name} was cut off by a restart and picked its work back up", { name: bot.name }));
       }
@@ -5933,6 +5969,16 @@ var import_react10 = require("react");
 var import_react_dom2 = require("react-dom");
 var PHRASE_HOLD_MS = 800;
 var drawPhrase = (pool) => t(pool[Math.min(pool.length - 1, Math.floor(Math.random() * pool.length))]);
+var rowVisible = ({ running, streaming, tools, relaying, bot, room: room2 }) => running && (!streaming || tools.length > 0) && !relaying && (bot !== void 0 || room2 !== void 0);
+var mountMissed = false;
+function findHost() {
+  const node = document.querySelector("[data-chat-flow] [data-chat-running]") ?? document.querySelector("[data-chat-flow]");
+  if (node === null && !mountMissed) {
+    mountMissed = true;
+    noteClientError("activity row", new Error("[data-chat-flow] not found"));
+  }
+  return node;
+}
 function useRunningHost(active) {
   const [host, setHost] = (0, import_react10.useState)(null);
   (0, import_react10.useEffect)(() => {
@@ -5943,8 +5989,10 @@ function useRunningHost(active) {
     let frame = 0;
     const find = () => {
       frame = 0;
-      const node = document.querySelector("[data-chat-flow] > [data-chat-running]");
-      setHost((prev) => prev === node ? prev : node);
+      setHost((prev) => {
+        const node = findHost();
+        return prev === node ? prev : node;
+      });
     };
     const observer = new MutationObserver(() => {
       if (!frame) frame = requestAnimationFrame(find);
@@ -6020,7 +6068,7 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const streaming = entries2.some((entry) => entry.text);
   const tools = entries2.filter((entry) => !entry.text).sort((a, b) => a.at - b.at);
   const relaying = tools.some((entry) => entry.relay);
-  const visible = running && !streaming && !relaying && (bot !== void 0 || room2 !== void 0);
+  const visible = rowVisible({ running, streaming, tools, relaying, bot, room: room2 });
   const tool = tools.at(-1);
   const inputRef = (0, import_react10.useRef)(0);
   const inputAt = Math.max(inputRef.current, pendingInput);
@@ -6112,6 +6160,7 @@ var useGroupWork = (useWork, pick2) => useWork ? useWork((work) => JSON.stringif
 var workKeys = (text) => JSON.parse(text);
 var doingOf = ({ tool, said, note, target, switching }) => ({ tool, said, note, target, switching });
 var workLine = (lead, doing, more) => (0, import_react11.createElement)(Shimmer, null, `${lead} · ${workPhrase(doing)}…${more > 0 ? ` +${more}` : ""}`);
+var doingLine = (doing) => (0, import_react11.createElement)(Shimmer, null, `${workPhrase(doing)}…`);
 var waitingFor = (roster, waits) => {
   const names = [...(waits?.bots ?? []).map((id) => roster.byId[id]?.name), ...(waits?.rooms ?? []).map((id) => roster.roomsById[id]?.name)].filter(Boolean);
   return names.length === 0 ? "" : t("Waiting for {names}", { names: names.join(t(" and ")) });
@@ -6132,6 +6181,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
   const groups = workKeys(useGroupWork(useWork, (rooms) => Object.entries(rooms).flatMap(([roomId, entries2]) => entries2.filter((entry) => entry.botId === id).map((entry) => ({ id: roomId, ...doingOf(entry) })))));
   const away = !running && groups.length > 0;
   const state = botState(running || away, doing, alert);
+  const runningLine = running && doing ? doingLine(doing) : null;
   const awayLine = away ? workLine(roster.roomsById[groups[0].id]?.name ?? t("a group chat"), groups[0], groups.length - 1) : null;
   const waits = workKeys(useWork ? useWork((work) => JSON.stringify(work.waiting?.[id] ?? null)) : "null");
   const waitsFor = state === "waiting" ? waitingFor(roster, waits) : "";
@@ -6178,7 +6228,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
       "span",
       { className: "bt-row-body" },
       (0, import_react11.createElement)("span", { className: "bt-row-name" }, (0, import_react11.createElement)("span", { className: "bt-row-title" }, bot.name), pinned ? (0, import_react11.createElement)(PinMark) : null),
-      awayLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, awayLine) : waitsFor ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, waitsFor) : preview ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, preview) : null
+      runningLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, runningLine) : awayLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, awayLine) : waitsFor ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, waitsFor) : preview ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, preview) : null
     ) : null,
     wide && unread && !active ? (0, import_react11.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : null
   );
@@ -6648,6 +6698,9 @@ function pressSettingsShortcut() {
     metaKey: held.has("meta")
   }));
 }
+var NO_SUBSCRIBE = () => () => {
+};
+var NO_SNAPSHOT = () => null;
 function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboarding, actions }) {
   const [open, setOpen] = (0, import_react11.useState)(false);
   (0, import_react11.useLayoutEffect)(() => {
@@ -6694,6 +6747,42 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
       window.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
+  const signIn = actions.signInEntry?.() ?? null;
+  const ops = (0, import_react11.useMemo)(() => signIn?.inject?.() ?? {}, [signIn]);
+  const accountSource = ops.hooks?.account;
+  const account = (0, import_react11.useSyncExternalStore)(accountSource?.subscribe ?? NO_SUBSCRIBE, accountSource ? () => accountSource.getSnapshot() : NO_SNAPSHOT);
+  const signedIn = signIn !== null && typeof ops.signOut === "function" && account?.view?.status === "credential-stored";
+  const accountT = actions.accountT?.() ?? ((key) => key);
+  const [confirm, setConfirm] = (0, import_react11.useState)(null);
+  const [busy, setBusy] = (0, import_react11.useState)(false);
+  const [signOutError, setSignOutError] = (0, import_react11.useState)("");
+  const askSignOut = async () => {
+    setSignOutError("");
+    let state = "none";
+    try {
+      if (await ops.hasRunningAccountTasks?.()) state = "running";
+    } catch {
+      state = "unknown";
+    }
+    setConfirm(state);
+  };
+  const cancelSignOut = () => {
+    setConfirm(null);
+    setSignOutError("");
+  };
+  const runSignOut = async () => {
+    setBusy(true);
+    setSignOutError("");
+    try {
+      await ops.signOut();
+      setConfirm(null);
+      setOpen(false);
+    } catch (error) {
+      setSignOutError(String(error?.message ?? error));
+    } finally {
+      setBusy(false);
+    }
+  };
   const tick = useViewport();
   (0, import_react11.useLayoutEffect)(() => {
     if (!open) return;
@@ -6701,6 +6790,12 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
     if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 });
   }, [open, tick]);
   const toggle = () => setOpen((value) => !value);
+  (0, import_react11.useEffect)(() => {
+    if (open) return;
+    setConfirm(null);
+    setSignOutError("");
+    setBusy(false);
+  }, [open]);
   const groups = [
     [
       [t("Usage"), GaugeIcon, () => actions.openSettings("usage")],
@@ -6712,6 +6807,7 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
       [t("Switch to classic Agent mode"), SwitchIcon, () => actions.setSurface("agent")]
     ]
   ];
+  if (signedIn) groups.push([[accountT("signOut"), SignOutIcon, askSignOut, void 0, true]]);
   return (0, import_react11.createElement)(
     import_react11.Fragment,
     null,
@@ -6723,16 +6819,29 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
     open && box ? (0, import_react_dom3.createPortal)((0, import_react11.createElement)(
       "div",
       { className: "bt-menu bt-menu-up bt-account-menu", role: "menu", "aria-label": t("Account"), style: box },
-      groups.map((group, index) => (0, import_react11.createElement)(
+      confirm !== null ? (0, import_react11.createElement)(
+        "div",
+        { className: "bt-confirm", role: "alertdialog", "aria-label": accountT("signOut") },
+        (0, import_react11.createElement)("p", { className: "bt-confirm-text" }, accountT(confirm === "running" ? "signOutRunningDescription" : confirm === "unknown" ? "signOutUnknownDescription" : "signOutDescription")),
+        signOutError !== "" ? (0, import_react11.createElement)("p", { className: "bt-confirm-error", role: "alert" }, signOutError) : null,
+        (0, import_react11.createElement)(
+          "div",
+          { className: "bt-confirm-row" },
+          (0, import_react11.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: cancelSignOut }, t("Cancel")),
+          (0, import_react11.createElement)("button", { type: "button", className: "bt-confirm-go", disabled: busy, onClick: () => {
+            void runSignOut();
+          } }, accountT("signOut"))
+        )
+      ) : groups.map((group, index) => (0, import_react11.createElement)(
         import_react11.Fragment,
         { key: index },
         index > 0 ? (0, import_react11.createElement)("div", { className: "bt-menu-sep", role: "separator" }) : null,
-        group.map(([label, Icon, run, hint]) => (0, import_react11.createElement)("button", {
+        group.map(([label, Icon, run, hint, stay]) => (0, import_react11.createElement)("button", {
           key: label,
           type: "button",
           role: "menuitem",
           onClick: () => {
-            setOpen(false);
+            if (stay !== true) setOpen(false);
             void Promise.resolve(run()).catch((error) => actions.reportError(error, "menu"));
           }
         }, (0, import_react11.createElement)(Icon), (0, import_react11.createElement)("span", { className: "bt-menu-label" }, label), hint ? (0, import_react11.createElement)("span", { className: "bt-menu-hint" }, hint) : null))
@@ -6796,6 +6905,14 @@ function BrandName() {
   return (0, import_react11.createElement)("span", { style: { fontWeight: 600, fontSize: 14 } }, "DS Bot");
 }
 var SIDEBAR_CSS = `
+.bt-confirm{width:260px;max-width:72vw;padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
+.bt-confirm-text{margin:0;font-size:13px;line-height:19px;color:var(--bt-ink-2)}
+.bt-confirm-error{margin:0;font-size:12px;line-height:17px;color:var(--bt-danger);overflow-wrap:anywhere}
+.bt-confirm-row{display:flex;justify-content:flex-end;gap:8px}
+.bt-menu .bt-confirm button{width:auto;min-height:0}
+.bt-confirm-go{height:28px;padding:0 14px;border:0;border-radius:999px;background:var(--bt-accent);color:var(--bt-accent-ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .12s ease}
+.bt-confirm-go:hover:not(:disabled){opacity:.9}
+.bt-confirm-go:disabled{opacity:.6;cursor:default}
 .bt-side-top .bt-brand{cursor:default;padding-left:6px}
 .bt-side-top .bt-brand:hover{background:none}
 .bt-brand .bt-mark{flex:none}
@@ -9730,6 +9847,7 @@ label.bt-bs-row{cursor:text}
 .bt-bs-input:hover{background:var(--bt-hover)}
 .bt-bs-input:focus{background:var(--bt-main);border-color:var(--bt-line-2);text-align:left}
 .bt-bs-input::placeholder{color:var(--bt-ink-3)}
+.bt-bs-input.bt-bs-num{flex:0 0 72px;min-width:0}
 .bt-bs-stack{flex-direction:column;align-items:stretch;gap:8px}
 .bt-bs-area{flex:none;width:auto;min-height:112px;height:auto;margin:0 -6px -4px;padding:8px;line-height:19px;text-align:left;resize:vertical;background:var(--bt-hover)}
 .bt-bs-area:hover{background:var(--bt-active)}
@@ -10581,6 +10699,44 @@ function roomSubtitle(room2, roster) {
   const admin = roster.byId[room2.admin];
   return [t("{count} members", { count: room2.members.length }), admin ? t("Admin {name}", { name: admin.name }) : t("No admin")].join(" · ");
 }
+function RelayLimitRow({ room: room2, update }) {
+  const [draft, setDraft] = (0, import_react27.useState)(room2.relayLimit ?? "");
+  (0, import_react27.useEffect)(() => setDraft(room2.relayLimit ?? ""), [room2.relayLimit]);
+  const save = () => {
+    const text = String(draft).trim();
+    if (text === "") {
+      if (room2.relayLimit !== void 0) update({ relayLimit: null });
+      return;
+    }
+    const limit = Number(text);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200 || limit === room2.relayLimit) {
+      setDraft(room2.relayLimit ?? "");
+      return;
+    }
+    update({ relayLimit: limit });
+  };
+  return (0, import_react27.createElement)(
+    Row,
+    { label: t("Pause Bot relays after"), hint: t("Counted since your last message in this group.") },
+    (0, import_react27.createElement)("input", {
+      className: "bt-bs-input bt-bs-num",
+      type: "number",
+      min: 1,
+      max: 200,
+      placeholder: String(room2.relayLimitDefault ?? ""),
+      value: draft,
+      "aria-label": t("Pause Bot relays after"),
+      onChange: (event) => setDraft(event.target.value),
+      onBlur: save,
+      onKeyDown: (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }
+    })
+  );
+}
 function GroupPermission({ room: room2, catalog, update }) {
   if (!catalog?.options?.length) return null;
   const shared2 = room2.permission !== void 0;
@@ -10672,7 +10828,8 @@ function GroupSettingsForm({ room: room2, roster, actions, run, onDeleted }) {
           }
         }, t(label)))),
         (0, import_react27.createElement)("span", { key: mode, className: "bt-set-hint bt-veil" }, `${t(modeHint)} ${t("@mentions always pick who answers.")}`)
-      )
+      ),
+      (0, import_react27.createElement)(RelayLimitRow, { room: room2, update })
     ),
     (0, import_react27.createElement)(
       Card,
