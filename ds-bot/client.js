@@ -247,6 +247,8 @@ var ZH = {
   "Who answers": "谁来回答",
   "Choose an admin first": "先选一个管理员",
   "@mentions always pick who answers.": "@提及总是指定由谁回答。",
+  "Pause Bot relays after": "Bot 接力几次后暂停",
+  "Counted since your last message in this group.": "从你在群里的上一条消息算起。",
   Notice: "群公告",
   "Shared instructions every member reads before speaking…": "每位成员发言前都会读到的共同说明…",
   "Group notice": "群公告",
@@ -559,6 +561,8 @@ var ZH = {
   "{name} looked up its own chat for “{text}”": "{name} 在自己的对话里查找「{text}」",
   "{name} is typing…": "{name} 正在输入…",
   "{name} didn't answer in time": "{name} 没有及时回应",
+  "Paused after {count} Bot relays. Waiting: {names}": "Bot 之间已接力 {count} 次，先停下了。还在等：{names}",
+  "Continue": "继续",
   "{name} paused for your approval": "{name} 停下来等你批准",
   "{name} started on it": "{name} 开始做了",
   "You stopped {name}'s work": "你停下了 {name} 的工作",
@@ -1485,6 +1489,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     setPrefs: (prefs) => after(call2("set-prefs", prefs)),
     setMain: (id, main = true, options = {}) => after(call2("set-main", { id, main, ...options })),
     updateRoom: (id, patch) => after(call2("update-room", { id, ...patch })),
+    continueRoom: (roomId) => after(call2("room-continue", { roomId })),
     send: (sessionId, text) => after(call2("send", { sessionId: partFor(sessionId), text })),
     answerQuestion: (sessionId, questionId, answer) => after(call2("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: (sessionId) => after(call2("dismiss-question", { sessionId })),
@@ -2978,9 +2983,10 @@ var CONVERSATION_CSS = `
 .bt-think-text[data-fade=both]{mask-image:linear-gradient(to bottom,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
 .bt-event{display:flex;justify-content:center;align-items:center;gap:2px;min-height:24px;margin:2px 0;font-size:12px;line-height:16px;color:var(--bt-ink-2);flex-wrap:wrap}
 .bt-event>span{padding:0 2px}
-.bt-event button{border:0;background:none;color:inherit;font:inherit;display:inline-flex;align-items:center;gap:4px;cursor:pointer;height:24px;padding:4px 6px 4px 4px;border-radius:999px;box-sizing:border-box;transition:background-color .12s ease}
-.bt-event button:hover{background:var(--bt-hover)}
-.bt-event button:active{background:var(--bt-active)}
+.bt-event button:not(.bt-soft){border:0;background:none;color:inherit;font:inherit;display:inline-flex;align-items:center;gap:4px;cursor:pointer;height:24px;padding:4px 6px 4px 4px;border-radius:999px;box-sizing:border-box;transition:background-color .12s ease}
+.bt-event button:not(.bt-soft):hover{background:var(--bt-hover)}
+.bt-event button:not(.bt-soft):active{background:var(--bt-active)}
+.bt-event .bt-soft{margin-left:6px}
 .bt-event button.bt-event-whole{min-width:0;max-width:100%;padding:4px 6px 4px 8px}
 .bt-event-whole>*{flex:none}
 .bt-event-whole>span:first-child{margin-right:2px}
@@ -5694,6 +5700,14 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
       }
       if (reply.kind === "missed") {
         return (0, import_react9.createElement)("div", { key: `${reply.botId}-${index}`, className: "bt-event" }, t("{name} didn't answer in time", { name: bot.name }));
+      }
+      if (reply.kind === "paused") {
+        return (0, import_react9.createElement)(
+          "div",
+          { key: `paused-${index}`, className: "bt-event" },
+          (0, import_react9.createElement)("span", null, t("Paused after {count} Bot relays. Waiting: {names}", { count: reply.count, names: (reply.names ?? []).join(t(" and ")) })),
+          room2?.paused?.length > 0 ? (0, import_react9.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.continueRoom(sessionId) }, t("Continue")) : null
+        );
       }
       if (reply.kind === "resumed") {
         return (0, import_react9.createElement)("div", { key: `${reply.botId}-${index}`, className: "bt-event" }, t("{name} was cut off by a restart and picked its work back up", { name: bot.name }));
@@ -9697,6 +9711,7 @@ label.bt-bs-row{cursor:text}
 .bt-bs-input:hover{background:var(--bt-hover)}
 .bt-bs-input:focus{background:var(--bt-main);border-color:var(--bt-line-2);text-align:left}
 .bt-bs-input::placeholder{color:var(--bt-ink-3)}
+.bt-bs-input.bt-bs-num{flex:0 0 72px;min-width:0}
 .bt-bs-stack{flex-direction:column;align-items:stretch;gap:8px}
 .bt-bs-area{flex:none;width:auto;min-height:112px;height:auto;margin:0 -6px -4px;padding:8px;line-height:19px;text-align:left;resize:vertical;background:var(--bt-hover)}
 .bt-bs-area:hover{background:var(--bt-active)}
@@ -10548,6 +10563,44 @@ function roomSubtitle(room2, roster) {
   const admin = roster.byId[room2.admin];
   return [t("{count} members", { count: room2.members.length }), admin ? t("Admin {name}", { name: admin.name }) : t("No admin")].join(" · ");
 }
+function RelayLimitRow({ room: room2, update }) {
+  const [draft, setDraft] = (0, import_react27.useState)(room2.relayLimit ?? "");
+  (0, import_react27.useEffect)(() => setDraft(room2.relayLimit ?? ""), [room2.relayLimit]);
+  const save = () => {
+    const text = String(draft).trim();
+    if (text === "") {
+      if (room2.relayLimit !== void 0) update({ relayLimit: null });
+      return;
+    }
+    const limit = Number(text);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200 || limit === room2.relayLimit) {
+      setDraft(room2.relayLimit ?? "");
+      return;
+    }
+    update({ relayLimit: limit });
+  };
+  return (0, import_react27.createElement)(
+    Row,
+    { label: t("Pause Bot relays after"), hint: t("Counted since your last message in this group.") },
+    (0, import_react27.createElement)("input", {
+      className: "bt-bs-input bt-bs-num",
+      type: "number",
+      min: 1,
+      max: 200,
+      placeholder: String(room2.relayLimitDefault ?? ""),
+      value: draft,
+      "aria-label": t("Pause Bot relays after"),
+      onChange: (event) => setDraft(event.target.value),
+      onBlur: save,
+      onKeyDown: (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }
+    })
+  );
+}
 function GroupPermission({ room: room2, catalog, update }) {
   if (!catalog?.options?.length) return null;
   const shared2 = room2.permission !== void 0;
@@ -10639,7 +10692,8 @@ function GroupSettingsForm({ room: room2, roster, actions, run, onDeleted }) {
           }
         }, t(label)))),
         (0, import_react27.createElement)("span", { key: mode, className: "bt-set-hint bt-veil" }, `${t(modeHint)} ${t("@mentions always pick who answers.")}`)
-      )
+      ),
+      (0, import_react27.createElement)(RelayLimitRow, { room: room2, update })
     ),
     (0, import_react27.createElement)(
       Card,
