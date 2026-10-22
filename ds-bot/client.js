@@ -5874,6 +5874,16 @@ var import_react10 = require("react");
 var import_react_dom2 = require("react-dom");
 var PHRASE_HOLD_MS = 800;
 var drawPhrase = (pool) => t(pool[Math.min(pool.length - 1, Math.floor(Math.random() * pool.length))]);
+var rowVisible = ({ running, streaming, tools, relaying, bot, room: room2 }) => running && (!streaming || tools.length > 0) && !relaying && (bot !== void 0 || room2 !== void 0);
+var mountMissed = false;
+function findHost() {
+  const node = document.querySelector("[data-chat-flow] [data-chat-running]") ?? document.querySelector("[data-chat-flow]");
+  if (node === null && !mountMissed) {
+    mountMissed = true;
+    noteClientError("activity row", new Error("[data-chat-flow] not found"));
+  }
+  return node;
+}
 function useRunningHost(active) {
   const [host, setHost] = (0, import_react10.useState)(null);
   (0, import_react10.useEffect)(() => {
@@ -5884,8 +5894,10 @@ function useRunningHost(active) {
     let frame = 0;
     const find = () => {
       frame = 0;
-      const node = document.querySelector("[data-chat-flow] > [data-chat-running]");
-      setHost((prev) => prev === node ? prev : node);
+      setHost((prev) => {
+        const node = findHost();
+        return prev === node ? prev : node;
+      });
     };
     const observer = new MutationObserver(() => {
       if (!frame) frame = requestAnimationFrame(find);
@@ -5961,7 +5973,7 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const streaming = entries2.some((entry) => entry.text);
   const tools = entries2.filter((entry) => !entry.text).sort((a, b) => a.at - b.at);
   const relaying = tools.some((entry) => entry.relay);
-  const visible = running && !streaming && !relaying && (bot !== void 0 || room2 !== void 0);
+  const visible = rowVisible({ running, streaming, tools, relaying, bot, room: room2 });
   const tool = tools.at(-1);
   const inputRef = (0, import_react10.useRef)(0);
   const inputAt = Math.max(inputRef.current, pendingInput);
@@ -6053,6 +6065,7 @@ var useGroupWork = (useWork, pick2) => useWork ? useWork((work) => JSON.stringif
 var workKeys = (text) => JSON.parse(text);
 var doingOf = ({ tool, said, note, target, switching }) => ({ tool, said, note, target, switching });
 var workLine = (lead, doing, more) => (0, import_react11.createElement)(Shimmer, null, `${lead} · ${workPhrase(doing)}…${more > 0 ? ` +${more}` : ""}`);
+var doingLine = (doing) => (0, import_react11.createElement)(Shimmer, null, `${workPhrase(doing)}…`);
 var waitingFor = (roster, waits) => {
   const names = [...(waits?.bots ?? []).map((id) => roster.byId[id]?.name), ...(waits?.rooms ?? []).map((id) => roster.roomsById[id]?.name)].filter(Boolean);
   return names.length === 0 ? "" : t("Waiting for {names}", { names: names.join(t(" and ")) });
@@ -6073,6 +6086,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
   const groups = workKeys(useGroupWork(useWork, (rooms) => Object.entries(rooms).flatMap(([roomId, entries2]) => entries2.filter((entry) => entry.botId === id).map((entry) => ({ id: roomId, ...doingOf(entry) })))));
   const away = !running && groups.length > 0;
   const state = botState(running || away, doing, alert);
+  const runningLine = running && doing ? doingLine(doing) : null;
   const awayLine = away ? workLine(roster.roomsById[groups[0].id]?.name ?? t("a group chat"), groups[0], groups.length - 1) : null;
   const waits = workKeys(useWork ? useWork((work) => JSON.stringify(work.waiting?.[id] ?? null)) : "null");
   const waitsFor = state === "waiting" ? waitingFor(roster, waits) : "";
@@ -6119,7 +6133,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
       "span",
       { className: "bt-row-body" },
       (0, import_react11.createElement)("span", { className: "bt-row-name" }, (0, import_react11.createElement)("span", { className: "bt-row-title" }, bot.name), pinned ? (0, import_react11.createElement)(PinMark) : null),
-      awayLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, awayLine) : waitsFor ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, waitsFor) : preview ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, preview) : null
+      runningLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, runningLine) : awayLine ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, awayLine) : waitsFor ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, waitsFor) : preview ? (0, import_react11.createElement)("span", { className: "bt-row-preview" }, preview) : null
     ) : null,
     wide && unread && !active ? (0, import_react11.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : null
   );
