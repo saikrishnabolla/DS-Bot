@@ -6784,12 +6784,17 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
     }
   };
   const tick = useViewport();
-  (0, import_react11.useLayoutEffect)(() => {
-    if (!open) return;
+  const anchor = () => {
     const rect = button.current?.getBoundingClientRect();
     if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 });
+  };
+  (0, import_react11.useLayoutEffect)(() => {
+    if (open) anchor();
   }, [open, tick]);
-  const toggle = () => setOpen((value) => !value);
+  const toggle = () => {
+    if (!open) anchor();
+    setOpen((value) => !value);
+  };
   (0, import_react11.useEffect)(() => {
     if (open) return;
     setConfirm(null);

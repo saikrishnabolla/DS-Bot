@@ -557,12 +557,12 @@ export function AccountLauncher({ seat = true, settingsOpen, openSettings, openO
     }
   }
   const tick = useViewport()
-  useLayoutEffect(() => {
-    if (!open) return
+  const anchor = () => {
     const rect = button.current?.getBoundingClientRect()
     if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 })
-  }, [open, tick])
-  const toggle = () => setOpen(value => !value)
+  }
+  useLayoutEffect(() => { if (open) anchor() }, [open, tick])
+  const toggle = () => { if (!open) anchor(); setOpen(value => !value) }
   // Closing the menu drops a half-finished sign-out confirm with it.
   useEffect(() => {
     if (open) return
