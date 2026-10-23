@@ -17,14 +17,15 @@ DeepSeek Bot（简称 DS Bot）是一个基于 [DeepSeek Harness](https://github
 
 ## 安装
 
-**桌面应用（Windows、macOS）**
+**桌面应用（Windows、macOS、Linux）**
 
 桌面应用自带 dsh，不用先装 dsh。在 [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases) 里下载：
 
 - Windows（x64）：`DeepSeek-Bot-<版本>-win-x64.exe`。运行它即可安装，只装给当前用户，不要管理员权限。如果提示“Windows 已保护你的电脑”，点 **更多信息** → **仍要运行**。
 - macOS：Apple 芯片下载 `DeepSeek-Bot-<版本>-mac-arm64.zip`，Intel 下载 `DeepSeek-Bot-<版本>-mac-x64.zip`。Safari 会自动解压；把 **DeepSeek Bot** 拖进 **应用程序**，再打开。如果提示无法检查这个 App，打开 **系统设置** → **隐私与安全性**，点 **仍要打开**。
+- Linux（x64）：`DeepSeek-Bot-<版本>-linux-x86_64.AppImage` 通用于所有发行版——加上可执行权限后打开即可。它通过 FUSE 2 挂载，可能需要先安装（Ubuntu 24.04+ 用 `sudo apt install libfuse2t64`，Fedora 用 `sudo dnf install fuse-libs`，Arch 用 `sudo pacman -S fuse2`）。Ubuntu 24.04 及以后版本会限制 AppImage 需要的沙箱，AppImage 可能因此拒绝启动；Debian/Ubuntu 上的 `DeepSeek-Bot-<版本>-linux-amd64.deb` 没有这个问题，还会加菜单项。
 
-第一次打开时，App 会问数据和 Bot 的文件放在哪里，并可以从你的 dsh 复制 Bot 团队（只读取你的 dsh，不改它）。在 App 的设置里配好模型就能用。Windows 版会自动更新；macOS 版有新版本时会提示你下载。
+第一次打开时，App 会问数据和 Bot 的文件放在哪里，并可以从你的 dsh 复制 Bot 团队（只读取你的 dsh，不改它）。在 App 的设置里配好模型就能用。Windows 版和 Linux 的 AppImage 会自动更新；macOS 版和 Linux 的 deb 有新版本时会提示你下载。
 
 **作为 dsh 插件**
 
@@ -36,7 +37,7 @@ DeepSeek Bot（简称 DS Bot）是一个基于 [DeepSeek Harness](https://github
 2. **包名或地址** 填 `ds-bot`。在中国大陆，**安装源** 选 **中国大陆镜像源**。
 3. 点 **安装**，再点 **立即启用**。如果提示“下次启动生效”，完全退出 dsh 再打开。
 
-连不上 npm 时，第 2 步也可以填 [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases) 里下载的 `ds-bot-0.2.0.tgz` 的完整路径，或者 `github:Fei2411/DeepSeek-Bot#v0.2.0&path:/ds-bot`（需要装 Git）。
+连不上 npm 时，第 2 步也可以填 [Releases](https://github.com/Fei2411/DeepSeek-Bot/releases) 里下载的 `ds-bot-0.2.1.tgz` 的完整路径，或者 `github:Fei2411/DeepSeek-Bot#v0.2.1&path:/ds-bot`（需要装 Git）。
 
 **dsh Web（Windows、macOS、Linux）**
 
@@ -54,6 +55,10 @@ npx @deepseek-ai/dsh@0.2.1-rc.2 web
 ## 配置
 
 我强烈建议你直接通过和 bot 对话来配置其他 bot 和群聊。
+
+### 网页搜索
+
+DS Bot 会把 `auto` 搜索 provider 选为整个 profile 的后端。禁用 `web-search-auto` 时，也要为该 profile 选择另一个已注册的搜索 provider。详见[网页搜索说明](ds-bot/README.md#web-search)和[恢复步骤](docs/known-issues.zh.md#关掉-web-search-auto-后所有会话的网页搜索都失败)。
 
 ## 功能
 
