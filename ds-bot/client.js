@@ -492,6 +492,7 @@ var ZH = {
   "DS Bot {version} is available": "DS Bot {version} 可以更新",
   "Updating DS Bot…": "正在更新 DS Bot…",
   "DS Bot {version} is installed. Restart DSH to use it.": "DS Bot {version} 已安装，重启 DSH 后生效",
+  "DS Bot {version} is installed.": "DS Bot {version} 已安装。",
   "DS Bot update": "DS Bot 更新",
   "DS Bot {version}": "DS Bot {version}",
   "Update installed": "更新已安装",
@@ -8648,14 +8649,14 @@ function UpdateButton({ useUpdate, actions }) {
   const dsh = update?.dsh;
   const dshPhase = dsh?.phase ?? "idle";
   const dshRow = showsDshRow(dsh, update?.app);
-  if (!update?.available && !dshRow && phase === "idle" && dshPhase === "idle") return null;
-  const cloudPhase = phase === "installing" || dshPhase === "installing" ? "installing" : phase !== "idle" ? phase : dshPhase;
   const tick = useViewport();
   (0, import_react14.useLayoutEffect)(() => {
     if (!open) return;
     const rect = button.current?.getBoundingClientRect();
     if (rect) setBox({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.bottom + 6 });
   }, [open, tick]);
+  if (!update?.available && !dshRow && phase === "idle" && dshPhase === "idle") return null;
+  const cloudPhase = phase === "installing" || dshPhase === "installing" ? "installing" : phase !== "idle" ? phase : dshPhase;
   const toggle = () => setOpen((value) => !value);
   const start = () => {
     setError("");
@@ -8665,7 +8666,7 @@ function UpdateButton({ useUpdate, actions }) {
     setDshError("");
     void actions.installDshUpdate().catch((failure) => setDshError(hostText(failure?.message ?? String(failure))));
   };
-  const label = phase === "installing" ? t("Updating DS Bot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("DS Bot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : update?.available ? t("DS Bot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified });
+  const label = phase === "installing" ? t("Updating DS Bot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("DS Bot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : update?.available ? t("DS Bot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified });
   const message = error || (phase === "failed" ? update.error : "");
   const dshMessage = dshError || (dshPhase === "failed" ? dsh?.error : "");
   const dshText = dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : dsh?.available === false && dsh?.blockedBy ? t("Update DS Bot {version} first.", { version: dsh.blockedBy }) : t("You have {version}.", { version: dsh?.current });
@@ -8682,21 +8683,21 @@ function UpdateButton({ useUpdate, actions }) {
       "aria-haspopup": "dialog",
       "aria-expanded": open,
       onClick: toggle
-    }, (0, import_react14.createElement)(CloudDownloadIcon, { done: phase === "installed" }), phase === "failed" || dshPhase === "failed" ? (0, import_react14.createElement)("span", { className: "bt-update-dot", "aria-hidden": true }) : null),
+    }, (0, import_react14.createElement)(CloudDownloadIcon, { done: phase === "installed" || phase === "updated" }), phase === "failed" || dshPhase === "failed" ? (0, import_react14.createElement)("span", { className: "bt-update-dot", "aria-hidden": true }) : null),
     open && box ? (0, import_react_dom3.createPortal)((0, import_react14.createElement)(
       "div",
       { className: "bt-update-pop", role: "dialog", "aria-label": update?.available || phase !== "idle" ? t("DS Bot update") : t("DSH update"), style: box },
       update?.available || phase !== "idle" ? (0, import_react14.createElement)(
         import_react14.Fragment,
         null,
-        (0, import_react14.createElement)("div", { className: "bt-update-title" }, phase === "installed" ? t("Update installed") : t("DS Bot {version}", { version: update.latest })),
-        (0, import_react14.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using DS Bot {version}.", { version: update.installed ?? update.latest }) : t("You have {version}.", { version: update.current })),
+        (0, import_react14.createElement)("div", { className: "bt-update-title" }, phase === "installed" || phase === "updated" ? t("Update installed") : t("DS Bot {version}", { version: update.latest })),
+        (0, import_react14.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using DS Bot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : t("You have {version}.", { version: update.current })),
         message ? (0, import_react14.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message })) : null,
         (0, import_react14.createElement)(
           "div",
           { className: "bt-update-actions" },
           update.notesUrl ? (0, import_react14.createElement)("a", { className: "bt-update-notes", href: update.notesUrl, target: "_blank", rel: "noopener noreferrer" }, t("What's new")) : null,
-          phase === "installed" ? null : (0, import_react14.createElement)("button", {
+          phase === "installed" || phase === "updated" ? null : (0, import_react14.createElement)("button", {
             type: "button",
             className: "bt-update-go",
             disabled: phase === "installing",
@@ -14401,6 +14402,7 @@ var starCount = (count) => new Intl.NumberFormat(dateLocale(), { notation: "comp
 function botHint(update) {
   if (update.phase === "installing") return t("Updating DS Bot…");
   if (update.phase === "installed") return t("Restart DSH to start using DS Bot {version}.", { version: update.installed ?? update.latest });
+  if (update.phase === "updated") return t("DS Bot {version} is installed.", { version: update.installed ?? update.latest });
   if (update.phase === "failed") return t("The update did not finish: {reason}", { reason: hostText(update.error ?? "") });
   if (update.available) return t("DS Bot {version} is available", { version: update.latest });
   if (update.source === "app") return t("Updates come with the DeepSeek Bot app.");
@@ -14451,12 +14453,12 @@ function AboutPage({ useUpdate, actions, run: run2, Section, Row: Row3 }) {
   const dsh = update.dsh;
   const dshPhase = dsh?.phase ?? "idle";
   (0, import_react34.useEffect)(() => {
-    if (phase === "installed" || dshPhase === "installed") setCheer(true);
+    if (phase === "installed" || phase === "updated" || dshPhase === "installed") setCheer(true);
   }, [phase, dshPhase]);
   const markState = checking ? "searching" : phase === "installing" || dshPhase === "installing" ? "working" : cheer ? "done" : "idle";
   const dshNew = showsDshRow(dsh, update.app);
   const dshShown = dshNew && dsh.available;
-  const botControl = phase === "installed" || update.source === "app" ? null : update.available || phase === "installing" ? (0, import_react34.createElement)(
+  const botControl = phase === "installed" || phase === "updated" || update.source === "app" ? null : update.available || phase === "installing" ? (0, import_react34.createElement)(
     "button",
     { type: "button", className: "bt-fb-primary", disabled: phase === "installing", onClick: () => run2(actions.installUpdate()) },
     phase === "installing" ? t("Updating…") : phase === "failed" ? t("Try again") : t("Update")
