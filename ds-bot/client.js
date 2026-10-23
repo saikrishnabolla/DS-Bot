@@ -788,7 +788,6 @@ var ZH = {
   "Answering…": "正在回答…",
   Cancelled: "已取消",
   "Answered from progress so far; nothing was run": "基于目前已有进展的回答，没有执行任何操作",
-  Truncated: "已截断",
   "Could not answer.": "没能答上。",
   "Cancel this side question": "取消这次旁路提问",
   Conversations: "对话",
@@ -1066,7 +1065,6 @@ var HOST_ZH = {
   "btw is only available in a Bot's private chat.": "旁路提问只在 Bot 的私聊里可用。",
   "Write a question after /btw.": "在 /btw 后面写上问题。",
   "/btw does not take attachments.": "/btw 不能带附件。",
-  "Two aside questions are already running for this Bot. Ask again when one finishes.": "这个 Bot 已经有两个旁路提问在进行，等其中一个结束再问。",
   "This Bot has not called a model yet. Send a normal message first.": "这个 Bot 还没有调用过模型，请先正常发一条消息。",
   "DS Bot restarted before this answer finished.": "DS Bot 在回答完成前重启了。",
   "The model called a tool again after being told not to, so this aside was not answered.": "模型在被要求不要调用工具之后又调用了工具，所以这次没有回答。",
@@ -3307,7 +3305,7 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-btw[data-open] .bt-btw-chevron{transform:rotate(45deg)}
 .bt-btw-q{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px}
 .bt-btw[data-open] .bt-btw-q{white-space:normal}
-.bt-btw-time,.bt-btw-status,.bt-btw-mark{flex:none;color:var(--bt-ink-3);font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
+.bt-btw-time,.bt-btw-status{flex:none;color:var(--bt-ink-3);font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
 .bt-btw-cancel{margin-left:auto}
 .bt-btw-cancel:disabled{opacity:.55;cursor:default}
 .bt-btw-note{margin:4px 0 0;color:var(--bt-ink-3);font-size:12px;line-height:16px}
@@ -3315,7 +3313,6 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-btw-answer{font-size:14px;line-height:20px}
 .bt-btw-answer p{margin:0}
 .bt-btw-fail{margin:0 0 6px;color:var(--bt-danger);font-size:13px;line-height:18px}
-.bt-btw-mark{margin:6px 0 0}
 @media (prefers-reduced-motion:reduce){.bt-btw-chevron{transition:none}}
 `;
 var PLUGIN_ID = "ds-bot";
@@ -5093,7 +5090,6 @@ function useFold(text, { limit = FOLD_AT, whole, live = false, markdown = true }
 // src/client/btw-model.js
 var BTW_SOURCE = "ds-bot-btw";
 var BTW_TOKEN = "/btw ";
-var HOST_CUT = " [truncated]";
 var GROUP_REFUSAL = "btw is only available in a Bot's private chat.";
 var ATTACHMENT_REFUSAL = "/btw does not take attachments.";
 var EMPTY_REFUSAL = "Write a question after /btw.";
@@ -5276,11 +5272,6 @@ function partIndexOf(bot, sessionId, cursor) {
   if (Number.isInteger(cursor?.part)) return cursor.part;
   return partChain(bot).indexOf(sessionId) - 1;
 }
-function earlierPartCards(cards, bot, sessionId, partIndex) {
-  const partId = partChain(bot)[partIndex];
-  if (typeof partId !== "string" || partId === "" || partId === sessionId) return [];
-  return (Array.isArray(cards) ? cards : []).filter((card) => card?.partId === partId);
-}
 function rowTurn(item) {
   return typeof item?.turn === "number" && Number.isInteger(item.turn) ? item.turn : void 0;
 }
@@ -5395,19 +5386,6 @@ function withBtwRows(items, cards) {
   for (const card of aside) out.push(btwRow(card));
   return out;
 }
-function presentText(text, truncated) {
-  const raw = typeof text === "string" ? text : "";
-  let body = raw;
-  let cut = false;
-  if (raw.endsWith(HOST_CUT)) {
-    body = raw.slice(0, -HOST_CUT.length);
-    cut = true;
-  } else if (raw.endsWith("已截断")) {
-    body = raw.slice(0, -"已截断".length).trimEnd();
-    cut = true;
-  }
-  return { text: body, marked: truncated === true || cut };
-}
 
 // src/client/btw.js
 var import_react9 = require("react");
@@ -5428,9 +5406,8 @@ function BtwCardView({ card, compact: compact2 = false, actions }) {
     if (card?.status && card.status !== "answering") setOpen(true);
   }, [card?.status]);
   if (!card) return null;
-  const question = presentText(card.question, card.truncated === true || card.questionTruncated === true);
-  const answer = presentText(card.answer, card.truncated === true || card.answerTruncated === true);
-  const truncated = question.marked || answer.marked;
+  const question = typeof card.question === "string" ? card.question : "";
+  const answer = typeof card.answer === "string" ? card.answer : "";
   const when3 = stampOf(card);
   const answering = card.status === "answering";
   const cancel = (event) => {
@@ -5462,7 +5439,7 @@ function BtwCardView({ card, compact: compact2 = false, actions }) {
           onClick: () => setOpen((value) => !value)
         },
         (0, import_react9.createElement)("span", { className: "bt-btw-chevron", "aria-hidden": true }),
-        (0, import_react9.createElement)("span", { className: "bt-btw-q" }, question.text)
+        (0, import_react9.createElement)("span", { className: "bt-btw-q" }, question)
       ),
       when3 !== void 0 ? (0, import_react9.createElement)("time", { className: "bt-btw-time", dateTime: new Date(when3).toISOString() }, messageClock(when3)) : null,
       answering ? (0, import_react9.createElement)("span", { className: "bt-shimmer" }, t("Answering…")) : null,
@@ -5481,8 +5458,7 @@ function BtwCardView({ card, compact: compact2 = false, actions }) {
       "div",
       { className: "bt-btw-body" },
       card.status === "failed" ? (0, import_react9.createElement)("p", { className: "bt-btw-fail" }, failureText(card)) : null,
-      answer.text !== "" ? (0, import_react9.createElement)("div", { className: "bt-btw-answer" }, (0, import_react9.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: answer.text, labels: mdLabels2(), variant: "compact" })) : null,
-      truncated ? (0, import_react9.createElement)("p", { className: "bt-btw-mark" }, t("Truncated")) : null
+      answer !== "" ? (0, import_react9.createElement)("div", { className: "bt-btw-answer" }, (0, import_react9.createElement)(import_dsh_client_ui_primitives.MarkdownText, { text: answer, labels: mdLabels2(), variant: "compact" })) : null
     ) : null
   );
 }
@@ -5974,8 +5950,9 @@ function EarlierParts({ sessionId, roster, actions }) {
       setView((current) => {
         const pages = current.pages.slice();
         const at = pages.findIndex((entry) => entry.partIndex === partIndex);
-        if (at >= 0) pages[at] = { partIndex, items: [...incoming, ...pages[at].items] };
-        else pages.push({ partIndex, items: incoming });
+        const btw = Array.isArray(page.btw) ? page.btw : at >= 0 ? pages[at].btw : [];
+        if (at >= 0) pages[at] = { partIndex, items: [...incoming, ...pages[at].items], btw };
+        else pages.push({ partIndex, items: incoming, btw });
         pages.sort((a, b) => a.partIndex - b.partIndex);
         return { pages, cursor: page.cursor, loading: false, failed: false, startedAt: page.startedAt ?? current.startedAt };
       });
@@ -6008,10 +5985,8 @@ function EarlierParts({ sessionId, roster, actions }) {
     observer.observe(node);
     return () => observer.disconnect();
   }, [view.cursor, view.loading, view.failed]);
-  const bot = roster.byId[sessionId];
-  const cards = roster.btwCards?.[bot?.id];
   const items = [];
-  for (const page of view.pages) items.push(...withBtwRows(page.items, earlierPartCards(cards, bot, sessionId, page.partIndex)));
+  for (const page of view.pages) items.push(...withBtwRows(page.items, page.btw));
   return (0, import_react10.createElement)(
     "div",
     { className: "bt-earlier", role: "feed", "aria-label": t("Earlier messages"), "aria-busy": view.loading },

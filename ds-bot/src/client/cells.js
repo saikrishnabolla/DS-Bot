@@ -16,7 +16,7 @@ import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { noHover, useViewport, viewBottom } from './motion.js'
 import { heldCardKey } from './sources.js'
 import { BtwCardView } from './btw.js'
-import { earlierPartCards, partIndexOf, withBtwRows } from './btw-model.js'
+import { partIndexOf, withBtwRows } from './btw-model.js'
 import { layoutOf } from './themes.js'
 
 export { clockLabel }
@@ -391,8 +391,10 @@ function EarlierParts({ sessionId, roster, actions }) {
       setView(current => {
         const pages = current.pages.slice()
         const at = pages.findIndex(entry => entry.partIndex === partIndex)
-        if (at >= 0) pages[at] = { partIndex, items: [...incoming, ...pages[at].items] }
-        else pages.push({ partIndex, items: incoming })
+        // The host sends a part's aside cards on every page of that part.
+        const btw = Array.isArray(page.btw) ? page.btw : (at >= 0 ? pages[at].btw : [])
+        if (at >= 0) pages[at] = { partIndex, items: [...incoming, ...pages[at].items], btw }
+        else pages.push({ partIndex, items: incoming, btw })
         pages.sort((a, b) => a.partIndex - b.partIndex)
         return { pages, cursor: page.cursor, loading: false, failed: false, startedAt: page.startedAt ?? current.startedAt }
       })
@@ -423,10 +425,8 @@ function EarlierParts({ sessionId, roster, actions }) {
     observer.observe(node)
     return () => observer.disconnect()
   }, [view.cursor, view.loading, view.failed])
-  const bot = roster.byId[sessionId]
-  const cards = roster.btwCards?.[bot?.id]
   const items = []
-  for (const page of view.pages) items.push(...withBtwRows(page.items, earlierPartCards(cards, bot, sessionId, page.partIndex)))
+  for (const page of view.pages) items.push(...withBtwRows(page.items, page.btw))
   return h('div', { className: 'bt-earlier', role: 'feed', 'aria-label': t('Earlier messages'), 'aria-busy': view.loading },
     h('div', { ref: top, className: 'bt-earlier-top' },
       view.loading ? h(Shimmer, null, t('Loading earlier messages…'))

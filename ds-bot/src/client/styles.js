@@ -1099,7 +1099,7 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-btw[data-open] .bt-btw-chevron{transform:rotate(45deg)}
 .bt-btw-q{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:18px}
 .bt-btw[data-open] .bt-btw-q{white-space:normal}
-.bt-btw-time,.bt-btw-status,.bt-btw-mark{flex:none;color:var(--bt-ink-3);font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
+.bt-btw-time,.bt-btw-status{flex:none;color:var(--bt-ink-3);font-size:11px;line-height:14px;font-variant-numeric:tabular-nums}
 .bt-btw-cancel{margin-left:auto}
 .bt-btw-cancel:disabled{opacity:.55;cursor:default}
 .bt-btw-note{margin:4px 0 0;color:var(--bt-ink-3);font-size:12px;line-height:16px}
@@ -1107,7 +1107,6 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-btw-answer{font-size:14px;line-height:20px}
 .bt-btw-answer p{margin:0}
 .bt-btw-fail{margin:0 0 6px;color:var(--bt-danger);font-size:13px;line-height:18px}
-.bt-btw-mark{margin:6px 0 0}
 @media (prefers-reduced-motion:reduce){.bt-btw-chevron{transition:none}}
 `
 
