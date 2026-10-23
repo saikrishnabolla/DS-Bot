@@ -644,6 +644,7 @@ var ZH = {
   "Dismiss view": "关闭视图",
   Sources: "来源",
   Chart: "图表",
+  "Chart {n}": "图表 {n}",
   Series: "系列",
   "Chart options": "图表选项",
   "View as table": "以表格查看",
@@ -5124,41 +5125,6 @@ function saveImage(svg, name) {
   image.onerror = () => URL.revokeObjectURL(url);
   image.src = url;
 }
-function ChartMenu({ asTable, onTable, onCopy, onSave }) {
-  const [open, setOpen] = (0, import_react6.useState)(false);
-  const root = (0, import_react6.useRef)(null);
-  (0, import_react6.useEffect)(() => {
-    if (!open) return void 0;
-    const away = (event) => {
-      if (!root.current?.contains(event.target)) setOpen(false);
-    };
-    const key = (event) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", away, true);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("pointerdown", away, true);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
-  const pick2 = (run2) => () => {
-    setOpen(false);
-    run2();
-  };
-  return (0, import_react6.createElement)(
-    "div",
-    { ref: root, className: "bt-chart-tools", "data-open": open ? "" : void 0 },
-    (0, import_react6.createElement)("button", { type: "button", className: "bt-chart-more", "aria-label": t("Chart options"), "aria-haspopup": "menu", "aria-expanded": open, onClick: () => setOpen((value) => !value) }, (0, import_react6.createElement)(DotsIcon)),
-    open ? (0, import_react6.createElement)(
-      "div",
-      { className: "bt-menu bt-chart-menu", role: "menu" },
-      (0, import_react6.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(onTable) }, (0, import_react6.createElement)(TableIcon), asTable ? t("View as chart") : t("View as table")),
-      (0, import_react6.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(onCopy) }, (0, import_react6.createElement)(CopyIcon), t("Copy data")),
-      (0, import_react6.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(onSave) }, (0, import_react6.createElement)(DownloadIcon), t("Download image"))
-    ) : null
-  );
-}
 var TableIcon = () => (0, import_react6.createElement)(
   "svg",
   { width: 16, height: 16, viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true },
@@ -5184,7 +5150,7 @@ function ChartTable({ data }) {
     )
   );
 }
-function WidgetChart({ node, lookup }) {
+function WidgetChart({ node, lookup, registerChart }) {
   const data = chartData(node, lookup);
   const { kind, categories, series, unit } = data;
   const box = (0, import_react6.useRef)(null);
@@ -5195,6 +5161,7 @@ function WidgetChart({ node, lookup }) {
   const [asTable, setAsTable] = (0, import_react6.useState)(false);
   const [copied, setCopied] = (0, import_react6.useState)(false);
   const labelId = (0, import_react6.useId)();
+  const menuKey = (0, import_react6.useId)();
   const shown = series.map((_, index) => !hidden.includes(index));
   const toggle = (index) => {
     if (hidden.includes(index)) setHidden(hidden.filter((item) => item !== index));
@@ -5224,6 +5191,17 @@ function WidgetChart({ node, lookup }) {
       setTimeout(() => setCopied(false), 1200);
     });
   };
+  const action = (0, import_react6.useRef)(null);
+  action.current = { copy: copy2, save: () => {
+    if (svg.current) saveImage(svg.current, "chart.png");
+  } };
+  (0, import_react6.useEffect)(() => registerChart?.(menuKey, {
+    label: typeof node.caption === "string" && node.caption !== "" ? node.caption : null,
+    asTable,
+    toggleTable: () => setAsTable((value) => !value),
+    copy: () => action.current.copy(),
+    save: () => action.current.save()
+  }), [registerChart, menuKey, label, asTable]);
   const legend = isDonut ? (0, import_react6.createElement)("div", { className: "bt-chart-legend bt-chart-legend-list" }, categories.map((name, at) => (0, import_react6.createElement)(
     "div",
     {
@@ -5279,11 +5257,8 @@ function WidgetChart({ node, lookup }) {
   const body = asTable ? (0, import_react6.createElement)(ChartTable, { data }) : isDonut ? (0, import_react6.createElement)("div", { className: legendBeside ? "bt-chart-donut bt-chart-donut-beside" : "bt-chart-donut", onPointerLeave: () => setActive(null) }, plot, legend) : (0, import_react6.createElement)(import_react6.Fragment, null, legend, plot);
   return (0, import_react6.createElement)(
     "figure",
-    { ref: box, className: "bt-chart", "data-kind": kind, "data-table": asTable ? "" : void 0 },
+    { ref: box, className: "bt-chart", "data-kind": kind },
     (0, import_react6.createElement)("span", { id: labelId, hidden: true }, label),
-    (0, import_react6.createElement)(ChartMenu, { asTable, onTable: () => setAsTable((value) => !value), onCopy: copy2, onSave: () => {
-      if (svg.current) saveImage(svg.current, "chart.png");
-    } }),
     body,
     // The SVG stays mounted under the table, so the image can still be saved from it.
     asTable ? (0, import_react6.createElement)("div", { hidden: true }, plot) : null,
@@ -5326,20 +5301,10 @@ var CHART_CSS = `
 .bt-chart-donut{display:flex;flex-direction:column;align-items:center;gap:12px}
 .bt-chart-donut-beside{flex-direction:row;align-items:center;gap:24px}
 .bt-chart-donut-beside .bt-chart-legend-list{flex:1 1 auto;max-width:280px}
-.bt-chart-tools{position:absolute;top:-4px;right:0;z-index:5;opacity:0;transition:opacity .12s ease}
-.bt-chart:hover .bt-chart-tools,.bt-chart-tools:focus-within,.bt-chart-tools[data-open]{opacity:1}
-.bt-chart[data-table] .bt-chart-tools{position:relative;top:0;align-self:flex-end;order:-1;margin-bottom:-4px;opacity:1}
-@media (hover:none){.bt-chart-tools{opacity:1}}
-.bt-chart-more{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;color:var(--bt-ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.bt-chart-more:hover,.bt-chart-tools[data-open] .bt-chart-more{background:var(--bt-hover);color:var(--bt-ink)}
-.bt-chart-more:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px}
-.bt-chart-more svg{width:16px;height:16px}
-.bt-menu.bt-chart-menu{position:absolute;top:32px;right:0;--bt-origin:top right;min-width:180px}
-.bt-menu.bt-chart-menu button{gap:8px}
 .bt-chart-copied{position:absolute;top:2px;right:36px;font-size:12px;line-height:16px;color:var(--bt-ink-2);animation:bt-veil-in .16s ease-out}
 .bt-widget-table .bt-num{text-align:end;font-variant-numeric:tabular-nums}
 .bt-widget-table tbody th{padding:6px 10px;font-weight:400;text-align:start;color:var(--bt-ink);border-bottom:0}
-@media (prefers-reduced-motion:reduce){.bt-chart-mark,.bt-chart-dot,.bt-chart-tools{transition:none}.bt-chart-tip{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-chart-mark,.bt-chart-dot{transition:none}.bt-chart-tip{animation:none}}
 `;
 
 // src/client/widget-html.js
@@ -5804,7 +5769,7 @@ function WidgetNode({ node, ctx }) {
     case "table":
       return (0, import_react8.createElement)(WidgetTable, { node, lookup });
     case "chart":
-      return (0, import_react8.createElement)(WidgetChart, { node, lookup });
+      return (0, import_react8.createElement)(WidgetChart, { node, lookup, registerChart: ctx.registerChart });
     case "progress":
       return (0, import_react8.createElement)(WidgetProgress, { node, lookup });
     case "callout":
@@ -5833,7 +5798,7 @@ function WidgetNode({ node, ctx }) {
       return null;
   }
 }
-function WidgetView({ view, onSubmit, settled = false, answer = null, busy = false }) {
+function WidgetView({ view, onSubmit, settled = false, answer = null, busy = false, registerChart }) {
   const inputs = viewInputs(view);
   const [values, setValues] = (0, import_react8.useState)(() => Object.fromEntries(inputs.map((node) => [node.id, inputDefault(node)])));
   const sent = answer?.values?.inputs;
@@ -5848,18 +5813,85 @@ function WidgetView({ view, onSubmit, settled = false, answer = null, busy = fal
     lookup: viewScope(view, current),
     values: current,
     locked: settled || busy,
-    setInput: (id, value) => setValues((before) => ({ ...before, [id]: value }))
+    setInput: (id, value) => setValues((before) => ({ ...before, [id]: value })),
+    registerChart
   };
   return (0, import_react8.createElement)(WidgetNode, { node: view, ctx });
 }
+function useChartHandles() {
+  const [, bump] = (0, import_react8.useState)(0);
+  const charts = (0, import_react8.useRef)(/* @__PURE__ */ new Map());
+  const register = (0, import_react8.useRef)(null);
+  if (register.current === null) {
+    register.current = (key, handle) => {
+      charts.current.set(key, handle);
+      bump((value) => value + 1);
+      return () => {
+        charts.current.delete(key);
+        bump((value) => value + 1);
+      };
+    };
+  }
+  return { charts: [...charts.current.values()], registerChart: register.current };
+}
+function ViewMenuList({ charts, pick: pick2 }) {
+  return (0, import_react8.createElement)(
+    "div",
+    { className: "bt-menu bt-view-menu", role: "menu" },
+    charts.map((chart, index) => (0, import_react8.createElement)(
+      import_react8.Fragment,
+      { key: index },
+      charts.length > 1 ? (0, import_react8.createElement)(
+        import_react8.Fragment,
+        null,
+        index > 0 ? (0, import_react8.createElement)("div", { className: "bt-menu-sep", role: "separator" }) : null,
+        (0, import_react8.createElement)("div", { className: "bt-view-menu-label" }, chart.label ?? t("Chart {n}", { n: index + 1 }))
+      ) : null,
+      (0, import_react8.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(chart.toggleTable) }, (0, import_react8.createElement)(TableIcon), chart.asTable ? t("View as chart") : t("View as table")),
+      (0, import_react8.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(chart.copy) }, (0, import_react8.createElement)(CopyIcon), t("Copy data")),
+      (0, import_react8.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(chart.save) }, (0, import_react8.createElement)(DownloadIcon), t("Download image"))
+    ))
+  );
+}
+function ViewMenu({ charts }) {
+  const [open, setOpen] = (0, import_react8.useState)(false);
+  const root = (0, import_react8.useRef)(null);
+  (0, import_react8.useEffect)(() => {
+    if (!open) return void 0;
+    const away = (event) => {
+      if (!root.current?.contains(event.target)) setOpen(false);
+    };
+    const key = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const pick2 = (run2) => () => {
+    setOpen(false);
+    run2();
+  };
+  return (0, import_react8.createElement)(
+    "div",
+    { ref: root, className: "bt-view-tools", "data-open": open ? "" : void 0 },
+    (0, import_react8.createElement)("button", { type: "button", className: "bt-view-more", "aria-label": t("Chart options"), "aria-haspopup": "menu", "aria-expanded": open, onClick: () => setOpen((value) => !value) }, (0, import_react8.createElement)(DotsIcon)),
+    open ? (0, import_react8.createElement)(ViewMenuList, { charts, pick: pick2 }) : null
+  );
+}
 function WidgetCard({ title, view, onSubmit, onDismiss, busy = false, raised = false, settled = false, answer = null }) {
   const titleId = (0, import_react8.useId)();
+  const { charts, registerChart } = useChartHandles();
   const framed = raised || hasControls(view);
   const className = ["bt-view", framed ? "bt-q" : "bt-view-bare", settled ? "bt-q-settled" : "", raised ? "bt-q-raised" : ""].filter(Boolean).join(" ");
-  const head = title || onDismiss ? (0, import_react8.createElement)(
+  const head = title || onDismiss || countType(view, "chart") > 0 ? (0, import_react8.createElement)(
     "div",
     { className: "bt-view-head" },
     title ? (0, import_react8.createElement)("p", { className: "bt-view-title", id: titleId }, title) : (0, import_react8.createElement)("span", { className: "bt-view-title" }),
+    countType(view, "chart") > 0 ? (0, import_react8.createElement)(ViewMenu, { charts }) : null,
     onDismiss ? (0, import_react8.createElement)("button", { type: "button", className: "bt-q-x", "aria-label": t("Dismiss view"), title: t("Dismiss"), onClick: onDismiss, disabled: busy }, (0, import_react8.createElement)(CloseIcon)) : null
   ) : null;
   return (0, import_react8.createElement)(
@@ -5872,7 +5904,7 @@ function WidgetCard({ title, view, onSubmit, onDismiss, busy = false, raised = f
       "aria-busy": busy || void 0
     },
     head,
-    (0, import_react8.createElement)("div", { className: "bt-view-body" }, (0, import_react8.createElement)(WidgetView, { view, onSubmit, settled, answer, busy }))
+    (0, import_react8.createElement)("div", { className: "bt-view-body" }, (0, import_react8.createElement)(WidgetView, { view, onSubmit, settled, answer, busy, registerChart }))
   );
 }
 function PendingView({ sessionId, view, actions, inline }) {
@@ -5955,6 +5987,16 @@ var WIDGET_CSS = `
 .bt-view-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .bt-view-title{flex:1 1 0;min-width:0;margin:0;font-size:13px;line-height:18px;font-weight:500;color:var(--bt-ink);overflow-wrap:anywhere}
 .bt-q-settled .bt-view-title{color:var(--bt-ink-2)}
+.bt-view-tools{position:relative;flex:none;align-self:flex-start;opacity:0;transition:opacity .12s ease}
+.bt-view:hover .bt-view-tools,.bt-view-tools:focus-within,.bt-view-tools[data-open]{opacity:1}
+@media (hover:none){.bt-view-tools{opacity:1}}
+.bt-view-more{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;color:var(--bt-ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.bt-view-more:hover,.bt-view-tools[data-open] .bt-view-more{background:var(--bt-hover);color:var(--bt-ink)}
+.bt-view-more:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px}
+.bt-view-more svg{width:16px;height:16px}
+.bt-menu.bt-view-menu{position:absolute;top:32px;right:0;--bt-origin:top right;min-width:180px}
+.bt-menu.bt-view-menu button{gap:8px}
+.bt-view-menu-label{padding:2px 8px;font-size:11px;line-height:14px;color:var(--bt-ink-3);white-space:nowrap}
 .bt-view-body{min-width:0}
 .bt-widget-stack{display:flex;flex-direction:column;gap:12px;min-width:0}
 .bt-view-row{display:flex;flex-wrap:wrap;gap:12px 24px;min-width:0}
@@ -6032,7 +6074,7 @@ var WIDGET_CSS = `
 .bt-q-inline .bt-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--bt-msg-w,.8) * 100%),560px));order:0}
 body[data-bt-layout=flat] .bt-q-inline .bt-view{max-width:calc(var(--bt-flat-w,1) * 100%)}
 .bt-q-inline:has(>.bt-view-bare){margin:8px 0 12px}
-@media (prefers-reduced-motion:reduce){.bt-widget-progress-fill,.bt-view-radio-dot{transition:none}.bt-view-bare{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-widget-progress-fill,.bt-view-radio-dot,.bt-view-tools,.bt-view-more{transition:none}.bt-view-bare{animation:none}}
 ${CHART_CSS}
 ${HTML_CSS}
 `;
