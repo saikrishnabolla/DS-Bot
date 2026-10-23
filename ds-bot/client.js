@@ -750,8 +750,7 @@ var ZH = {
   "Updating memory": "正在更新记忆",
   "Checking memory": "正在查看记忆",
   "Memory updated": "记忆已更新",
-  "Show or hide the right sidebar": "显示或隐藏右侧栏",
-  "Right sidebar": "右侧栏",
+  "New terminal": "新建终端",
   "Team memory updated": "团队记忆已更新",
   "Updated {name}'s memory": "已更新 {name} 的记忆",
   "Memory updated. Open {name}'s memory": "记忆已更新，打开 {name} 的记忆",
@@ -2399,8 +2398,6 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 .bt-head{position:relative;display:flex;justify-content:center;align-items:center;height:40px;flex:none;pointer-events:none}
 .bt-pill{pointer-events:auto;display:inline-flex;align-items:center;gap:8px;height:40px;padding:7.5px 13.5px 7.5px 7.5px;border-radius:999px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 2px 8px -1px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);color:var(--bt-ink);font-family:inherit;font-size:14px;line-height:20px;cursor:pointer;max-width:70%;box-sizing:border-box;transition:background-color .12s ease,transform ${SPRING_TAP.duration}ms ${SPRING_TAP.easing}}
 .bt-pill:hover{background:color-mix(in srgb,var(--bt-main),#777 9%)}
-.bt-head-side{position:absolute;right:12px;top:4px;width:32px;height:32px;border-radius:8px;pointer-events:auto;transition:background-color .12s ease}
-.bt-head-side:hover{background:color-mix(in srgb,var(--bt-main),#777 12%);color:var(--bt-ink)}
 .bt-pill:active{transform:scale(.965)}
 .bt-pill-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .bt-pill-mem{flex:none;display:inline-flex;width:0;margin-left:-8px;overflow:hidden;transition:${spring(SPRING_SHAPE, "width", "margin-left")}}
@@ -3706,7 +3703,7 @@ var TrashIcon = lineIcon(["M3.5 5.5h13", "M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1
 var DuplicateIcon = lineIcon(["M7 7h8.5v9.5H7z", "M4.5 13V3.5H13", "M11.25 9.5v4.5M9 11.75h4.5"]);
 var SlidersIcon = lineIcon(["M4 6.5h5M12.5 6.5H16M4 13.5h4M11.5 13.5H16", "M10.5 4.5v4M9.5 11.5v4"]);
 var MemoryIcon = lineIcon(["M5.5 3.5h8A1.5 1.5 0 0 1 15 5v10a1.5 1.5 0 0 1-1.5 1.5h-8z", "M5.5 3.5v13", "M8.5 7.5h3.5M8.5 10.5h2.5", "M12 3.5v4l1-.8 1 .8"]);
-var SidePanelIcon = lineIcon(["M4.5 4h11A1.5 1.5 0 0 1 17 5.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5v-9A1.5 1.5 0 0 1 4.5 4z", "M12.5 4v12"]);
+var TerminalIcon = lineIcon(["M4.5 4h11A1.5 1.5 0 0 1 17 5.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5v-9A1.5 1.5 0 0 1 4.5 4z", "M6.5 8l2.5 2.5L6.5 13", "M11 13h3.5"]);
 var FolderIcon = lineIcon(["M3 6A1.5 1.5 0 0 1 4.5 4.5h3.2l1.8 2h6A1.5 1.5 0 0 1 17 8v6.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z"]);
 var ChatsIcon = lineIcon(["M3.5 5.5A1.5 1.5 0 0 1 5 4h7a1.5 1.5 0 0 1 1.5 1.5V10A1.5 1.5 0 0 1 12 11.5H8L5 14v-2.5A1.5 1.5 0 0 1 3.5 10z", "M13.5 7.5H15A1.5 1.5 0 0 1 16.5 9v4.5A1.5 1.5 0 0 1 15 15v2l-2.5-2h-3A1.5 1.5 0 0 1 8 13.5V13"]);
 var SETTINGS_ICONS = { general: GearIcon, bots: PeopleIcon, groups: ChatsIcon, usage: GaugeIcon };
@@ -9125,9 +9122,7 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
     ),
     (0, import_react15.createElement)("span", { className: "bt-sr", role: "status" }, memoryNotice ? t("Memory updated") : ""),
     (0, import_react15.createElement)(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
-    (0, import_react15.createElement)(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions }),
-    // DSH's way into its right sidebar sits in the session header this pill replaces.
-    actions.hasRightSidebar?.() ? (0, import_react15.createElement)("button", { type: "button", className: "bt-icon-btn bt-head-side", "data-bt-right-sidebar": "", "aria-label": t("Show or hide the right sidebar"), title: t("Right sidebar"), onClick: () => actions.toggleRightSidebar() }, (0, import_react15.createElement)(SidePanelIcon)) : null
+    (0, import_react15.createElement)(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions })
   );
 }
 function useTranscriptView() {
@@ -15748,6 +15743,7 @@ function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, a
     { className: "bt-drawer-top", "data-move": side },
     bot || room2 ? (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": bot ? t("Edit Bot") : t("Group settings"), title: bot ? t("Edit Bot") : t("Group settings"), "data-info-row": "settings", onClick: () => setView("settings") }, (0, import_react39.createElement)(GearIcon)) : null,
     bot && roster.browser === true && actions.openBrowser ? (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Open browser"), title: t("Open this Bot's browser"), onClick: () => actions.openBrowser(sessionId) }, (0, import_react39.createElement)(GlobeIcon)) : null,
+    (bot || room2) && actions.canOpenTerminal?.() ? (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "data-info-row": "terminal", "aria-label": t("New terminal"), title: t("New terminal"), onClick: () => actions.newTerminal() }, (0, import_react39.createElement)(TerminalIcon)) : null,
     bot || room2 ? (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": copied ? t("Copied conversation") : t("Share conversation"), title: copied ? t("Copied") : t("Copy conversation as Markdown"), onClick: share }, copied ? (0, import_react39.createElement)("span", { key: "copied", className: "bt-pop-in" }, "✓") : (0, import_react39.createElement)(ShareIcon)) : null,
     hasStrip ? null : (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Close details"), onClick: close }, (0, import_react39.createElement)(CloseIcon))
   );
@@ -15934,12 +15930,17 @@ function PanelStrip({ bot, subject, view, ids, active, reading, onView, actions,
   const ind = (0, import_react40.useRef)(null);
   const spot = (0, import_react40.useRef)(null);
   const under = (0, import_react40.useRef)(null);
+  const watcher = (0, import_react40.useRef)(null);
   (0, import_react40.useLayoutEffect)(() => {
     const box = wrap.current;
     const capsule = ind.current;
     if (!box || !capsule) return void 0;
     const node = view === "details" ? box.querySelector(".bt-ptab-bot") : box.querySelector(`[data-tab="${active}"]`);
-    under.current = node;
+    if (under.current !== node) {
+      if (under.current) watcher.current?.unobserve(under.current);
+      under.current = node;
+      if (node) watcher.current?.observe(node);
+    }
     if (!node) {
       capsule.style.opacity = "0";
       spot.current = null;
@@ -15974,8 +15975,13 @@ function PanelStrip({ bot, subject, view, ids, active, reading, onView, actions,
       capsule.style.left = `${spot.current.left}px`;
       capsule.style.right = `${spot.current.right}px`;
     });
+    watcher.current = observer;
     observer.observe(box);
-    return () => observer.disconnect();
+    if (under.current) observer.observe(under.current);
+    return () => {
+      watcher.current = null;
+      observer.disconnect();
+    };
   }, []);
   return (0, import_react40.createElement)(
     "div",
@@ -16628,7 +16634,7 @@ var BROWSER_CSS = `
 .bt-ptab-bot{padding:0 7px}
 .bt-ptab-bot .bt-mark{flex:none}
 .bt-ptab-name{max-width:96px;overflow:hidden;text-overflow:ellipsis;font-weight:500;animation:bt-ptab-label .18s ease}
-@keyframes bt-ptab-label{from{opacity:0;filter:blur(4px);max-width:0}}
+@keyframes bt-ptab-label{from{opacity:0;filter:blur(4px)}}
 .bt-ptab-fav{width:14px;height:14px;flex:none;border-radius:3px;object-fit:cover;color:var(--bt-ink-3)}
 .bt-ptab-globe{display:inline-flex}
 .bt-ptab-globe svg{width:14px;height:14px}
@@ -17612,6 +17618,35 @@ function serveBrowserReads({ browsers, post, clientId = globalThis.crypto.random
   };
 }
 
+// src/client/right-panel.js
+var RIGHTBAR_ATTRIBUTES = ["data-rightbar-collapsed", "data-rightbar-fullscreen"];
+function rightColumnOpen(doc) {
+  if (doc.querySelector("[data-rightbar-fullscreen]")) return true;
+  if (doc.querySelector("[data-rightbar-collapsed]")) return false;
+  return doc.querySelector("[data-rightbar-col]") !== null;
+}
+function drawerOpened(columnOpen) {
+  return columnOpen ? "collapse-column" : null;
+}
+function columnOpened(drawerOpen, moved) {
+  if (!drawerOpen) return null;
+  return moved ? "collapse-column" : "close-drawer";
+}
+function createSwitchWindow(settle) {
+  let token = null;
+  return {
+    moved() {
+      const self = token = {};
+      settle(() => {
+        if (token === self) token = null;
+      });
+    },
+    get pending() {
+      return token !== null;
+    }
+  };
+}
+
 // src/client/user-message.js
 var import_react42 = require("react");
 var ui = __toESM(require("@deepseek-ai/dsh-client-ui-primitives"), 1);
@@ -18274,16 +18309,7 @@ function apply(ctx) {
       const reactions = reactionStore.update((saved) => toggleReaction(saved, key, index, emoji), ui2.getSnapshot().reactions);
       ui2.set((state) => ({ ...state, reactions }));
     },
-    clearUnread: (id) => writeUnread(id, false),
-    // DSH's right sidebar (files, terminals), which a plugin may load after this one.
-    hasRightSidebar: () => ctx.get("sidebarRight") !== void 0,
-    toggleRightSidebar: () => {
-      try {
-        ctx.get("sidebarRight")?.toggleExpanded();
-      } catch (error) {
-        actions.reportError(error, "right-sidebar");
-      }
-    }
+    clearUnread: (id) => writeUnread(id, false)
   };
   if (browsers) {
     Object.assign(actions, {
@@ -18417,6 +18443,53 @@ function apply(ctx) {
       };
     }
   };
+  actions.canOpenTerminal = () => ctx.get("sidebarRight") !== void 0 && ctx.get("sidebarRightTabs")?.get("terminal") !== void 0;
+  actions.newTerminal = () => {
+    actions.closePanel();
+    try {
+      ctx.get("sidebarRight")?.openTab("terminal");
+    } catch (error) {
+      actions.reportError(error, "right-sidebar");
+    }
+  };
+  ctx.effect(() => {
+    const sidebar = ctx.get("sidebarRight");
+    if (!sidebar) return void 0;
+    let open = rightColumnOpen(document);
+    const switchWindow = createSwitchWindow((done) => setTimeout(done, 400));
+    const collapseColumn = () => {
+      try {
+        if (sidebar.isExpanded()) sidebar.toggleExpanded();
+      } catch (error) {
+        actions.reportError(error, "right-sidebar");
+      }
+    };
+    const observer = new MutationObserver(() => {
+      const next = rightColumnOpen(document);
+      const opening = next && !open;
+      open = next;
+      const verdict = opening ? columnOpened(ui2.getSnapshot().details !== null, switchWindow.pending) : null;
+      if (verdict === "close-drawer") actions.closePanel();
+      else if (verdict === "collapse-column") collapseColumn();
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: RIGHTBAR_ATTRIBUTES
+    });
+    const offMounted = sidebar.mounted.subscribe(() => switchWindow.moved());
+    let drawer = ui2.getSnapshot().details !== null;
+    const offUi = ui2.subscribe(() => {
+      const next = ui2.getSnapshot().details !== null;
+      if (next && !drawer && drawerOpened(rightColumnOpen(document)) === "collapse-column") collapseColumn();
+      drawer = next;
+    });
+    return () => {
+      observer.disconnect();
+      offMounted();
+      offUi();
+    };
+  }, "ds-bot: one right panel");
   const BOT_PRIORITY = -100;
   const shadow = (name, options, component) => ctx.slots.inject(name, () => ctx.slots.register({
     name,
