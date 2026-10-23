@@ -5219,7 +5219,8 @@ function WidgetChart({ node, lookup }) {
     setActive((current) => current === null ? 0 : (current + keys[event.key] + categories.length) % categories.length);
   };
   const point = active === null ? null : drawn.points[active];
-  const tipRows = isDonut ? active === null ? [] : [{ color: colorAt(active), name: "", value: `${withUnit(drawn.values[active], unit)} · ${drawn.total > 0 ? Math.round(drawn.values[active] / drawn.total * 100) : 0}%` }] : active === null ? [] : series.filter((_, index) => shown[index]).map((item) => ({ color: item.color, name: item.name, value: withUnit(item.values[active], unit) }));
+  const share = (at) => unit === "%" ? withUnit(drawn.values[at], unit) : `${withUnit(drawn.values[at], unit)} · ${drawn.total > 0 ? Math.round(drawn.values[at] / drawn.total * 100) : 0}%`;
+  const tipRows = active === null || isDonut ? [] : series.filter((_, index) => shown[index]).map((item) => ({ color: item.color, name: item.name, value: withUnit(item.values[active], unit) }));
   const copy2 = () => {
     void navigator.clipboard?.writeText(chartCsv(data)).then(() => {
       setCopied(true);
@@ -5237,7 +5238,7 @@ function WidgetChart({ node, lookup }) {
     },
     (0, import_react6.createElement)("i", { style: { background: colorAt(at) } }),
     (0, import_react6.createElement)("span", { className: "bt-chart-key-name" }, name),
-    (0, import_react6.createElement)("span", { className: "bt-chart-key-value" }, `${withUnit(drawn.values[at], unit)} · ${drawn.total > 0 ? Math.round(drawn.values[at] / drawn.total * 100) : 0}%`)
+    (0, import_react6.createElement)("span", { className: "bt-chart-key-value" }, share(at))
   ))) : series.length > 1 ? (0, import_react6.createElement)("div", { className: "bt-chart-legend" }, series.map((item, index) => (0, import_react6.createElement)("button", {
     key: index,
     type: "button",
@@ -5264,9 +5265,14 @@ function WidgetChart({ node, lookup }) {
         onPointerLeave: () => setActive(null)
       },
       drawn.parts,
-      isDonut ? (0, import_react6.createElement)("text", { className: "bt-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 5, textAnchor: "middle" }, active === null ? withUnit(drawn.total, unit) : fit(categories[active], drawn.size * 0.55, 15)) : drawn.hits.map((hit, at) => (0, import_react6.createElement)("rect", { key: `h${at}`, className: "bt-chart-hit", x: hit.x, y: hit.y, width: hit.w, height: hit.h, onPointerEnter: () => setActive(at) }))
+      isDonut ? active === null ? (0, import_react6.createElement)("text", { className: "bt-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 5, textAnchor: "middle" }, unit === "%" ? "" : withUnit(drawn.total, unit)) : (0, import_react6.createElement)(
+        import_react6.Fragment,
+        null,
+        (0, import_react6.createElement)("text", { className: "bt-chart-center-name", x: svgWidth / 2, y: drawn.height / 2 - 4, textAnchor: "middle" }, fit(categories[active], drawn.size * 0.56, LABEL)),
+        (0, import_react6.createElement)("text", { className: "bt-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 14, textAnchor: "middle" }, share(active))
+      ) : drawn.hits.map((hit, at) => (0, import_react6.createElement)("rect", { key: `h${at}`, className: "bt-chart-hit", x: hit.x, y: hit.y, width: hit.w, height: hit.h, onPointerEnter: () => setActive(at) }))
     ),
-    point && !asTable ? (0, import_react6.createElement)(
+    point && !asTable && !isDonut ? (0, import_react6.createElement)(
       "div",
       { className: "bt-chart-tip", role: "status", style: { left: point.x, top: point.y } },
       (0, import_react6.createElement)("b", null, categories[active]),
@@ -5276,7 +5282,7 @@ function WidgetChart({ node, lookup }) {
   const body = asTable ? (0, import_react6.createElement)(ChartTable, { data }) : isDonut ? (0, import_react6.createElement)("div", { className: legendBeside ? "bt-chart-donut bt-chart-donut-beside" : "bt-chart-donut", onPointerLeave: () => setActive(null) }, plot, legend) : (0, import_react6.createElement)(import_react6.Fragment, null, legend, plot);
   return (0, import_react6.createElement)(
     "figure",
-    { ref: box, className: "bt-chart", "data-kind": kind },
+    { ref: box, className: "bt-chart", "data-kind": kind, "data-table": asTable ? "" : void 0 },
     (0, import_react6.createElement)("span", { id: labelId, hidden: true }, label),
     (0, import_react6.createElement)(ChartMenu, { asTable, onTable: () => setAsTable((value) => !value), onCopy: copy2, onSave: () => {
       if (svg.current) saveImage(svg.current, "chart.png");
@@ -5292,12 +5298,14 @@ var CHART_CSS = `
 .bt-chart{position:relative;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
 .bt-chart-plot{position:relative;min-width:0}
 .bt-chart-svg{display:block;overflow:visible;outline:none;font-family:inherit}
+.bt-chart-svg text{pointer-events:none}
 .bt-chart-svg:focus-visible{outline:2px solid var(--bt-accent);outline-offset:4px;border-radius:4px}
 .bt-chart-grid{stroke:var(--bt-line);stroke-width:1;stroke-dasharray:3 3}
 .bt-chart-tick{font-size:${TICK}px;fill:var(--bt-ink-3);font-variant-numeric:tabular-nums}
 .bt-chart-label{font-size:${LABEL}px;fill:var(--bt-ink-2)}
 .bt-chart-value{font-size:${LABEL}px;fill:var(--bt-ink-2);font-variant-numeric:tabular-nums}
 .bt-chart-center{font-size:15px;font-weight:600;fill:var(--bt-ink);font-variant-numeric:tabular-nums}
+.bt-chart-center-name{font-size:${LABEL}px;fill:var(--bt-ink-2)}
 .bt-chart-mark{transition:opacity .12s ease}
 .bt-chart-mark[data-dim]{opacity:.28}
 .bt-chart-line{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -5323,6 +5331,7 @@ var CHART_CSS = `
 .bt-chart-donut-beside .bt-chart-legend-list{flex:1 1 auto;max-width:280px}
 .bt-chart-tools{position:absolute;top:-4px;right:0;z-index:5;opacity:0;transition:opacity .12s ease}
 .bt-chart:hover .bt-chart-tools,.bt-chart-tools:focus-within,.bt-chart-tools[data-open]{opacity:1}
+.bt-chart[data-table] .bt-chart-tools{position:relative;top:0;align-self:flex-end;order:-1;margin-bottom:-4px;opacity:1}
 @media (hover:none){.bt-chart-tools{opacity:1}}
 .bt-chart-more{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;color:var(--bt-ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .bt-chart-more:hover,.bt-chart-tools[data-open] .bt-chart-more{background:var(--bt-hover);color:var(--bt-ink)}
@@ -5332,7 +5341,7 @@ var CHART_CSS = `
 .bt-menu.bt-chart-menu button{gap:8px}
 .bt-chart-copied{position:absolute;top:2px;right:36px;font-size:12px;line-height:16px;color:var(--bt-ink-2);animation:bt-veil-in .16s ease-out}
 .bt-widget-table .bt-num{text-align:end;font-variant-numeric:tabular-nums}
-.bt-widget-table tbody th{padding:6px 10px;font-weight:400;text-align:start;color:var(--bt-ink)}
+.bt-widget-table tbody th{padding:6px 10px;font-weight:400;text-align:start;color:var(--bt-ink);border-bottom:0}
 @media (prefers-reduced-motion:reduce){.bt-chart-mark,.bt-chart-dot,.bt-chart-tools{transition:none}.bt-chart-tip{animation:none}}
 `;
 
@@ -6023,7 +6032,7 @@ var WIDGET_CSS = `
 .bt-q-raised .bt-view-head{padding:14px 16px 4px 20px}
 .bt-q-raised .bt-view-body{padding:0 16px 14px 20px}
 .bt-q-raised .bt-view-body .bt-q-list{padding:0;margin:0 -8px}
-.bt-q-inline .bt-view{margin:0;width:100%;max-width:min(calc(var(--bt-msg-w,.8) * 100%),calc(100% - 82px));order:0}
+.bt-q-inline .bt-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--bt-msg-w,.8) * 100%),560px));order:0}
 body[data-bt-layout=flat] .bt-q-inline .bt-view{max-width:calc(var(--bt-flat-w,1) * 100%)}
 .bt-q-inline:has(>.bt-view-bare){margin:8px 0 12px}
 @media (prefers-reduced-motion:reduce){.bt-widget-progress-fill,.bt-view-radio-dot{transition:none}.bt-view-bare{animation:none}}
