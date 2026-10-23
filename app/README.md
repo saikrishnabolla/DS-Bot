@@ -18,7 +18,7 @@ npm installs `ds-bot` from `../ds-bot` as a copy of its package files (`install-
 |---|---|---|
 | `DS_BOT_HOME` | The data location: the `DSH_HOME` of the app. When it is set, the app asks nothing at its first start and imports nothing | The folder chosen at the first start |
 | `DS_BOT_WORKSPACE` | With `DS_BOT_HOME`: the team workspace | `bot/workspace` in the data location |
-| `DS_BOT_SHELL_DATA` | The app's own data (window, Chromium storage, `locations.json`) | Electron's `userData` (Windows: `%APPDATA%\DeepSeek Bot`; macOS: `~/Library/Application Support/DeepSeek Bot`) |
+| `DS_BOT_SHELL_DATA` | The app's own data (window, Chromium storage, the Bot browsers' logins, `locations.json`) | Electron's `userData` (Windows: `%APPDATA%\DeepSeek Bot`; macOS: `~/Library/Application Support/DeepSeek Bot`) |
 | `DS_BOT_UPDATE_URL` | Windows and a Linux AppImage: a folder URL with `latest.yml` / `latest-linux.yml` and the installer. macOS and a Linux deb: a URL returning a JSON list like GitHub's `releases` API; a release counts only when this machine's package is attached. Prereleases count only for prerelease installs (see [Updates](#updates)). With `DS_BOT_HOME`, the app checks only when this is set | The newest GitHub release |
 
 On macOS, Electron's default `userData` directory for `productName` "DeepSeek Bot" is `~/Library/Application Support/DeepSeek Bot`.
@@ -113,7 +113,8 @@ The script serves a releases list with one release of that version that has this
 |---|---|
 | `src/main.mjs` | Main process: one instance, the window, which loads the Host's loopback address as DSH Web does, and the sign-in page DSH opens, which goes to the system browser |
 | `src/host-port.mjs` | The Host's port, kept between starts, since the page keeps its storage per address |
-| `src/preload.cjs` | Hands DS Bot's settings the data location and its move. On Windows it marks the page for the frameless window and sends the caption buttons the colors of the surface under them |
+| `src/preload.cjs` | Hands DS Bot's settings the data location and its move, and DS Bot's Bot browsers their webview leases. On Windows it marks the page for the frameless window and sends the caption buttons the colors of the surface under them |
+| `src/bot-browser.mjs` | The Bot browsers' webviews: only a leased one attaches, with fixed preferences; each Bot's logins stay on disk until the Bot is deleted; pages cannot reach the Host |
 | `src/window-frame.mjs`, `src/mica.css` | The frameless Windows window: the caption band, when Mica is available (Windows 11 22H2 and later), and the stylesheet that lets Mica through the sidebar |
 | `src/host-process.mjs` | Starts the Host in Electron's Node mode and owns its exit |
 | `src/host.mjs` | The Host: boots the profile with `runProfile()` and reports the launch URL and the page injections; for the first-run check (`DS_BOT_CHECK`), the chats it cannot read |
