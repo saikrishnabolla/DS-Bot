@@ -149,6 +149,31 @@ test('a user message inside a group relay shows its time', () => {
   assert.deepEqual(times.map(node => node.props.title), [`Today ${clockOf(today)}`])
 })
 
+// A group paused at its relay limit shows the wait, with a Continue button while
+// the room still parks calls — which calls room-continue with the group's id.
+test('a paused group shows the wait, and Continue releases it while calls are parked', () => {
+  const replies = [{ kind: 'paused', names: ['Writer', 'Coder'], count: 6, time: at(0, 14, 5) }]
+  const relay = call('group_relay', 'direct', { content: { replies } })
+
+  // Nothing parked on the room: the line stands alone, with no button.
+  const plain = show(relay, { sessionId: 'room' })
+  const events = findAll(plain, node => node.props?.className === 'bt-event').map(text)
+  assert.deepEqual(events, ['Paused after 6 Bot relays. Waiting: Writer and Coder'])
+  assert.equal(find(plain, node => node.type === 'button' && text(node) === 'Continue'), undefined)
+
+  const parked = { ...room, paused: [{ id: 'writer', name: 'Writer' }] }
+  const clicked = []
+  const live = show(relay, {
+    sessionId: 'room',
+    roster: team({ rooms: [parked], roomsById: { room: parked } }),
+    actions: { continueRoom: id => clicked.push(id) },
+  })
+  const button = find(live, node => node.type === 'button' && text(node) === 'Continue')
+  assert.ok(button, 'the Continue button is drawn while the room parks calls')
+  button.props.onClick()
+  assert.deepEqual(clicked, ['room'])
+})
+
 // The trigger of a post in a group chat carries the event's time, not the post's.
 test('a group post drawn from its trigger shows the time it came in', () => {
   const time = at(0, 16, 42)
@@ -345,6 +370,15 @@ const docks = (store, roster, options) => {
   effects = []
   return out
 }
+
+test('a secret request refused on a read-only window says so in one line', () => {
+  const refused = 'No card can be shown now. The Bot team in /somewhere is open in another dsh (Web or Desktop, pid 4 on host-a). This window shows the team but cannot change it; close the other one and reload.'
+  const root = program([call('request_secret', 'program:ro', { args: { name: 'DEMO_TOKEN' }, content: refused })])
+  assert.match(shown(root), /Chief could not ask for a key: this window can only view the team/)
+  // Other refusals stay silent: they are written for the model.
+  const wrong = 'Secret cards only work in your own chat. Tell the group you will ask the user in your own chat, and call request_secret there.'
+  assert.equal(shown(program([call('request_secret', 'program:grp', { args: { name: 'DEMO_TOKEN' }, content: wrong })])), '')
+})
 
 test('a card whose call is not drawn waits in the dock; a drawn one shows only at its call', () => {
   const store = cardStore()
