@@ -447,6 +447,7 @@ var ZH = {
   Flat: "平铺",
   "Bubble width": "气泡宽度",
   "Text width": "正文宽度",
+  "Show thinking": "显示思考过程",
   "Bots · {count}": "Bot · {count}",
   "First in the sidebar. Pick another Bot to hand it the role; {name} then stops being a Main Bot.": "排在侧栏最上面。选另一个 Bot 就会把主 Bot 交给它，{name} 随之不再是主 Bot。",
   "Choose a Bot…": "选择一个 Bot…",
@@ -1743,6 +1744,7 @@ var allThemes = () => ({ ...THEMES, ...customThemes });
 var MESSAGE_WIDTH = { min: 50, max: 100, step: 5 };
 var percent = (value, initial) => Number.isInteger(value) && value >= MESSAGE_WIDTH.min && value <= MESSAGE_WIDTH.max ? value : initial;
 var layoutOf = (prefs) => prefs?.layout === "flat" ? "flat" : "bubble";
+var thinkingShown = (prefs) => prefs?.thinking === true;
 var widthOf = (prefs) => percent(prefs?.width, 80);
 var flatWidthOf = (prefs) => percent(prefs?.flatWidth, 100);
 
@@ -5059,9 +5061,9 @@ function turnReasoning(steps, current) {
   if (members.findLast((step) => stepReasoning(step) !== "")?.step !== current.step) return "";
   return members.map(stepReasoning).filter(Boolean).join("\n\n");
 }
-function opensReply(steps, current) {
+function opensReply(steps, current, withReasoning = true) {
   const members = steps.length ? steps : [current];
-  const reasoner = members.findLast((step) => stepReasoning(step) !== "");
+  const reasoner = withReasoning ? members.findLast((step) => stepReasoning(step) !== "") : void 0;
   return members.find((step) => texts(step).length > 0 || step === reasoner)?.step === current.step;
 }
 var thinkingStep = (steps) => steps.find(thinkingLive);
@@ -5824,17 +5826,17 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
   const texts2 = groupPart === "reasoning" ? [] : data.blocks.filter((block) => block.kind === "text" && block.text.trim() !== "").map((block) => block.text);
   const running = data.status === "running";
   const members = steps.length ? steps : [data];
-  const reasoning = groupPart === "response" ? "" : turnReasoning(steps, data);
-  const thinking = groupPart === "response" ? void 0 : thinkingStep(members);
+  const shown = thinkingShown(roster.prefs);
+  const reasoning = groupPart === "response" || !shown ? "" : turnReasoning(steps, data);
+  const thinking = groupPart === "response" || !shown ? void 0 : thinkingStep(members);
   const ms = useThinkingMs({ sessionId, turn: data.turn, settledSteps: members.filter((step) => step.status !== "running").length, skip: hidden || reasoning === "" });
   useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts2.length > 0 ? { text: true } : null);
-  useLiveNote(actions, sessionId, `think:${node.key ?? data.seq}`, !hidden && thinking !== void 0 && reasoning !== "" ? { text: true } : null);
   if (hidden) return null;
   const relays = relayPart(data, groupPart) ? relaysBefore(contexts, steps, data) : [];
   if (texts2.length === 0 && !reasoning && relays.length === 0) return null;
   const selfId = roster.byId[sessionId]?.id ?? sessionId;
   const speaker = layoutOf(roster.prefs) === "flat" ? roster.byId[sessionId] : void 0;
-  const head = speaker !== void 0 && opensReply(steps, data) && (reasoning !== "" || texts2.length > 0 && !(groupPart === "response" && turnReasoning(steps, data) !== ""));
+  const head = speaker !== void 0 && opensReply(steps, data, shown) && (reasoning !== "" || texts2.length > 0 && !(groupPart === "response" && shown && turnReasoning(steps, data) !== ""));
   return (0, import_react10.createElement)(
     import_react10.Fragment,
     null,
@@ -13434,7 +13436,8 @@ function GeneralPage({ roster, actions, run }) {
       (0, import_react34.createElement)(SetRow, { label: t("Message layout") }, (0, import_react34.createElement)(Choice, { label: t("Message layout"), value: layoutOf(prefs), options: LAYOUTS, pick: (id) => run(actions.setPrefs({ layout: id })) })),
       // The flat layout's text has a width of its own; the bubble width stays for the user's messages.
       layoutOf(prefs) === "flat" ? (0, import_react34.createElement)(SetRow, { label: t("Text width") }, (0, import_react34.createElement)(WidthSlider, { label: t("Text width"), value: flatWidthOf(prefs), save: (flatWidth) => run(actions.setPrefs({ flatWidth })) })) : null,
-      (0, import_react34.createElement)(SetRow, { label: t("Bubble width") }, (0, import_react34.createElement)(WidthSlider, { label: t("Bubble width"), value: widthOf(prefs), save: (width) => run(actions.setPrefs({ width })) }))
+      (0, import_react34.createElement)(SetRow, { label: t("Bubble width") }, (0, import_react34.createElement)(WidthSlider, { label: t("Bubble width"), value: widthOf(prefs), save: (width) => run(actions.setPrefs({ width })) })),
+      (0, import_react34.createElement)(SetRow, { label: t("Show thinking") }, (0, import_react34.createElement)(Switch, { label: t("Show thinking"), on: thinkingShown(prefs), onChange: (thinking) => run(actions.setPrefs({ thinking })) }))
     ),
     actions.setSurface ? (0, import_react34.createElement)(
       SetSection,
@@ -16644,7 +16647,7 @@ function apply(ctx) {
       if (typeof release === "function") release();
       if (snapshot.ready) {
         try {
-          localStorage.setItem(PREFS_KEY, JSON.stringify({ theme: prefs.theme, accent: prefs.accent, motion: prefs.motion, layout: prefs.layout, width: prefs.width, flatWidth: prefs.flatWidth }));
+          localStorage.setItem(PREFS_KEY, JSON.stringify({ theme: prefs.theme, accent: prefs.accent, motion: prefs.motion, layout: prefs.layout, width: prefs.width, flatWidth: prefs.flatWidth, thinking: prefs.thinking }));
         } catch {
         }
       }
@@ -17062,6 +17065,9 @@ function apply(ctx) {
     // every message.
     () => shadow("conversation.chat.node", { key: "question-reply", priority: BOT_PRIORITY, locale: "chat" }, AnsweredReply),
     () => shadow("conversation.chat.node", { key: "compaction", priority: BOT_PRIORITY, locale: "chat" }, Nothing),
+    // A Bot chat leaves DSH's context lines (tool updates, injected context) out; a Bot
+    // message spliced in mid-turn gets an event line from the step that reads it instead.
+    () => shadow("conversation.chat.node", { key: "context", priority: BOT_PRIORITY, locale: "chat" }, Nothing),
     ...canDrawUserMessages() ? ["user", "steering"].map((key) => () => shadow("conversation.chat.node", { key, priority: BOT_PRIORITY, locale: "chat", inject: face }, UserMessageCell)) : [],
     () => shadow("conversation.input.permission", { priority: BOT_PRIORITY }, Nothing),
     () => shadow("conversation.input.plan", { priority: BOT_PRIORITY }, Nothing),
