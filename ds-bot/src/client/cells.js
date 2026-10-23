@@ -11,10 +11,11 @@ import { SecretToolCell } from './secret-card.js'
 import { t } from './i18n.js'
 import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
-import { turnReasoning, thinkingStep } from './turn-reasoning.js'
+import { turnReasoning, thinkingStep, opensReply } from './turn-reasoning.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { noHover, useViewport, viewBottom } from './motion.js'
 import { heldCardKey } from './sources.js'
+import { layoutOf } from './themes.js'
 
 export { clockLabel }
 
@@ -238,6 +239,11 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   const relays = relayPart(data, groupPart) ? relaysBefore(contexts, steps, data) : []
   if (texts.length === 0 && !reasoning && relays.length === 0) return null
   const selfId = roster.byId[sessionId]?.id ?? sessionId
+  // The flat layout heads a reply with who speaks, once per Turn: in the step that opens
+  // it, in that step's reasoning part when the reasoning shows there.
+  const speaker = layoutOf(roster.prefs) === 'flat' ? roster.byId[sessionId] : undefined
+  const head = speaker !== undefined && opensReply(steps, data)
+    && (reasoning !== '' || (texts.length > 0 && !(groupPart === 'response' && turnReasoning(steps, data) !== '')))
   return h(Fragment, null,
     relays.map(relay => {
       const source = relay.source
@@ -250,6 +256,7 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
         whole: true,
       })
     }),
+    head ? h(SpeakerHead, { bot: speaker, time: data.time }) : null,
     reasoning ? h(ThinkingRow, {
       text: reasoning, live: thinking !== undefined, viewKey: `${sessionId}:${data.turn}`,
       // The live clock counts the settled steps too: backing `at` by the settled
@@ -275,18 +282,27 @@ function EventLine({ prefix, bots, joiner = t('and'), onOpen, whole = false }) {
   return h('div', { className: 'bt-event' }, parts)
 }
 
+// The flat layout's head over a Bot's reply in its own chat: avatar, name, time.
+function SpeakerHead({ bot, time }) {
+  return h('div', { className: 'bt-group-name' },
+    h('span', { className: 'bt-lead' }, h(BotMark, { bot, size: 22 })), bot.name,
+    Number.isFinite(time) ? h('span', { className: 'bt-group-time', title: clockLabel(time) }, messageClock(time)) : null)
+}
+
 // One Bot message inside a group chat: avatar, name (with its group role), when it ran
-// and how long it took, bubble.
+// and how long it took, bubble. The flat layout moves the avatar from beside the last
+// bubble to the head of the name row, so the text below runs the whole width.
 function GroupMessage({ bot, text, texts = [text], room, roster, actions, msgKey, useUi, whole, time, duration }) {
   const lead = h('button', { type: 'button', className: 'bt-lead', 'aria-label': t("Open {name}'s chat", { name: bot.name }), onClick: () => actions.openSession(bot.id) },
     h(BotMark, { bot, size: 22 }))
+  const flat = layoutOf(roster.prefs) === 'flat'
   const took = Number.isFinite(duration) ? elapsedLabel(duration) : undefined
   return h('div', { className: 'bt-group-msg' },
-    h('span', { className: 'bt-group-name', style: { color: inkText(colorOf(bot)) } }, bot.name,
+    h('span', { className: 'bt-group-name', style: flat ? undefined : { color: inkText(colorOf(bot)) } }, flat ? lead : null, bot.name,
       room?.admin === bot.id ? h('span', { className: 'bt-group-role' }, t('Admin')) : null,
       Number.isFinite(time) ? h('span', { className: 'bt-group-time', title: clockLabel(time) }, messageClock(time)) : null,
       took ? h('span', { className: 'bt-group-took', title: t('Ran for {duration}', { duration: took }) }, took) : null),
-    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead, whole }))
+    h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: room?.id, msgKey, useUi, lead: flat ? null : lead, whole }))
 }
 
 // A member's messages in a row, as one block under its name: what it says while it
@@ -437,7 +453,11 @@ function chatRow(row, key, { sessionId, selfId, roster, actions, useUi }) {
     case 'answer': return h(AnsweredReply, { key, node: { data: row } })
     // A display-only view replays from the blueprint the host kept on the call.
     case 'view': return h(WidgetCell, { key, sessionId, callId: row.callId, args: { text: name => name === 'title' ? row.title : undefined, value: name => name === 'view' ? row.view : undefined }, done: true, isError: false, roster, actions })
-    case 'bot': return h(Bubbles, { key, texts: row.texts, roster, selfId, actions, sessionId: useUi ? sessionId : undefined, msgKey: useUi ? `${sessionId}:${row.time}` : undefined, useUi, fold: FOLD_HUGE })
+    case 'bot': {
+      const bubbles = h(Bubbles, { key, texts: row.texts, roster, selfId, actions, sessionId: useUi ? sessionId : undefined, msgKey: useUi ? `${sessionId}:${row.time}` : undefined, useUi, fold: FOLD_HUGE })
+      const speaker = layoutOf(roster.prefs) === 'flat' ? roster.byId[selfId] : undefined
+      return speaker ? h(Fragment, { key }, h(SpeakerHead, { bot: speaker, time: row.time }), bubbles) : bubbles
+    }
     case 'event': {
       if (row.role === 'report') return h(GroupEvent, { key, prefix: t('Replies from'), room: roster.roomsById[row.roomId], name: t('a group chat'), roster, actions })
       const other = roster.byId[row.botId] ?? { id: row.botId, name: row.name ?? t('a Bot'), color: 'gray' }
