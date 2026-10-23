@@ -14496,12 +14496,17 @@ function PanelStrip({ bot, subject, view, ids, active, reading, onView, actions,
   const ind = (0, import_react38.useRef)(null);
   const spot = (0, import_react38.useRef)(null);
   const under = (0, import_react38.useRef)(null);
+  const watcher = (0, import_react38.useRef)(null);
   (0, import_react38.useLayoutEffect)(() => {
     const box = wrap.current;
     const capsule = ind.current;
     if (!box || !capsule) return void 0;
     const node = view === "details" ? box.querySelector(".bt-ptab-bot") : box.querySelector(`[data-tab="${active}"]`);
-    under.current = node;
+    if (under.current !== node) {
+      if (under.current) watcher.current?.unobserve(under.current);
+      under.current = node;
+      if (node) watcher.current?.observe(node);
+    }
     if (!node) {
       capsule.style.opacity = "0";
       spot.current = null;
@@ -14536,8 +14541,13 @@ function PanelStrip({ bot, subject, view, ids, active, reading, onView, actions,
       capsule.style.left = `${spot.current.left}px`;
       capsule.style.right = `${spot.current.right}px`;
     });
+    watcher.current = observer;
     observer.observe(box);
-    return () => observer.disconnect();
+    if (under.current) observer.observe(under.current);
+    return () => {
+      watcher.current = null;
+      observer.disconnect();
+    };
   }, []);
   return (0, import_react38.createElement)(
     "div",
@@ -15190,7 +15200,7 @@ var BROWSER_CSS = `
 .bt-ptab-bot{padding:0 7px}
 .bt-ptab-bot .bt-mark{flex:none}
 .bt-ptab-name{max-width:96px;overflow:hidden;text-overflow:ellipsis;font-weight:500;animation:bt-ptab-label .18s ease}
-@keyframes bt-ptab-label{from{opacity:0;filter:blur(4px);max-width:0}}
+@keyframes bt-ptab-label{from{opacity:0;filter:blur(4px)}}
 .bt-ptab-fav{width:14px;height:14px;flex:none;border-radius:3px;object-fit:cover;color:var(--bt-ink-3)}
 .bt-ptab-globe{display:inline-flex}
 .bt-ptab-globe svg{width:14px;height:14px}
