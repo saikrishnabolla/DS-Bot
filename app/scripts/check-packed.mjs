@@ -162,12 +162,52 @@ async function chat(cdp) {
   // Click the composer through the input pipeline. A bare focus() is not enough where no window
   // manager gives the window focus (xvfb in CI): the text and the Enter would go nowhere.
   const box = "[...document.querySelectorAll('[role=textbox][contenteditable=true], textarea')].at(-1)"
-  const rect = await evaluate(`(${box})?.getBoundingClientRect().toJSON()`)
-  if (!rect) throw new Error('the composer is not there')
-  const [cx, cy] = [rect.x + rect.width / 2, rect.y + rect.height / 2]
-  await cdp.call('Input.dispatchMouseEvent', { type: 'mousePressed', x: cx, y: cy, button: 'left', clickCount: 1 })
-  await cdp.call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cx, y: cy, button: 'left', clickCount: 1 })
-  await until("(document.activeElement?.isContentEditable ?? false) || document.activeElement?.tagName === 'TEXTAREA'", 'the focused composer', 10_000)
+  const focusCheck = "(document.activeElement?.isContentEditable ?? false) || document.activeElement?.tagName === 'TEXTAREA'"
+  // A greeting that just arrived leaves the composer rebinding: for a moment the field is
+  // not editable, so a click lands on it but does not focus it. The probe and the click are
+  // separate round trips, so keep probing and click only where the field itself is on top
+  // until the field holds focus.
+  const probe = `(() => {
+    const el = ${box}
+    if (el === undefined) return null
+    const rect = el.getBoundingClientRect()
+    for (const part of [0.5, 0.25, 0.75, 0.1, 0.9]) {
+      const point = { x: rect.x + rect.width * part, y: rect.y + rect.height / 2 }
+      const hit = document.elementFromPoint(point.x, point.y)
+      if (hit === el || (hit !== null && el.contains(hit))) return { x: point.x, y: point.y }
+    }
+    return null
+  })()`
+  let shot = null
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline && !(await evaluate(`Boolean(${focusCheck})`))) {
+    const point = await evaluate(probe)
+    if (point !== null && point !== undefined) {
+      shot = point
+      await cdp.call('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 })
+      await cdp.call('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 })
+      await sleep(300)
+    } else await sleep(250)
+  }
+  if (!(await evaluate(`Boolean(${focusCheck})`))) {
+    // Say what was under the cursor, what held the focus and how large the window was.
+    const state = await evaluate(`(() => {
+      const el = ${box}
+      const rect = el === undefined ? null : el.getBoundingClientRect().toJSON()
+      const point = rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+      const hit = point === null ? null : document.elementFromPoint(point.x, point.y)
+      const cover = hit?.closest?.('[role=dialog],[aria-modal=true],[data-slot]')
+      const brief = node => (node === null || node === undefined ? null : { tag: node.tagName ?? null, class: String(node.getAttribute?.('class') ?? '').slice(0, 160) })
+      return JSON.stringify({
+        inner: [innerWidth, innerHeight], outer: [outerWidth, outerHeight], screen: [screen.width, screen.height], dpr: devicePixelRatio, focused: document.hasFocus(),
+        click: ${JSON.stringify(shot)}, probe: point, box: rect,
+        hit: brief(hit),
+        cover: cover === null || cover === undefined ? null : { tag: cover.tagName, slot: cover.getAttribute('data-slot'), role: cover.getAttribute('role'), modal: cover.getAttribute('aria-modal') },
+        active: brief(document.activeElement),
+      })
+    })()`)
+    throw new Error(`timed out waiting for the focused composer; page state: ${state}`)
+  }
   await cdp.call('Input.insertText', { text: 'packaged app check' })
   await until(text('packaged app check'), 'the typed message', 10_000)
   for (const type of ['keyDown', 'keyUp']) await cdp.call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
