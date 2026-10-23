@@ -8,7 +8,7 @@ import { within } from './folders.js'
 import { absoluteLinks } from './links.js'
 import { unquote } from './text.js'
 import { mentionSpans } from '../shared/mentions.js'
-import { normalizeView, checkShownView } from '../shared/views.js'
+import { checkShownView } from '../shared/views.js'
 
 export const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] }
 export const GROUP_REF = { type: 'string', required: true, description: 'Exact group chat name from list_bots' }
@@ -168,10 +168,12 @@ export function install(rt) {
       const postedIn = posted !== undefined && posted.turn === turnOf(exec) ? posted.calls.get(target.id) : undefined
       if (postedIn !== undefined) refuse(`Not sent: you called ${target.name} in "${postedIn}" in this turn, and it works on that there. Send each task one way only; to add to it, post in that group.`)
       // Whoever waits for this work gets the answer by itself; a message there only
-      // sends the work round in a circle.
+      // sends the work round in a circle. Not a failed call: the turn goes on with
+      // the work, and the result says where its answer goes instead of showing a
+      // bare error the Bot cannot act on.
       const works = worksOf(exec)
       if (rt.upstreamOf(works).has(target.id)) {
-        refuse(`Not sent: ${target.name} is waiting for the result of the work you are doing, and your answer reaches it by itself. Finish the work and end your turn; to ask ${target.name} something, end your turn with the question.`)
+        return `Not sent: ${target.name} is waiting for the result of the work you are doing, and your answer reaches it by itself once everything you handed on is back. Finish the work and end your turn; to ask ${target.name} something, end your turn with the question.`
       }
       const toUser = args.reply_to === 'user'
       const work = toUser ? undefined : works[0]
@@ -636,10 +638,10 @@ export function install(rt) {
       const id = exec.agent?.id
       if (rt.groupOwners.has(id)) return 'View cards only work in your own chat. In a group, ask in your message instead.'
       if (!rt.chatOwners.has(id)) return `Only Bots on the team can use show_view. Use ${BLOCKING_QUESTION_TOOL} if it is available in this session, or ask the user in your reply.`
-      const view = normalizeView(args.view)
-      const checked = checkShownView(args.title, view)
+      const checked = checkShownView(args.title, args.view)
       if (checked.error !== undefined) return checked.error
       const title = checked.title
+      const view = checked.view
       if (!checked.interactive && args.await_reply === true) return 'This view has nothing to submit; call show_view with await_reply: false.'
       if (checked.interactive && args.await_reply === false) return 'This view has controls to submit, so it waits for the user\'s answer; call show_view without await_reply: false.'
       const awaitReply = args.await_reply ?? checked.interactive
