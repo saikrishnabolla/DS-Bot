@@ -30,9 +30,9 @@ export const browserOutput = {
 
 /**
  * @param {any} ctx
- * @param {{ toolDefs: any[], defineTool: Function, keyOf: (exec: any) => Promise<string|undefined>, profileRoot: string, downloadRoot?: string, headless: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, authorize?: (exec: any, botId: string, action: any) => Promise<void>, complete?: Function, openSession?: typeof openBotBrowser }} options
+ * @param {{ toolDefs: any[], defineTool: Function, keyOf: (exec: any) => Promise<string|undefined>, profileRoot: string, downloadRoot?: string, uploadRoots?: (botId: string) => Promise<string[]>, headless: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, authorize?: (exec: any, botId: string, action: any) => Promise<void>, complete?: Function, connect?: (botId: string) => Promise<string>, getHold?: (botId: string) => any, onHold?: (botId: string, hold: any) => void, openSession?: typeof openBotBrowser }} options
  */
-export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRoot, downloadRoot, headless, playwrightUrl, executablePath, actionTimeout, authorize, complete, connect, getHold, onHold, openSession = openBotBrowser }) {
+export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRoot, downloadRoot, uploadRoots, headless, playwrightUrl, executablePath, actionTimeout, authorize, complete, connect, getHold, onHold, openSession = openBotBrowser }) {
   const sessions = new Map()
   ctx.effect(() => async () => {
     const open = [...sessions.values()]
@@ -62,6 +62,7 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
             connect,
             getHold: () => getHold?.(botId),
             onHold: hold => onHold?.(botId, hold),
+            uploadRoots: uploadRoots ? () => uploadRoots(botId) : undefined,
           })
           sessions.set(botId, session)
         }
