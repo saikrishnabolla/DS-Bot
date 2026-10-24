@@ -162,6 +162,49 @@ async function setup(t, actionTimeout = 500, options = {}) {
   return { fixture, profileRoot, session }
 }
 
+async function mountedDownloadAndUpload(t, rootsFor) {
+  const fixture = await fixtureServer()
+  const profileRoot = await mkdtemp(join(tmpdir(), 'browser-mounted-download-'))
+  const { roots, ...destinations } = rootsFor(profileRoot)
+  await Promise.all(roots.map(root => mkdir(root, { recursive: true })))
+  let cleanup
+  let tool
+  t.after(async () => {
+    await cleanup?.()
+    await fixture.close()
+    await rm(profileRoot, { recursive: true, force: true })
+  })
+  mountBrowserPlugin({
+    effect(create) { cleanup = create() },
+    tools: { register(value) { tool = value } },
+  }, {
+    toolDefs: [{
+      name: 'browser_open',
+      needsBrowser: true,
+      async execute(args, { session }) {
+        const downloaded = await session.open(args.downloadUrl)
+        const snapshot = await session.open(args.pageUrl)
+        const uploaded = await session.upload(findRef(snapshot, 'Upload file'), [args.path])
+        return `${downloaded}\n${uploaded}`
+      },
+    }],
+    defineTool: value => value,
+    keyOf: async () => 'bot',
+    profileRoot,
+    downloadRoot: join(profileRoot, 'legacy-downloads'),
+    downloadRoots: async () => roots,
+    uploadRoots: async () => roots,
+    headless: true,
+    playwrightUrl,
+  })
+  const result = await tool.execute({
+    downloadUrl: new URL('download', fixture.url).href,
+    pageUrl: fixture.url,
+    path: join(roots[0], 'report.txt'),
+  }, { agent: { id: 'bot' } })
+  return { ...destinations, result }
+}
+
 test('unlabeled POST submits, GET forms, and links are not gated', async (t) => {
   const { fixture, session } = await setup(t)
   const actions = []
@@ -475,6 +518,28 @@ test('standalone uploads without configured roots are refused', async (t) => {
     /Uploads must come from an allowed folder.*Nothing was uploaded\./,
   )
   assert.doesNotMatch(await session.snapshotText(), /notes\.txt/)
+})
+
+test('mounted downloads and uploads use the Bot working directory', async t => {
+  const { result, working } = await mountedDownloadAndUpload(t, profileRoot => ({
+    roots: [join(profileRoot, 'working'), join(profileRoot, 'team')],
+    working: join(profileRoot, 'working'),
+  }))
+  assert.match(result, /Downloaded "report\.txt" to /u)
+  assert.ok(result.includes(join(working, 'report.txt')))
+  assert.match(result, /report\.txt/u)
+  assert.equal(await readFile(join(working, 'report.txt'), 'utf8'), 'download contents')
+})
+
+test('mounted downloads and uploads fall back to the team folder', async t => {
+  const { result, team } = await mountedDownloadAndUpload(t, profileRoot => ({
+    roots: [join(profileRoot, 'team')],
+    team: join(profileRoot, 'team'),
+  }))
+  assert.match(result, /Downloaded "report\.txt" to /u)
+  assert.ok(result.includes(join(team, 'report.txt')))
+  assert.match(result, /report\.txt/u)
+  assert.equal(await readFile(join(team, 'report.txt'), 'utf8'), 'download contents')
 })
 
 test('opening a direct attachment URL saves the download instead of throwing', async (t) => {
