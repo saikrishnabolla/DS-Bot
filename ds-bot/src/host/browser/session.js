@@ -87,27 +87,35 @@ async function loadChromium(playwrightUrl) {
 /**
  * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number }} options
  */
-export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT }) {
+export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, connect, getHold, onHold }) {
   const userDataDir = join(profileRoot, botId)
-  await mkdir(userDataDir, { recursive: true })
   const chromium = await loadChromium(playwrightUrl)
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless,
-    viewport: { width: 1280, height: 900 },
-    acceptDownloads: true,
-    ...(executablePath ? { executablePath } : {}),
-    args: ['--disable-dev-shm-usage'],
-  })
+  const browser = connect
+    ? await chromium.connectOverCDP(await connect(botId))
+    : undefined
+  if (!connect) await mkdir(userDataDir, { recursive: true })
+  const context = browser
+    ? browser.contexts()[0]
+    : await chromium.launchPersistentContext(userDataDir, {
+      headless,
+      viewport: { width: 1280, height: 900 },
+      acceptDownloads: true,
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--disable-dev-shm-usage'],
+    })
+  if (!context) throw new Error('The app browser relay has no browser context.')
   const page = context.pages()[0] ?? await context.newPage()
   const cookieFile = join(userDataDir, 'cookies.json')
-  try {
-    const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
-    if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
-  } catch { /* no cookies yet */ }
-  return createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout })
+  if (!browser) {
+    try {
+      const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
+      if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
+    } catch { /* no cookies yet */ }
+  }
+  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, getHold, onHold })
 }
 
-function createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout }) {
+function createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, getHold, onHold }) {
   const pages = new Set()
   const unknownByOrigin = new Map()
   const unknownPageOrigins = new WeakMap()
@@ -120,6 +128,9 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
   let pendingDelete = null
 
   const ready = () => {
+    const externalHold = getHold?.()
+    if (externalHold?.by === 'user') throw new Error('The user has taken over this browser. Wait for them to give it back.')
+    if (hold && getHold && externalHold == null) hold = null
     if (hold) throw new Error(`The browser is waiting for the user (${hold.reason}). Ask them to ${hold.note || 'take over'}, then call browser_resume.`)
   }
 
@@ -600,10 +611,13 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
     handoff(reason, note) {
       const kind = REASONS.has(reason) ? reason : 'other'
       hold = { reason: kind, note: String(note ?? '').slice(0, 300) }
+      onHold?.({ by: 'bot', reason: kind, note: hold.note })
       return `Waiting for the user (${kind}). ${hold.note || 'Ask them to take over.'} Call browser_resume when they have finished.`
     },
     resume() {
+      if (getHold?.()?.by === 'user') throw new Error('The user has taken over this browser. Only the user can give it back.')
       hold = null
+      onHold?.(null)
       return 'The browser is yours again.'
     },
     async runScript(source) {
@@ -643,6 +657,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
       return finalAnswer === undefined ? 'Script finished without done().' : String(finalAnswer)
     },
     async close() {
+      if (browser) { await browser.close().catch(() => {}); return }
       const cookies = await context.cookies().catch(() => [])
       const kept = cookies.map(cookie => cookie.expires > 0 ? cookie : { ...cookie, expires: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 })
       await writeFile(cookieFile, JSON.stringify(kept)).catch(() => {})

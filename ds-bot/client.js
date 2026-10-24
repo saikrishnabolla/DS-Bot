@@ -298,6 +298,12 @@ var ZH = {
   "cookies.txt, JSON, storageState": "cookies.txt、JSON、storageState",
   "Copy of its cookies": "复制它的 cookie",
   "No browsers found": "没有找到浏览器",
+  "The Bot controls this browser": "Bot 正在控制此浏览器",
+  "The Bot is waiting for you": "Bot 正在等待你",
+  "You control this browser": "你正在控制此浏览器",
+  "The Bot handed this browser to you: {reason}": "Bot 已将此浏览器交给你：{reason}",
+  "Take over": "接管",
+  "Give back": "交还",
   "{name} is running": "{name} 正在运行",
   "It must close for a moment so its cookies can be copied. It will reopen with your tabs.": "需要先把它关掉一下才能复制 cookie，之后会自动重新打开并恢复你的标签页。",
   "Close {name} and import": "关闭 {name} 并导入",
@@ -16304,6 +16310,11 @@ function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, roster, a
   ];
 }
 
+// src/client/browser-overlap.js
+function rectsOverlap(a, b) {
+  return a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0 && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 // src/client/browser-pane.js
 var import_react42 = require("react");
 var import_react_dom8 = require("react-dom");
@@ -16627,11 +16638,12 @@ function PanelStrip({ bot, subject, view, ids, active, sides, side, canBrowse, r
     (0, import_react42.createElement)("button", { type: "button", className: "bt-icon-btn bt-ptab-close", "aria-label": t("Close panel"), title: t("Close panel"), onClick: () => actions.closePanel() }, (0, import_react42.createElement)(CloseIcon2))
   );
 }
-function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) {
+function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages, hold }) {
   const page = useBrowserPages((pages) => pages[tabId ?? ""]) ?? EMPTY_PAGE;
   const frame = (0, import_react42.useRef)(null);
   const input = (0, import_react42.useRef)(null);
   const [draft, setDraft] = (0, import_react42.useState)(null);
+  const [covered, setCovered] = (0, import_react42.useState)(false);
   const imports = actions.browserImport;
   const [flow, setFlow] = (0, import_react42.useState)(null);
   const flowRef = (0, import_react42.useRef)(null);
@@ -16641,7 +16653,22 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
     flowRef.current = typeof next === "function" ? next(flowRef.current) : next;
     setFlow(flowRef.current);
   };
-  const showGuest = landed && !leaving && Boolean(page.url) && !page.error && flow === null;
+  const showGuest = landed && !leaving && !covered && Boolean(page.url) && !page.error && flow === null;
+  (0, import_react42.useEffect)(() => {
+    const update = () => {
+      const panel = frame.current?.getBoundingClientRect();
+      const overlaps2 = panel && [...document.querySelectorAll('[role="dialog"],[role="menu"],[role="listbox"]')].some((element) => rectsOverlap(panel, element.getBoundingClientRect()));
+      setCovered(Boolean(overlaps2));
+    };
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["role", "data-leaving"] });
+    window.addEventListener("resize", update);
+    update();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
   (0, import_react42.useEffect)(() => {
     setFlowTracked(null);
     return () => {
@@ -16731,6 +16758,17 @@ function BrowserView({ bot, tabId, leaving, landed, actions, useBrowserPages }) 
   return (0, import_react42.createElement)(
     "div",
     { className: "bt-panel-view bt-panel-browser", "aria-label": t("{name}'s browser", { name: bot.name }) },
+    actions.browserTakeover ? (0, import_react42.createElement)(
+      "div",
+      { className: "bt-browser-takeover", "data-held": hold?.by === "user" || void 0 },
+      (0, import_react42.createElement)("span", null, hold?.by === "user" ? t("You control this browser") : hold?.by === "bot" ? t("The Bot handed this browser to you: {reason}", { reason: hold.reason }) : t("The Bot controls this browser")),
+      hold?.by ? (0, import_react42.createElement)("button", { type: "button", onClick: () => void actions.browserGiveBack(bot.id) }, t("Give back")) : (0, import_react42.createElement)(
+        "span",
+        { className: "bt-browser-takeover-actions" },
+        (0, import_react42.createElement)("button", { type: "button", onClick: () => void actions.browserTakeover(bot.id) }, t("Take over")),
+        (0, import_react42.createElement)("button", { type: "button", onClick: () => void actions.browserStop(bot.id) }, t("Stop"))
+      )
+    ) : null,
     (0, import_react42.createElement)(
       "div",
       { className: "bt-browser-bar" },
@@ -16968,7 +17006,7 @@ function ImportCard({ flow, page, busy, onApply, onCancel, onCloseAndImport, onD
     )
   ));
 }
-function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages }) {
+function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }) {
   const bot = roster.byId[pane.id];
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow);
   const sideChats = bot ? sideChatsOf(roster, bot.id) : [];
@@ -16977,6 +17015,7 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
   const tabState = useBrowserTabs((map) => bot ? map[bot.id] ?? EMPTY_TABS2 : EMPTY_TABS2);
   const active = tabState.active;
   const page = useBrowserPages((pages) => (active ? pages[active] : null) ?? EMPTY_PAGE);
+  const hold = useBrowserHolds?.((map) => bot ? map[bot.id] ?? null : null) ?? null;
   const root = (0, import_react42.useRef)(null);
   const fly = (0, import_react42.useRef)(null);
   const [landed, setLanded] = (0, import_react42.useState)(false);
@@ -17199,7 +17238,7 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
     // pages underneath (the chat, the guest) see no pointer.
     dragging ? (0, import_react_dom8.createPortal)((0, import_react42.createElement)("div", { className: "bt-drag-shield", "aria-hidden": true }), document.body) : null,
     hasStrip ? (0, import_react42.createElement)(PanelStrip, { bot, subject: pane.id, view, ids: tabState.ids, active, sides: sideChats, side: pane.side, canBrowse, reading, onView: switchView, actions: panelActions, useBrowserPages }) : null,
-    view === "browser" && bot ? (0, import_react42.createElement)(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages }) : view === "side" && sideChat ? (0, import_react42.createElement)("div", { key: `side:${sideChat.id}`, className: "bt-panel-view" }, (0, import_react42.createElement)(SideChatView, { subject: pane.id, chat: sideChat, actions: panelActions })) : (0, import_react42.createElement)(
+    view === "browser" && bot ? (0, import_react42.createElement)(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages, hold }) : view === "side" && sideChat ? (0, import_react42.createElement)("div", { key: `side:${sideChat.id}`, className: "bt-panel-view" }, (0, import_react42.createElement)(SideChatView, { subject: pane.id, chat: sideChat, actions: panelActions })) : (0, import_react42.createElement)(
       "div",
       { key: `details:${pane.id}:${pane.renaming ? "rename" : ""}:${pane.tab ?? ""}`, className: "bt-panel-view" },
       (0, import_react42.createElement)(DetailsDrawer, {
@@ -17256,6 +17295,10 @@ var BROWSER_CSS = `
 .bt-panel[data-settling]>.bt-ptabs,.bt-panel[data-settling]>.bt-panel-view{flex-shrink:0;align-self:flex-end;box-sizing:border-box;width:calc(var(--bt-panel-w,320px) - .5px)}
 .bt-panel-browser{position:relative}
 .bt-browser-bar{position:relative;display:flex;align-items:center;gap:2px;height:52px;padding:0 10px 0 12px;flex:none;border-bottom:.5px solid var(--bt-line)}
+.bt-browser-takeover{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--bt-hover);border-bottom:.5px solid var(--bt-line);font-size:12px;color:var(--bt-ink-2)}
+.bt-browser-takeover[data-held]{background:var(--bt-active)}
+.bt-browser-takeover-actions{display:flex;gap:6px}
+.bt-browser-takeover button{border:1px solid var(--bt-line-2);border-radius:8px;padding:5px 9px;background:var(--bt-main);color:var(--bt-ink);font:inherit;cursor:pointer}
 .bt-browser-bar .bt-icon-btn:disabled{opacity:.35;cursor:default;background:none}
 .bt-browser-address{flex:1;min-width:0;display:flex;align-items:center;gap:6px;height:32px;margin:0 4px;padding:0 12px;border-radius:999px;background:var(--bt-hover);border:.5px solid transparent;transition:background-color .12s ease,border-color .12s ease,box-shadow .12s ease}
 .bt-browser-address:hover{background:var(--bt-active)}
@@ -17343,7 +17386,7 @@ var import_react43 = require("react");
 var import_react_dom9 = require("react-dom");
 var DIALOG_EXIT_MS = 160;
 var MENU_EXIT_MS3 = 120;
-function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useUpdate, actions }) {
+function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useBrowserHolds, useUpdate, actions }) {
   const roster = useRoster((value) => value);
   const ui2 = useUi((value) => value);
   useRegistry((value) => value);
@@ -17378,7 +17421,7 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
   return (0, import_react43.createElement)(
     import_react43.Fragment,
     null,
-    pane ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(BotPanel, { pane, leaving: open === null, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages }), document.body) : null,
+    pane ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(BotPanel, { pane, leaving: open === null, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,
     ui2.newChat ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(NewChat, { key: ui2.newChat, mode: ui2.newChat, roster, actions }), document.body) : null,
     ui2.palette ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(CommandPalette, { key: ui2.palette.token, start: ui2.palette.query, token: ui2.palette.token, roster, actions, useSessions }), document.body) : null,
     ui2.exchange ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(ExchangeDialog, { pair: ui2.exchange, roster, actions }), document.body) : null,
@@ -17791,6 +17834,73 @@ var PREVIEW_SCRIPT = `(() => {
   return text.replace(/\\s+/g, ' ').trim().slice(0, 200)
 })()`;
 var EMPTY = { url: "", title: "", favicon: null, loading: false, canGoBack: false, canGoForward: false, error: null, live: false, excerpt: "" };
+function createAppViewProxy(bridge, botId, tabId) {
+  const listeners2 = /* @__PURE__ */ new Map();
+  const state = { url: "", title: "", loading: false, canGoBack: false, canGoForward: false };
+  const fire = (name, event = {}) => {
+    for (const listener of listeners2.get(name) ?? []) listener({ type: name, ...event });
+  };
+  return {
+    isAppViewProxy: true,
+    style: {},
+    dataset: {},
+    addEventListener(name, listener, options = {}) {
+      listeners2.set(name, [...listeners2.get(name) ?? [], listener]);
+      options.signal?.addEventListener("abort", () => this.removeEventListener(name, listener), { once: true });
+    },
+    removeEventListener(name, listener) {
+      listeners2.set(name, (listeners2.get(name) ?? []).filter((item) => item !== listener));
+    },
+    setAttribute() {
+    },
+    remove() {
+      void bridge.views.place(tabId, null, false);
+    },
+    getURL() {
+      return state.url;
+    },
+    getTitle() {
+      return state.title;
+    },
+    isLoading() {
+      return state.loading;
+    },
+    canGoBack() {
+      return state.canGoBack;
+    },
+    canGoForward() {
+      return state.canGoForward;
+    },
+    loadURL(url) {
+      return bridge.views.navigate(botId, tabId, url);
+    },
+    executeJavaScript(script) {
+      return bridge.views.read(botId, tabId, script);
+    },
+    goBack() {
+      return bridge.views.command(botId, tabId, "back");
+    },
+    goForward() {
+      return bridge.views.command(botId, tabId, "forward");
+    },
+    reload() {
+      return bridge.views.command(botId, tabId, "reload");
+    },
+    stop() {
+      return bridge.views.command(botId, tabId, "stop");
+    },
+    focus() {
+      return bridge.views.focus(botId, tabId);
+    },
+    update(next) {
+      Object.assign(state, next);
+      fire("did-navigate");
+      fire("did-stop-loading");
+      fire("page-title-updated");
+      if (!state.loading) fire("dom-ready");
+    }
+  };
+}
 var METADATA_HOST = /^(169\.254\.\d+\.\d+|\[fd00:ec2::254\]|metadata\.google\.internal)$/i;
 var BLOCKED = "Cloud metadata addresses do not open here.";
 var blockedAddress = (url) => URL.canParse(url) && METADATA_HOST.test(new URL(url).hostname);
@@ -17805,11 +17915,12 @@ function browserAddress(input) {
   if (looksLikeHost && URL.canParse(`http://${text}`)) return new URL(`${local ? "http" : "https"}://${text}`).href;
   return `${SEARCH_URL}${encodeURIComponent(text)}`;
 }
-function createBotBrowsers({ bridge, createSource: createSource2, storage = globalThis.localStorage, document: doc = globalThis.document }) {
+function createBotBrowsers({ bridge, createSource: createSource2, storage = globalThis.localStorage, document: doc = globalThis.document, guestFactory }) {
   const views = /* @__PURE__ */ new Map();
   const owner = /* @__PURE__ */ new Map();
   const tabs = createSource2({});
   const pages = createSource2({});
+  const holds = createSource2({});
   const store = sharedMap(STORE_KEY, storage);
   let saved = store.read();
   const seen = /* @__PURE__ */ new Set();
@@ -17820,6 +17931,57 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   let resizeLater = 0;
   let disposed = false;
   let serial = 0;
+  const makeGuest = guestFactory ?? (bridge.views ? ({ botId, tabId }) => ({ element: createAppViewProxy(bridge, botId, tabId), appView: true }) : ({ document: document2 }) => ({ element: document2.createElement("webview"), appView: false }));
+  const appViewEvents = bridge.views?.subscribe?.((change) => {
+    const { botId, tabId } = change ?? {};
+    if (!botId || !tabId) return;
+    if (change.type === "closed") {
+      const entry2 = views.get(tabId);
+      entry2?.stop();
+      views.delete(tabId);
+      owner.delete(tabId);
+      tabs.set((snapshot) => {
+        const current = snapshot[botId];
+        if (!current) return snapshot;
+        const ids = current.ids.filter((id) => id !== tabId);
+        if (ids.length === 0) {
+          const next = { ...snapshot };
+          delete next[botId];
+          return next;
+        }
+        return { ...snapshot, [botId]: { ids, active: current.active === tabId ? ids.at(-1) : current.active } };
+      });
+      pages.set((snapshot) => {
+        const { [tabId]: _, ...rest } = snapshot;
+        return rest;
+      });
+      persist(botId);
+      return;
+    }
+    if (!owner.has(tabId)) owner.set(tabId, botId);
+    if (change.type === "created" && change.createdByBot) {
+      ensureTabs(botId);
+      tabs.set((snapshot) => {
+        const own = snapshot[botId] ?? { ids: [], active: null };
+        if (own.ids.includes(tabId)) return snapshot;
+        return { ...snapshot, [botId]: { ids: [...own.ids, tabId], active: tabId } };
+      });
+      publish2(tabId, { url: change.url ?? "", title: change.title ?? "", live: true });
+      persist(botId);
+      void open(tabId);
+    }
+    const entry = views.get(tabId);
+    if (entry?.appView) {
+      entry.botAttached = change.botAttached === true;
+      entry.ready = change.loading !== true;
+      entry.element.update(change);
+      if (entry.ready) {
+        observe(entry);
+        void preview(tabId);
+      }
+    }
+    publish2(tabId, change);
+  });
   const savedTab = (botId, tabId) => saved[botId]?.tabs?.find((entry) => entry.id === tabId);
   const publish2 = (tabId, patch) => pages.set((state) => {
     const botId = owner.get(tabId);
@@ -17855,6 +18017,10 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   };
   const place = (entry) => {
     const box = rect ?? { left: 0, top: 0, width: 800, height: 600 };
+    if (entry.appView) {
+      void bridge.views.place(entry.tabId, box, shown === entry.tabId && visible && Boolean(rect));
+      return;
+    }
     Object.assign(entry.element.style, {
       left: `${box.left}px`,
       top: `${box.top}px`,
@@ -17896,26 +18062,35 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   };
   async function create(tabId) {
     const botId = owner.get(tabId);
-    const reservation = await bridge.acquire(`bot:${botId}`);
+    const guest = await makeGuest({ bridge, document: doc, botId, tabId });
+    const pending = pages.getSnapshot()[tabId]?.url || savedTab(botId, tabId)?.url;
+    const reservation = guest.appView ? void 0 : await bridge.acquire(`bot:${botId}`);
     if (disposed) {
-      await bridge.release(reservation.lease).catch(() => {
+      if (reservation) await bridge.release(reservation.lease).catch(() => {
+      });
+      else await bridge.views.close(botId, tabId).catch(() => {
       });
       return void 0;
     }
-    const element = doc.createElement("webview");
+    if (guest.appView) await bridge.views.create(botId, tabId, pending ?? "");
+    const element = guest.element;
     element.dataset.sidebarBrowserFrame = "webview";
     Object.assign(element.style, { position: "fixed", display: "flex", border: "0", pointerEvents: "auto", background: "#fff" });
     element.dataset.btBrowser = tabId;
-    element.setAttribute("name", reservation.lease);
-    element.setAttribute("partition", reservation.partition);
-    element.setAttribute("allowpopups", "");
-    element.setAttribute("src", `about:blank#${reservation.lease}`);
-    const entry = { botId, tabId, element, lease: reservation.lease, ready: false, fresh: true, pending: pages.getSnapshot()[tabId]?.url || savedTab(botId, tabId)?.url, usedAt: Date.now() };
+    if (!guest.appView) {
+      element.setAttribute("name", reservation.lease);
+      element.setAttribute("partition", reservation.partition);
+      element.setAttribute("allowpopups", "");
+      element.setAttribute("src", `about:blank#${reservation.lease}`);
+    }
+    const entry = { botId, tabId, element, lease: reservation?.lease, appView: guest.appView, botAttached: false, ready: false, fresh: !guest.appView, pending: guest.appView ? void 0 : pending, usedAt: Date.now() };
     const lifetime = new AbortController();
     entry.stop = () => lifetime.abort();
     const { signal } = lifetime;
-    const unsubscribe = bridge.onOpenRequested(reservation.lease, (url) => void openTab(botId, url));
-    signal.addEventListener("abort", unsubscribe, { once: true });
+    if (!guest.appView) {
+      const unsubscribe = bridge.onOpenRequested(reservation.lease, (url) => void openTab(botId, url));
+      signal.addEventListener("abort", unsubscribe, { once: true });
+    }
     element.addEventListener("dom-ready", () => {
       entry.ready = true;
       observe(entry);
@@ -17954,9 +18129,16 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
       publish2(tabId, { loading: false, error: "The page crashed." });
     }, { signal });
     views.set(tabId, entry);
-    ensureLayer().append(element);
+    if (!guest.appView) ensureLayer().append(element);
     place(entry);
     publish2(tabId, { live: true, loading: Boolean(entry.pending) });
+    if (guest.appView) {
+      const state = (await bridge.views.sync(botId)).find((view) => view.tabId === tabId);
+      if (state) {
+        entry.botAttached = state.botAttached === true;
+        element.update(state);
+      }
+    }
     return entry;
   }
   const opening = /* @__PURE__ */ new Map();
@@ -17976,12 +18158,16 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     return job;
   }
   function trim() {
-    const idle = [...views.values()].filter((entry) => entry.tabId !== shown).sort((a, b) => a.usedAt - b.usedAt);
-    while (views.size > MAX_LIVE && idle.length > 0) void release(idle.shift().tabId);
+    const idle = [...views.values()].filter((entry) => !entry.appView && !entry.botAttached && entry.tabId !== shown).sort((a, b) => a.usedAt - b.usedAt);
+    while ([...views.values()].filter((entry) => !entry.appView).length > MAX_LIVE && idle.length > 0) void release(idle.shift().tabId);
   }
   async function release(tabId) {
     const entry = views.get(tabId);
     if (entry === void 0) return;
+    if (entry.appView) {
+      await bridge.views.place(tabId, rect ?? { left: 0, top: 0, width: 800, height: 600 }, false);
+      return;
+    }
     views.delete(tabId);
     entry.stop();
     entry.element.remove();
@@ -18007,7 +18193,11 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     await opening.get(tabId)?.catch(() => {
     });
     if (shown === tabId) await show2(null);
-    await release(tabId);
+    if (views.get(tabId)?.appView) {
+      await bridge.views.close(botId, tabId);
+      views.get(tabId)?.stop();
+      views.delete(tabId);
+    } else await release(tabId);
     tabs.set((snapshot) => {
       const current = snapshot[botId];
       if (current === void 0 || !current.ids.includes(tabId)) return snapshot;
@@ -18077,7 +18267,11 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
       await opening.get(tabId)?.catch(() => {
       });
       if (shown === tabId) await show2(null);
-      await release(tabId);
+      if (views.get(tabId)?.appView) {
+        await bridge.views.close(botId, tabId);
+        views.get(tabId)?.stop();
+        views.delete(tabId);
+      } else await release(tabId);
       owner.delete(tabId);
       pages.set((snapshot) => {
         if (snapshot[tabId] === void 0) return snapshot;
@@ -18097,6 +18291,10 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
   return {
     tabs,
     pages,
+    holds,
+    setHolds(value) {
+      holds.set(value && typeof value === "object" ? value : {});
+    },
     /** Restore a Bot's saved strip (or an empty one) so the panel can render it. */
     ensureTabs,
     openTab,
@@ -18160,7 +18358,11 @@ function createBotBrowsers({ bridge, createSource: createSource2, storage = glob
     dispose() {
       disposed = true;
       clearTimeout(resizeLater);
-      for (const entry of views.values()) void release(entry.tabId);
+      for (const entry of views.values()) {
+        if (entry.appView) void bridge.views.place(entry.tabId, rect ?? { left: 0, top: 0, width: 800, height: 600 }, false);
+        else void release(entry.tabId);
+      }
+      appViewEvents?.();
       layer?.remove();
     }
   };
@@ -18195,8 +18397,10 @@ function serveBrowserReads({ browsers, post, clientId = globalThis.crypto.random
       const open = browsers.openPages();
       reported = JSON.stringify(open);
       try {
-        const requests = await post("browser-wait", { clientId, open }, poll.signal);
+        const response = await post("browser-wait", { clientId, open }, poll.signal);
+        browsers.setHolds?.(response?.holds);
         failures = 0;
+        const requests = Array.isArray(response) ? response : response?.requests;
         for (const request of Array.isArray(requests) ? requests : []) void answer(request);
       } catch {
         if (stopped) return;
@@ -18960,6 +19164,9 @@ function apply(ctx) {
       browserNavigate: (tabId, input) => browsers.navigate(tabId, input),
       browserCommand: (tabId, name) => browsers.command(tabId, name),
       browserFocus: (tabId) => browsers.focus(tabId),
+      browserTakeover: bridge.views ? (botId) => call("browser-takeover", { botId }) : void 0,
+      browserStop: bridge.views ? (botId) => call("browser-stop", { botId }) : void 0,
+      browserGiveBack: bridge.views ? (botId) => call("browser-give-back", { botId }) : void 0,
       // Cookie imports, only where the bridge offers them (the desktop app): a file or an
       // installed browser's profile is previewed, then applied into the Bot's storage key.
       browserImport: typeof bridge.importSources === "function" ? {
@@ -19015,7 +19222,8 @@ function apply(ctx) {
   };
   const browserPages = browsers?.pages ?? createSource({});
   const browserTabs = browsers?.tabs ?? createSource({});
-  const face = () => ({ actions, hooks: { roster, ui: ui2, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, surface, update } });
+  const browserHolds = browsers?.holds ?? createSource({});
+  const face = () => ({ actions, hooks: { roster, ui: ui2, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update } });
   ctx.effect(() => noticeApprovals({
     work,
     roster,

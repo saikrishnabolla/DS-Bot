@@ -123,7 +123,7 @@ async function waitFor(check) {
   }
 }
 
-async function setup(t, actionTimeout = 500) {
+async function setup(t, actionTimeout = 500, extra = {}) {
   const fixture = await fixtureServer()
   let profileRoot
   let session
@@ -142,6 +142,7 @@ async function setup(t, actionTimeout = 500) {
     downloadDir: join(profileRoot, 'downloads'),
     playwrightUrl,
     actionTimeout,
+    ...extra,
   })
   return { fixture, profileRoot, session }
 }
@@ -211,6 +212,26 @@ test('payment buttons are refused and card details are never typed', async (t) =
   assert.match(after, /empty/)
   assert.doesNotMatch(after, /4111111111111111/)
   assert.doesNotMatch(after, /Paid/)
+})
+
+test('Bot handoff can resume, but user takeover blocks browser actions until give-back', async t => {
+  let hold = null
+  const { fixture, session } = await setup(t, 500, {
+    getHold: () => hold,
+    onHold: value => { hold = value },
+  })
+  const snapshot = await session.open(fixture.url)
+  assert.match(session.handoff('login', 'Sign in'), /Waiting for the user/)
+  assert.equal(hold.by, 'bot')
+  await assert.rejects(session.click(findRef(snapshot, 'Read link')), /browser is waiting for the user/)
+  assert.equal(session.resume(), 'The browser is yours again.')
+  assert.equal(hold, null)
+
+  hold = { by: 'user', reason: 'takeover', note: '' }
+  assert.throws(() => session.resume(), /Only the user can give it back/)
+  await assert.rejects(session.open(fixture.url), /The user has taken over this browser/)
+  hold = null
+  assert.match(await session.open(fixture.url), /Write safety/)
 })
 
 test('POST submit clicks are gated before the server receives them', async (t) => {

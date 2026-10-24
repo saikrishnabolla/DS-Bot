@@ -542,6 +542,9 @@ export function apply(ctx) {
       browserNavigate: (tabId, input) => browsers.navigate(tabId, input),
       browserCommand: (tabId, name) => browsers.command(tabId, name),
       browserFocus: (tabId) => browsers.focus(tabId),
+      browserTakeover: bridge.views ? botId => call('browser-takeover', { botId }) : undefined,
+      browserStop: bridge.views ? botId => call('browser-stop', { botId }) : undefined,
+      browserGiveBack: bridge.views ? botId => call('browser-give-back', { botId }) : undefined,
       // Cookie imports, only where the bridge offers them (the desktop app): a file or an
       // installed browser's profile is previewed, then applied into the Bot's storage key.
       browserImport: typeof bridge.importSources === 'function' ? {
@@ -600,7 +603,8 @@ export function apply(ctx) {
   actions.openOwnApp = async () => { await ownAppUpdates?.open?.() }
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
-  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, surface, update } })
+  const browserHolds = browsers?.holds ?? createSource({})
+  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update } })
   ctx.effect(() => noticeApprovals({
     work,
     roster,
