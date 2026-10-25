@@ -231,6 +231,33 @@ const writerLog = (request, said, reason = { kind: 'completed' }) => [
   { type: 'turn/end', seq: 4, data: { turn: 1, reason } },
 ]
 
+for (const role of ['reply', 'report', 'resume']) {
+  test(`a completed ${role} turn hands its continued work back after a plugin restart`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const state = seed()
+    state.bots.c = { id: 'c', name: 'Reviewer', sessionId: 'c', createdAt: 3 }
+    state.works = { x1: { from: 'a', to: 'b', open: [], results: [{ id: 'y1', name: 'Reviewer', text: 'The numbers check out.' }], at: 1 } }
+    const home = freshHome(t, state)
+    const logs = new Map()
+    const first = await start(home, logs)
+    const request = { content: [{ type: 'text', text: 'Go on with the plan.' }], source: { kind: 'bot', form: 'relay', role, exchangeId: 'continuation-1', work: 'x1', ...(role === 'reply' ? { senderSessionId: 'c', replyTo: 'y1' } : {}) } }
+    run(first, 'b', 1, request)
+    await settle(() => inflight(home).b?.trigger?.work === 'x1')
+    logs.set('b', writerLog(request, 'The final plan is ready.'))
+    await first.stop()
+    const second = await start(home, logs)
+    second.emit('b', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
+    t.mock.timers.tick(3000)
+    await settle(() => second.agentOf('a').calls.length === 1)
+    const reply = second.agentOf('a').calls[0]
+    assert.equal(reply.source.replyTo, 'x1')
+    assert.match(text(reply), /The final plan is ready/)
+    assert.match(text(reply), /The numbers check out/)
+    assert.equal(second.agentOf('c').calls.length, 0)
+    await settleState(t, home, () => stateOf(home).works?.x1 === undefined)
+  })
+}
+
 test('an answer a turn produced while DS Bot was not watching goes to the Bot that waits for it, once', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const home = freshHome(t)

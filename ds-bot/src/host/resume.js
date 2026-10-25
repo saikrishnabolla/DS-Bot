@@ -276,16 +276,13 @@ export function install(rt) {
   async function reconcileEnded(sessionId, record, ended) {
     const trigger = record.trigger
     if (trigger === undefined) return
-    if (trigger.role !== 'request' || trigger.audience === 'user') return
+    const workId = rt.workOf(trigger)
+    if (!rt.ownsWork(record.botId, workId)) return
     const exchangeId = trigger.exchangeId
-    const sender = trigger.senderSessionId
+    const asker = rt.workAsker(workId)
+    const sender = asker?.senderSessionId
     if (exchangeId === undefined || sender === undefined || rt.botOf(sender) === undefined) return
-    // The work it was for: gone when the answer already went up.
-    const work = rt.state.works?.[exchangeId]
-    if (work === undefined) return
     const name = rt.botOf(rt.selfOf(sessionId))?.name ?? 'The other Bot'
-    const asker = rt.workAsker(exchangeId)
-    if (asker === undefined) return
     // DSH stopped that turn as it shut down: it is picked up at the next start.
     if (ended.reason?.kind === 'aborted' && ended.reason.reason?.kind === 'disposed') {
       update(sessionId, () => record)
@@ -316,10 +313,10 @@ export function install(rt) {
     const said = turn.texts.join('\n\n')
     // The answer went up in another run: the work closes with what it said, and
     // nothing is sent twice.
-    const back = rt.roomOf(trigger.senderRoomId)?.sessions?.[sender]
+    const back = rt.roomOf(asker.senderRoomId)?.sessions?.[sender]
     const sent = await logOf(back ?? rt.chatOf(sender))
-    if (sent !== undefined && answeredIn(sent, exchangeId)) {
-      rt.closeWork?.(exchangeId, name, rt.answerText(exchangeId, said, name))
+    if (sent !== undefined && answeredIn(sent, workId)) {
+      rt.closeWork?.(workId, name, rt.answerText(workId, said, name))
       return
     }
     const reason = turn.reason
@@ -345,11 +342,11 @@ export function install(rt) {
     // The turn ended with what it said: the answer goes up the way a finished turn's
     // does, with the results that came back for it and the text it held. A work that
     // still waits for what it handed on keeps its part until that comes back.
-    if (rt.waitsWork(exchangeId)) {
-      rt.holdWork(exchangeId, said)
+    if (rt.waitsWork(workId)) {
+      rt.holdWork(workId, said)
       return
     }
-    const text = rt.answerText(exchangeId, said, name)
+    const text = rt.answerText(workId, said, name)
     const long = text.length > MESSAGE_INLINE_MAX ? await rt.attachLong(text, `Answer from ${name}.txt`) : undefined
     answerSender(rt, sessionId, asker, text, long)
   }
