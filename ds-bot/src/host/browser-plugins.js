@@ -2,8 +2,8 @@
 // directory, including the group Sessions where that Bot speaks.
 import { join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { completeDeepseek } from './browser/deepseek.js'
 import { mountBrowserPlugin } from './browser/mount.js'
+import { sessionComplete } from './browser/session-model.js'
 import * as refs from './browser/refs.js'
 import * as script from './browser/script.js'
 import * as task from './browser/task.js'
@@ -12,6 +12,10 @@ export const browserPlugins = { refs, script, task }
 
 const NAMES = Object.keys(browserPlugins)
 const GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete'])
+
+export function defaultBrowserHeadless(platform, env = process.env) {
+  return platform === 'linux' && !env.DISPLAY && !env.WAYLAND_DISPLAY
+}
 
 function optionalString(config, key) {
   const value = config[key]
@@ -88,7 +92,7 @@ export function install(rt) {
   const executablePath = optionalString(rt.config, 'browserExecutablePath')
   const headless = typeof rt.config.browserHeadless === 'boolean'
     ? rt.config.browserHeadless
-    : !process.env.DISPLAY
+    : defaultBrowserHeadless(process.platform)
   const downloadRoot = join(rt.home, 'browser-downloads')
   mountBrowserPlugin(rt.ctx, {
     toolDefs: plugin.tools ?? plugin.toolDefs,
@@ -105,7 +109,9 @@ export function install(rt) {
     playwrightUrl,
     executablePath,
     authorize: (exec, botId, action) => authorizeBrowserAction(rt, exec, botId, action),
-    complete: rt.config.browserComplete ?? completeDeepseek,
+    completeFor: rt.config.browserComplete
+      ? () => rt.config.browserComplete
+      : exec => sessionComplete(rt.ctx, exec, rt),
     async keyOf(exec) {
       await rt.load()
       const id = rt.selfOf(exec.agent?.session?.header?.id ?? exec.agent?.id)

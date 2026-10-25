@@ -47,5 +47,5 @@ Bot 是长期身份。登录应该跟着 Bot 走，而不是跟着某一段对�
 ## 变更
 
 - 2026-10-21：维护者定下全团队一个后端、每 Bot 一份 profile、cookie 不同步。三个插件和实测在同一分支，默认关闭。
-- 2026-10-22：实测模型是 OpenDesign 上的 `deepseek-v4.1-flash`（`https://amr-link.open-design.ai/v1`），密钥用 `OPENDESIGN_API_KEY`。
+- 2026-10-22：`browser_task` 使用调用 Bot 在 DSH 中配置的模型；基准测试模型由 `BENCH_BASE_URL`、`BENCH_MODEL` 和 `BENCH_API_KEY` 配置。
 - 2026-10-23：维护者定下权限规则：默认放行；发帖、上传、下载、删除按预授权或审批；删除强制多核对一轮；付款一律交给用户；预授权可设时限，在设置的浏览器页管理。
