@@ -123,7 +123,9 @@ export function install(rt) {
     const working = requested !== undefined && await rt.isFolder(requested) ? requested : team
     return [...new Set([working, team].filter(root => typeof root === 'string' && isAbsolute(root)))]
   }
-  const mounted = mountBrowserPlugin(rt.ctx, {
+  const mounted = {}
+  mountBrowserPlugin(rt.ctx, {
+    api: mounted,
     toolDefs: plugin.tools ?? plugin.toolDefs,
     defineTool,
     profileRoot: join(rt.home, 'browser-profiles'),
