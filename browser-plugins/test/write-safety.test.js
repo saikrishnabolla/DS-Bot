@@ -84,6 +84,22 @@ async function fixtureServer() {
         'content-disposition': 'attachment; filename="report.txt"',
       })
       response.end('download contents')
+    } else if (path === '/download-concurrent') {
+      const value = new URL(request.url ?? '/', `http://${request.headers.host}`).searchParams.get('value') ?? ''
+      response.writeHead(200, {
+        'content-type': 'text/plain',
+        'content-disposition': 'attachment; filename="report.txt"',
+        'content-length': Buffer.byteLength(value),
+      })
+      setTimeout(() => response.end(value), 25)
+    } else if (path === '/download-fail') {
+      response.writeHead(200, {
+        'content-type': 'text/plain',
+        'content-disposition': 'attachment; filename="unfinished.txt"',
+        'content-length': '1000',
+      })
+      response.write('partial')
+      setTimeout(() => request.socket.destroy(), 25)
     } else if (path === '/hang' && request.method === 'POST') {
       counters.hang += 1
       request.resume()
@@ -136,10 +152,11 @@ async function waitFor(check) {
   }
 }
 
-async function setup(t, actionTimeout = 500, rootsForProfile) {
+async function setup(t, actionTimeout = 500, options = {}) {
   const fixture = await fixtureServer()
   let profileRoot
   let session
+  const extra = typeof options === 'function' ? {} : options
   t.after(async () => {
     await session?.close().catch(() => {})
     try {
@@ -155,9 +172,53 @@ async function setup(t, actionTimeout = 500, rootsForProfile) {
     downloadDir: join(profileRoot, 'downloads'),
     playwrightUrl,
     actionTimeout,
-    uploadRoots: rootsForProfile ? async () => rootsForProfile(profileRoot) : undefined,
+    ...extra,
+    uploadRoots: typeof options === 'function' ? async () => options(profileRoot) : extra.uploadRoots,
   })
   return { fixture, profileRoot, session }
+}
+
+async function mountedDownloadAndUpload(t, rootsFor) {
+  const fixture = await fixtureServer()
+  const profileRoot = await mkdtemp(join(tmpdir(), 'browser-mounted-download-'))
+  const { roots, ...destinations } = rootsFor(profileRoot)
+  await Promise.all(roots.map(root => mkdir(root, { recursive: true })))
+  let cleanup
+  let tool
+  t.after(async () => {
+    await cleanup?.()
+    await fixture.close()
+    await rm(profileRoot, { recursive: true, force: true })
+  })
+  mountBrowserPlugin({
+    effect(create) { cleanup = create() },
+    tools: { register(value) { tool = value } },
+  }, {
+    toolDefs: [{
+      name: 'browser_open',
+      needsBrowser: true,
+      async execute(args, { session }) {
+        const downloaded = await session.open(args.downloadUrl)
+        const snapshot = await session.open(args.pageUrl)
+        const uploaded = await session.upload(findRef(snapshot, 'Upload file'), [args.path])
+        return `${downloaded}\n${uploaded}`
+      },
+    }],
+    defineTool: value => value,
+    keyOf: async () => 'bot',
+    profileRoot,
+    downloadRoot: join(profileRoot, 'legacy-downloads'),
+    downloadRoots: async () => roots,
+    uploadRoots: async () => roots,
+    headless: true,
+    playwrightUrl,
+  })
+  const result = await tool.execute({
+    downloadUrl: new URL('download', fixture.url).href,
+    pageUrl: fixture.url,
+    path: join(roots[0], 'report.txt'),
+  }, { agent: { id: 'bot' } })
+  return { ...destinations, result }
 }
 
 test('unlabeled POST submits, GET forms, and links are not gated', async (t) => {
@@ -254,6 +315,27 @@ test('payment buttons are refused and card details are never typed', async (t) =
   assert.match(after, /empty/)
   assert.doesNotMatch(after, /4111111111111111/)
   assert.doesNotMatch(after, /Paid/)
+})
+
+test('Bot handoff can resume, while user takeover blocks browser actions', async t => {
+  let hold = null
+  const { fixture, session } = await setup(t, 500, {
+    getHold: () => hold,
+    onHold: value => { hold = value },
+  })
+  const snapshot = await session.open(fixture.url)
+  assert.match(session.handoff('login', 'Sign in'), /Waiting for the user/)
+  assert.equal(hold.by, 'bot')
+  await assert.rejects(session.click(findRef(snapshot, 'Read link')), /browser is waiting for the user/)
+  assert.equal(session.resume(), 'The browser is yours again.')
+  assert.equal(hold, null)
+
+  hold = { by: 'user', reason: 'takeover', note: '' }
+  assert.throws(() => session.resume(), /Only the user can give it back/)
+  await assert.rejects(session.snapshotText(), /The user has taken over this browser/)
+  await assert.rejects(session.open(fixture.url), /The user has taken over this browser/)
+  hold = null
+  assert.match(await session.open(fixture.url), /Write safety/)
 })
 
 test('POST submit clicks are gated before the server receives them', async (t) => {
@@ -454,6 +536,43 @@ test('standalone uploads without configured roots are refused', async (t) => {
   assert.doesNotMatch(await session.snapshotText(), /notes\.txt/)
 })
 
+test('uploads skip a missing legacy folder when the working folder exists', async t => {
+  const { fixture, profileRoot, session } = await setup(t, 500, profileRoot => [
+    join(profileRoot, 'working'),
+    join(profileRoot, 'browser-downloads', 'bot'),
+  ])
+  const working = join(profileRoot, 'working')
+  const file = join(working, 'notes.txt')
+  await mkdir(working, { recursive: true })
+  await writeFile(file, 'from working')
+  const snapshot = await session.open(fixture.url)
+  const result = await gateScope.run(() => {}, () => session.upload(findRef(snapshot, 'Upload file'), [file]))
+  assert.match(result, /notes\.txt/u)
+  assert.match(await session.snapshotText(), /notes\.txt/u)
+})
+
+test('mounted downloads and uploads use the Bot working directory', async t => {
+  const { result, working } = await mountedDownloadAndUpload(t, profileRoot => ({
+    roots: [join(profileRoot, 'working'), join(profileRoot, 'team')],
+    working: join(profileRoot, 'working'),
+  }))
+  assert.match(result, /Downloaded "report\.txt" to /u)
+  assert.ok(result.includes(join(working, 'report.txt')))
+  assert.match(result, /report\.txt/u)
+  assert.equal(await readFile(join(working, 'report.txt'), 'utf8'), 'download contents')
+})
+
+test('mounted downloads and uploads fall back to the team folder', async t => {
+  const { result, team } = await mountedDownloadAndUpload(t, profileRoot => ({
+    roots: [join(profileRoot, 'team')],
+    team: join(profileRoot, 'team'),
+  }))
+  assert.match(result, /Downloaded "report\.txt" to /u)
+  assert.ok(result.includes(join(team, 'report.txt')))
+  assert.match(result, /report\.txt/u)
+  assert.equal(await readFile(join(team, 'report.txt'), 'utf8'), 'download contents')
+})
+
 test('opening a direct attachment URL saves the download instead of throwing', async (t) => {
   const { fixture, profileRoot, session } = await setup(t)
   const actions = []
@@ -487,4 +606,55 @@ test('downloads are gated, saved without overwriting, or cancelled on refusal', 
   assert.equal(actions.at(-1).kind, 'download')
   assert.equal(await readFile(join(downloadDir, 'report.txt'), 'utf8'), 'download contents')
   assert.equal(fixture.counters.upload, 0)
+})
+
+test('concurrent downloads reserve unique names and preserve both files', async t => {
+  const fixture = await fixtureServer()
+  const profileRoot = await mkdtemp(join(tmpdir(), 'browser-concurrent-downloads-'))
+  const downloadDir = join(profileRoot, 'shared')
+  await mkdir(downloadDir, { recursive: true })
+  const sessions = []
+  t.after(async () => {
+    await Promise.all(sessions.map(session => session.close().catch(() => {})))
+    await fixture.close()
+    await rm(profileRoot, { recursive: true, force: true })
+  })
+  for (const botId of ['download-one', 'download-two']) {
+    sessions.push(await openBotBrowser({
+      botId,
+      profileRoot,
+      downloadDir,
+      playwrightUrl,
+    }))
+  }
+  const urls = ['first', 'second'].map(value => {
+    const url = new URL('download-concurrent', fixture.url)
+    url.searchParams.set('value', value)
+    return url.href
+  })
+  const results = await Promise.all(sessions.map((session, index) => session.open(urls[index])))
+  assert.ok(results.every(result => /Downloaded "report\.txt" to /u.test(result)))
+  const filenames = (await readdir(downloadDir)).sort()
+  assert.deepEqual(filenames, ['report (2).txt', 'report.txt'])
+  const contents = await Promise.all(filenames.map(filename => readFile(join(downloadDir, filename), 'utf8')))
+  assert.deepEqual(contents.sort(), ['first', 'second'])
+})
+
+test('downloads resolve a function-valued directory for every save and remove failed placeholders', async t => {
+  let destination
+  const { fixture, profileRoot, session } = await setup(t, 500, { downloadDir: async () => destination })
+  const first = join(profileRoot, 'first-downloads')
+  const second = join(profileRoot, 'second-downloads')
+  destination = first
+  const firstResult = await session.open(new URL('download', fixture.url).href)
+  destination = second
+  const secondResult = await session.open(new URL('download', fixture.url).href)
+  assert.ok(firstResult.includes(join(first, 'report.txt')))
+  assert.ok(secondResult.includes(join(second, 'report.txt')))
+  assert.equal(await readFile(join(first, 'report.txt'), 'utf8'), 'download contents')
+  assert.equal(await readFile(join(second, 'report.txt'), 'utf8'), 'download contents')
+
+  const failed = await session.open(new URL('download-fail', fixture.url).href)
+  assert.match(failed, /Download "unfinished\.txt" failed/u)
+  assert.deepEqual(await readdir(second), ['report.txt'])
 })

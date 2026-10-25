@@ -2,7 +2,7 @@
 // share this directory, so a new conversation part keeps the login. Another Bot never
 // opens it: profiles are not copied across the team.
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative as relativePath } from 'node:path'
 import { gateScope } from './gate.js'
 
@@ -86,29 +86,38 @@ async function loadChromium(playwrightUrl) {
 }
 
 /**
- * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, uploadRoots?: () => Promise<string[]> }} options
+ * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, connect?: (botId: string) => Promise<string>, getHold?: () => any, onHold?: (hold: any) => void }} options
  */
-export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, uploadRoots }) {
+export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, connect, getHold, onHold, uploadRoots }) {
+  const getDownloadDir = typeof downloadDir === 'function' ? downloadDir : async () => downloadDir
   const userDataDir = join(profileRoot, botId)
-  await mkdir(userDataDir, { recursive: true })
   const chromium = await loadChromium(playwrightUrl)
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless,
-    viewport: { width: 1280, height: 900 },
-    acceptDownloads: true,
-    ...(executablePath ? { executablePath } : {}),
-    args: ['--disable-dev-shm-usage'],
-  })
+  const browser = connect
+    ? await chromium.connectOverCDP(await connect(botId))
+    : undefined
+  if (!connect) await mkdir(userDataDir, { recursive: true })
+  const context = browser
+    ? browser.contexts()[0]
+    : await chromium.launchPersistentContext(userDataDir, {
+      headless,
+      viewport: { width: 1280, height: 900 },
+      acceptDownloads: true,
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--disable-dev-shm-usage'],
+    })
+  if (!context) throw new Error('The app browser relay has no browser context.')
   const page = context.pages()[0] ?? await context.newPage()
   const cookieFile = join(userDataDir, 'cookies.json')
-  try {
-    const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
-    if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
-  } catch { /* no cookies yet */ }
-  return createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, uploadRoots })
+  if (!browser) {
+    try {
+      const saved = JSON.parse(await readFile(cookieFile, 'utf8'))
+      if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
+    } catch { /* no cookies yet */ }
+  }
+  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, getHold, onHold, uploadRoots })
 }
 
-function createSession({ context, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, uploadRoots }) {
+function createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, getHold, onHold, uploadRoots }) {
   const pages = new Set()
   const unknownByOrigin = new Map()
   const unknownPageOrigins = new WeakMap()
@@ -122,6 +131,9 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
   let pendingDeleteLocator = null
 
   const ready = () => {
+    const externalHold = getHold?.()
+    if (externalHold?.by === 'user') throw new Error('The user has taken over this browser. Wait for them to give it back.')
+    if (hold && getHold && externalHold == null) hold = null
     if (hold) throw new Error(`The browser is waiting for the user (${hold.reason}). Ask them to ${hold.note || 'take over'}, then call browser_resume.`)
   }
 
@@ -188,6 +200,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
   }
 
   async function tabs() {
+    ready()
     await pendingPageReady
     const active = activePage()
     return Promise.all(openPages().map(async (target, index) => ({
@@ -199,6 +212,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
   }
 
   async function snapshotText({ observe = true } = {}) {
+    ready()
     await pendingPageReady
     const target = activePage()
     if (!target) throw new Error('The browser has no open tabs.')
@@ -284,7 +298,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
     return new Error(`This looks like a payment ("${action.label}" on ${action.host}). The user makes payments themselves: call browser_handoff with reason "payment" and stop. Nothing was done.`)
   }
 
-  async function reserveDownloadPath(filename) {
+  async function reserveDownloadPath(filename, directory) {
     const name = Array.from(basename(filename), character => {
       const code = character.charCodeAt(0)
       return code < 32 || '<>:"/\\|?*'.includes(character) ? '_' : character
@@ -293,11 +307,18 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
     const extension = extname(safeName)
     const stem = extension ? safeName.slice(0, -extension.length) : safeName
     for (let index = 1; ; index += 1) {
-      const candidate = join(downloadDir, index === 1 ? safeName : `${stem} (${index})${extension}`)
+      const candidate = join(directory, index === 1 ? safeName : `${stem} (${index})${extension}`)
       try {
-        await stat(candidate)
+        const handle = await open(candidate, 'wx')
+        try {
+          await handle.close()
+        } catch (error) {
+          await unlink(candidate).catch(() => {})
+          throw error
+        }
+        return candidate
       } catch (error) {
-        if (error.code === 'ENOENT') return candidate
+        if (error.code === 'EEXIST') continue
         throw error
       }
     }
@@ -313,17 +334,22 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
       await authorizeWrite(action, gate)
     } catch (error) {
       await download.cancel().catch(() => {})
+      await download.delete().catch(() => {})
       const message = String(error?.message ?? error).replace(/\s+/g, ' ').slice(0, 160)
       return message || `Download "${filename}" was refused. Nothing was saved.`
     }
+    let path
     try {
-      if (!downloadDir) throw new Error('No download directory is configured.')
-      await mkdir(downloadDir, { recursive: true })
-      const path = await reserveDownloadPath(filename)
+      const directory = await downloadDir()
+      if (!directory) throw new Error('No download directory is configured.')
+      await mkdir(directory, { recursive: true })
+      path = await reserveDownloadPath(filename, directory)
       await download.saveAs(path)
       return `Downloaded "${filename}" to ${path}.`
     } catch (error) {
+      if (path) await unlink(path).catch(() => {})
       await download.cancel().catch(() => {})
+      await download.delete().catch(() => {})
       const message = String(error?.message ?? error).replace(/\s+/g, ' ').slice(0, 160)
       return `Download "${filename}" failed: ${message || 'unknown error'}.`
     }
@@ -479,6 +505,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
   }
 
   async function shot() {
+    ready()
     const target = activePage()
     if (!target) throw new Error('The browser has no open tabs.')
     const image = await target.screenshot({ type: 'jpeg', quality: 32 })
@@ -624,8 +651,19 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
       if (roots.length === 0) {
         throw new Error(`Uploads must come from an allowed folder. ${paths[0]} is outside them. Nothing was uploaded.`)
       }
-      if (downloadDir) await mkdir(downloadDir, { recursive: true })
-      const realRoots = await Promise.all(roots.map(root => realpath(root)))
+      const directory = await downloadDir()
+      if (directory) await mkdir(directory, { recursive: true })
+      const realRoots = (await Promise.all(roots.map(async root => {
+        try {
+          return await realpath(root)
+        } catch (error) {
+          if (error.code === 'ENOENT') return undefined
+          throw error
+        }
+      }))).filter(root => root !== undefined)
+      if (realRoots.length === 0) {
+        throw new Error(`Uploads must come from an allowed folder. ${paths[0]} is outside them. Nothing was uploaded.`)
+      }
       const files = []
       const labels = []
       for (const path of paths) {
@@ -663,12 +701,16 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
     },
     shot,
     handoff(reason, note) {
+      ready()
       const kind = REASONS.has(reason) ? reason : 'other'
       hold = { reason: kind, note: String(note ?? '').slice(0, 300) }
+      onHold?.({ by: 'bot', reason: kind, note: hold.note })
       return `Waiting for the user (${kind}). ${hold.note || 'Ask them to take over.'} Call browser_resume when they have finished.`
     },
     resume() {
+      if (getHold?.()?.by === 'user') throw new Error('The user has taken over this browser. Only the user can give it back.')
       hold = null
+      onHold?.(null)
       return 'The browser is yours again.'
     },
     async runScript(source) {
@@ -708,6 +750,7 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
       return finalAnswer === undefined ? 'Script finished without done().' : String(finalAnswer)
     },
     async close() {
+      if (browser) { await browser.close().catch(() => {}); return }
       const cookies = await context.cookies().catch(() => [])
       const kept = cookies.map(cookie => cookie.expires > 0 ? cookie : { ...cookie, expires: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60 })
       await writeFile(cookieFile, JSON.stringify(kept)).catch(() => {})
