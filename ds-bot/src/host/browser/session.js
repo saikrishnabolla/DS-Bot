@@ -492,6 +492,11 @@ function createSession({ context, page, botId, userDataDir, cookieFile, download
     userDataDir,
     get hold() { return hold },
     get lastImage() { return lastImage },
+    takeLastImage() {
+      const image = lastImage
+      lastImage = ''
+      return image
+    },
     url: () => activePage()?.url() ?? '',
     async open(url) {
       ready()

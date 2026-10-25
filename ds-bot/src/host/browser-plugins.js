@@ -94,7 +94,7 @@ export function install(rt) {
     ? rt.config.browserHeadless
     : defaultBrowserHeadless(process.platform)
   const downloadRoot = join(rt.home, 'browser-downloads')
-  mountBrowserPlugin(rt.ctx, {
+  const mounted = mountBrowserPlugin(rt.ctx, {
     toolDefs: plugin.tools ?? plugin.toolDefs,
     defineTool,
     profileRoot: join(rt.home, 'browser-profiles'),
@@ -119,5 +119,14 @@ export function install(rt) {
       return id
     },
   })
+  // A deleted Bot leaves no browser state behind: close its session and drop the profile dir.
+  if (typeof rt.deleteBot === 'function') {
+    const originalDelete = rt.deleteBot.bind(rt)
+    rt.deleteBot = async (id) => {
+      const result = await originalDelete(id)
+      await mounted.drop(id).catch(() => {})
+      return result
+    }
+  }
   rt.browserPlugin = plugin.id ?? name
 }
