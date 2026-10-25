@@ -294,11 +294,11 @@ export function install(rt) {
     return warnReadOnly()
   }
 
-  const save = () => {
-    if (stopped) return writing
+  const save = ({ required = false } = {}) => {
+    if (stopped) return required ? Promise.reject(new Error('The Bot team cannot be saved after this host stopped.')) : writing
     indexSessions()
     // A reading host keeps the file's revision, so its window does not skip the next change.
-    if (!writable()) return writing
+    if (!writable()) return required ? Promise.reject(new Error(`This host cannot save the Bot team: ${readOnly()}`)) : writing
     state.revision += 1
     state.exchanges = state.exchanges.slice(-MAX_EXCHANGES)
     const snapshot = JSON.stringify(state)
