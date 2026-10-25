@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { apply, createRuntime } from '../index.js'
+import { defaultBrowserHeadless } from '../src/host/browser-plugins.js'
 import { gateScope } from '../src/host/browser/gate.js'
 import { appBrowserEndpoint } from '../src/host/browser-plugins.js'
 import { mountBrowserPlugin } from '../src/host/browser/mount.js'
@@ -187,6 +188,62 @@ test('browser-stop cancels the Bot chat, stops its room work, and sets a user ho
   assert.deepEqual(rt.browserChannel.holdOf('b2'), {
     by: 'user', reason: 'stopped', note: 'The user is controlling this browser.',
   })
+})
+
+test('browser headless defaults only on Linux without a display', () => {
+  assert.equal(defaultBrowserHeadless('linux', { DISPLAY: ':0' }), false)
+  assert.equal(defaultBrowserHeadless('linux', {}), true)
+  assert.equal(defaultBrowserHeadless('darwin', {}), false)
+})
+
+test('browser_task uses the Bot session model route when no test completion is injected', async (t) => {
+  const { ctx, stop } = start({
+    browserPlugin: 'task',
+    browserPluginApi: {
+      id: 'task',
+      tools: [{
+        name: 'browser_task',
+        needsBrowser: false,
+        async execute(_args, toolCtx) {
+          const response = await toolCtx.complete({
+            messages: [{ role: 'user', content: 'Read the page.' }],
+            tools: [{
+              type: 'function',
+              function: { name: 'browser_snapshot', description: 'Read page', parameters: { type: 'object' } },
+            }],
+          })
+          return response.choices[0].message.content
+        },
+      }],
+    },
+  })
+  t.after(stop)
+  const requests = []
+  ctx.llm = {
+    async *stream(request) {
+      requests.push(request)
+      yield { type: 'text-delta', index: 0, text: 'Session-routed response.' }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  }
+  const session = {
+    id: 'session-b2',
+    header: { id: 'b2' },
+    requestHeader: () => ({
+      config: { provider: 'mock-provider', model: 'bot-session-model' },
+      tools: [{ name: 'session-private-tool', description: '', parameters: {} }],
+    }),
+  }
+
+  const value = await ctx.registeredTools.get('browser_task').execute({}, {
+    agent: { id: 'b2', session },
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(value, 'Session-routed response.')
+  assert.equal(requests[0].model, 'bot-session-model')
+  assert.equal(requests[0].sessionId, 'session-b2')
+  assert.deepEqual(requests[0].tools.map(tool => tool.name), ['browser_snapshot'])
 })
 
 test('the selected plugin is the same for every Bot, and profiles stay apart', async (t) => {
