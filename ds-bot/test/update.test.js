@@ -6,7 +6,7 @@ import { afterEach, test } from 'node:test'
 import { cleanVersion, install, newer, sourceOf } from '../src/host/update.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-const flush = async () => { for (let index = 0; index < 8; index += 1) await Promise.resolve() }
+const flush = async () => { for (let index = 0; index < 14; index += 1) await Promise.resolve() }
 const realFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = realFetch })
 
@@ -333,6 +333,26 @@ test('a failed reinstall writes its reason into the note', async () => {
   const note = noteIn(home)
   assert.equal(note.to, '9.0.0')
   assert.equal(note.error, 'pnpm: tarball 500')
+  rmSync(home, { recursive: true, force: true, maxRetries: 5 })
+})
+
+test('a reinstall refused by an application state also puts the old version back', async () => {
+  const home = newHome()
+  const { rt, installs } = start({
+    source: `${PKG.name}@^${PKG.version}`,
+    config: { updateRegistry: 'https://registry.example' },
+    answers: { [`https://registry.example/${PKG.name}/latest`]: { version: '9.0.0' } },
+    result: count => (count === 1 ? { error: { code: 'already-installed' } } : count === 2 ? { application: 'failed' } : { application: 'applied', version: PKG.version }),
+    home,
+  })
+  await rt.updateCheck()
+  rt.updateStart()
+  await flush()
+  assert.equal(installs.length, 3)
+  assert.equal(installs[2][0], `${PKG.name}@${PKG.version}`)
+  const note = noteIn(home)
+  assert.equal(note.error, `install failed; ${PKG.name}@${PKG.version} was reinstalled`)
+  assert.equal((await rt.updateCheck()).phase, 'failed')
   rmSync(home, { recursive: true, force: true, maxRetries: 5 })
 })
 
