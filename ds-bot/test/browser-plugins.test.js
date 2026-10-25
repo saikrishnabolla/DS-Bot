@@ -151,6 +151,128 @@ test('app browser endpoint carries download roots for the Bot resolved from the 
   }
 })
 
+test('concurrent first browser calls share opening and relay connection', async () => {
+  const tools = new Map()
+  let cleanup
+  let releaseOpen
+  const waitForOpen = new Promise(resolve => { releaseOpen = resolve })
+  let openCalls = 0
+  let connectCalls = 0
+  let rootsCalls = 0
+  mountBrowserPlugin({
+    effect(create) { cleanup = create() },
+    tools: { register(tool) { tools.set(tool.name, tool) } },
+  }, {
+    toolDefs: [{ name: 'browser_open', needsBrowser: true, execute: () => 'opened' }],
+    defineTool: value => value,
+    keyOf: async () => 'b2',
+    profileRoot: '/profiles',
+    downloadRoots: async () => {
+      rootsCalls += 1
+      return ['/workspace/b2', '/workspace']
+    },
+    headless: true,
+    connect: async () => {
+      connectCalls += 1
+      return 'ws://127.0.0.1:1234/devtools/browser/token'
+    },
+    openSession: async options => {
+      openCalls += 1
+      await options.connect(options.botId)
+      await waitForOpen
+      return { close: async () => {} }
+    },
+  })
+
+  const execute = () => tools.get('browser_open').execute({}, { agent: { id: 'b2' } })
+  const first = execute()
+  const second = execute()
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(openCalls, 1)
+  assert.equal(connectCalls, 1)
+  assert.equal(rootsCalls, 1)
+
+  releaseOpen()
+  assert.deepEqual(await Promise.all([first, second]), ['opened', 'opened'])
+  await cleanup?.()
+})
+
+test('user takeover while opening closes the session once it resolves', async () => {
+  const tools = new Map()
+  let cleanup
+  let publishHold
+  let startedOpening
+  let releaseOpen
+  let resolveClosed
+  let closeCalls = 0
+  const openingStarted = new Promise(resolve => { startedOpening = resolve })
+  const waitForOpen = new Promise(resolve => { releaseOpen = resolve })
+  const closed = new Promise(resolve => { resolveClosed = resolve })
+  let hold = null
+  mountBrowserPlugin({
+    effect(create) { cleanup = create() },
+    tools: { register(tool) { tools.set(tool.name, tool) } },
+  }, {
+    toolDefs: [{ name: 'browser_open', needsBrowser: true, execute: () => 'opened' }],
+    defineTool: value => value,
+    keyOf: async () => 'b2',
+    profileRoot: '/profiles',
+    headless: true,
+    getHold: () => hold,
+    subscribeHolds: listener => {
+      publishHold = listener
+      return () => {}
+    },
+    openSession: () => {
+      startedOpening()
+      return waitForOpen
+    },
+  })
+
+  const opening = tools.get('browser_open').execute({}, { agent: { id: 'b2' } })
+  await openingStarted
+  hold = { by: 'user' }
+  publishHold('b2', hold)
+  releaseOpen({ close: async () => { closeCalls += 1; resolveClosed() } })
+  await opening
+  await closed
+  assert.equal(closeCalls, 1)
+  await cleanup?.()
+})
+
+test('user takeover refuses a browser call before opening or connecting', async () => {
+  const tools = new Map()
+  let openCalls = 0
+  let connectCalls = 0
+  mountBrowserPlugin({
+    effect() {},
+    tools: { register(tool) { tools.set(tool.name, tool) } },
+  }, {
+    toolDefs: [{ name: 'browser_open', needsBrowser: true, execute: () => 'opened' }],
+    defineTool: value => value,
+    keyOf: async () => 'b2',
+    profileRoot: '/profiles',
+    headless: true,
+    getHold: () => ({ by: 'user' }),
+    connect: async () => {
+      connectCalls += 1
+      return 'ws://127.0.0.1:1234/devtools/browser/token'
+    },
+    openSession: async () => {
+      openCalls += 1
+      return { close: async () => {} }
+    },
+  })
+
+  await assert.rejects(
+    tools.get('browser_open').execute({}, { agent: { id: 'b2' } }),
+    /The user has taken over this browser/,
+  )
+  assert.equal(openCalls, 0)
+  assert.equal(connectCalls, 0)
+})
+
 test('no browser plugin is mounted unless one is selected for the team', (t) => {
   const { ctx, stop } = start({})
   t.after(stop)

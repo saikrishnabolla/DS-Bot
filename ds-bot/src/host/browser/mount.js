@@ -1,5 +1,6 @@
 // Registers one browser plugin's tools. ds-bot passes a key function that resolves
 // the Bot; a standalone package can pass the Session id instead.
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openBotBrowser } from './session.js'
 import { gateScope } from './gate.js'
@@ -39,14 +40,22 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
     const session = sessions.get(botId)
     if (!session) return
     sessions.delete(botId)
-    void session.close()
+    void Promise.resolve(session).then(s => s.close(), () => {}).catch(() => {})
   })
   ctx.effect(() => async () => {
     unsubscribeHolds?.()
     const open = [...sessions.values()]
     sessions.clear()
-    await Promise.all(open.map(session => session.close()))
+    await Promise.all(open.map(session => Promise.resolve(session).then(opened => opened.close(), () => {})))
   }, 'ds-bot: browser plugin')
+
+  // Closes a Bot's browser and removes its profile directory; used when the Bot is deleted.
+  async function drop(botId) {
+    const session = sessions.get(botId)
+    sessions.delete(botId)
+    if (session !== undefined) await Promise.resolve(session).then(opened => opened.close(), () => {})
+    await rm(join(profileRoot, botId), { recursive: true, force: true }).catch(() => {})
+  }
 
   for (const spec of toolDefs) {
     ctx.tools.register(defineTool({
@@ -60,24 +69,32 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
         if (getHold?.(botId)?.by === 'user') throw new Error('The user has taken over this browser. Wait for them to give it back.')
         let session = sessions.get(botId)
         if (spec.needsBrowser && session === undefined) {
-          const roots = downloadRoots ? await downloadRoots(botId) : undefined
-          session = await openSession({
-            botId,
-            profileRoot,
-            downloadDir: roots === undefined
-              ? join(downloadRoot ?? join(profileRoot, 'browser-downloads'), botId)
-              : async () => (await downloadRoots(botId))[0],
-            headless,
-            playwrightUrl,
-            executablePath,
-            actionTimeout,
-            connect: connect ? id => connect(id, roots ?? []) : undefined,
-            getHold: () => getHold?.(botId),
-            onHold: hold => onHold?.(botId, hold),
-            uploadRoots: uploadRoots ? () => uploadRoots(botId) : undefined,
+          // Store the opening promise before resolving roots so concurrent calls share the launch.
+          const opening = Promise.resolve().then(async () => {
+            const roots = downloadRoots ? await downloadRoots(botId) : undefined
+            return openSession({
+              botId,
+              profileRoot,
+              downloadDir: roots === undefined
+                ? join(downloadRoot ?? join(profileRoot, 'browser-downloads'), botId)
+                : async () => (await downloadRoots(botId))[0],
+              headless,
+              playwrightUrl,
+              executablePath,
+              actionTimeout,
+              connect: connect ? id => connect(id, roots ?? []) : undefined,
+              getHold: () => getHold?.(botId),
+              onHold: hold => onHold?.(botId, hold),
+              uploadRoots: uploadRoots ? () => uploadRoots(botId) : undefined,
+            })
           })
-          sessions.set(botId, session)
+          sessions.set(botId, opening)
+          opening.catch(() => {
+            if (sessions.get(botId) === opening) sessions.delete(botId)
+          })
+          session = opening
         }
+        session = await session
         const gate = authorize ? action => authorize(exec, botId, action) : undefined
         return gateScope.run(gate, () => spec.execute(args ?? {}, {
           botId,
@@ -88,4 +105,6 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
       },
     }))
   }
+
+  return { drop }
 }

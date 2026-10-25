@@ -123,7 +123,7 @@ export function install(rt) {
     const working = requested !== undefined && await rt.isFolder(requested) ? requested : team
     return [...new Set([working, team].filter(root => typeof root === 'string' && isAbsolute(root)))]
   }
-  mountBrowserPlugin(rt.ctx, {
+  const mounted = mountBrowserPlugin(rt.ctx, {
     toolDefs: plugin.tools ?? plugin.toolDefs,
     defineTool,
     profileRoot: join(rt.home, 'browser-profiles'),
@@ -151,5 +151,14 @@ export function install(rt) {
       return id
     },
   })
+  // A deleted Bot leaves no browser state behind: close its session and drop the profile dir.
+  if (typeof rt.deleteBot === 'function') {
+    const originalDelete = rt.deleteBot.bind(rt)
+    rt.deleteBot = async (id) => {
+      const result = await originalDelete(id)
+      await mounted.drop(id).catch(() => {})
+      return result
+    }
+  }
   rt.browserPlugin = plugin.id ?? name
 }
