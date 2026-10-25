@@ -1,9 +1,11 @@
 // Check a packaged app: start it on throwaway folders with the ds-bot mock model, choose a model,
-// send a message, wait for the reply, then close the window the way a user does and wait until
-// the app has exited. Fails on a page error or a non-zero exit.
+// send a message, wait for the reply, then close the window the way a user does: the window hides
+// and the app goes on. The window comes back when the app is started again, and the app ends the
+// way the tray's Quit ends it. Fails on a page error or a non-zero exit.
 // Usage: node scripts/check-packed.mjs [app executable] [screenshot.png]
 // The executable defaults to the one that `npm run pack` or `npm run dist` writes into dist-pack/.
 import { spawn, spawnSync } from 'node:child_process'
+import { connect } from 'node:net'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -89,6 +91,29 @@ async function appPage(port, deadline) {
     await sleep(500)
   }
   throw new Error('the app window did not appear')
+}
+
+// The Host goes on while the window is hidden: its port answers.
+async function hostAlive() {
+  const { port } = JSON.parse(readFileSync(join(work, 'shell', 'host-port.json'), 'utf8'))
+  await new Promise((done, reject) => {
+    const socket = connect(port, '127.0.0.1')
+    socket.once('connect', () => { socket.destroy(); done() })
+    socket.once('error', reject)
+  })
+}
+
+// The tray's Quit ends the app. The check cannot click the tray icon, so it asks the browser
+// target of the debugging port to close, which ends the app gracefully.
+async function browserClose(port) {
+  const version = await (await fetch(`http://127.0.0.1:${String(port)}/json/version`)).json()
+  const socket = new WebSocket(version.webSocketDebuggerUrl)
+  await new Promise((done, reject) => {
+    socket.addEventListener('open', done, { once: true })
+    socket.addEventListener('error', reject, { once: true })
+  })
+  socket.send(JSON.stringify({ id: 1, method: 'Browser.close' }))
+  socket.close()
 }
 
 function devtools(url, problems) {
@@ -244,12 +269,30 @@ try {
     writeFileSync(resolve(shotFile), Buffer.from(data, 'base64'))
     console.log(`check-packed: saved ${resolve(shotFile)}`)
   }
-  // Closed like a user closes it, also after a failure, so that the app stops its Host. The page
-  // goes away with the window, so this call gets no answer.
-  void cdp.call('Runtime.evaluate', { expression: 'window.close()' }).catch(() => undefined)
-  const outcome = await Promise.race([exited, sleep(40_000).then(() => undefined)])
   if (chatError) throw chatError
-  if (outcome === undefined) throw new Error('the app did not exit after its window closed')
+  // Closed the way a user closes it: the window hides and the app goes on.
+  void cdp.call('Runtime.evaluate', { expression: 'window.close()' }).catch(() => undefined)
+  await sleep(4000)
+  if (app.exitCode !== null) throw new Error('the app ended with its window')
+  const hidden = await cdp.call('Runtime.evaluate', { expression: 'document.visibilityState', returnByValue: true })
+  if (hidden.result?.value !== 'hidden') throw new Error('the window is not hidden')
+  await hostAlive()
+  console.log('check-packed: the window is hidden and the Host goes on')
+  // Starting the app again brings the window back; the second copy ends at once, because the
+  // first one holds the lock.
+  const second = spawn(outsideCheckout(resolve(executable)), [`--remote-debugging-port=${String(port + 1)}`], { stdio: 'ignore', env })
+  children.push(second)
+  const secondExit = await Promise.race([new Promise((done) => { second.once('exit', (code) => { done(code) }) }), sleep(30_000).then(() => undefined)])
+  if (secondExit === undefined) throw new Error('the second copy of the app did not end')
+  if (app.exitCode !== null) throw new Error('the app ended when it was started again')
+  const shown = await cdp.call('Runtime.evaluate', { expression: 'document.visibilityState', returnByValue: true })
+  if (shown.result?.value !== 'visible') throw new Error('the window did not come back')
+  console.log('check-packed: the window came back when the app was started again')
+  // The tray's Quit is the way out; the check cannot click the tray, so it asks the browser
+  // target to close, which ends the app gracefully.
+  await browserClose(port)
+  const outcome = await Promise.race([exited, sleep(40_000).then(() => undefined)])
+  if (outcome === undefined) throw new Error('the app did not exit after the quit')
   console.log(`check-packed: app exited (code ${String(outcome.code)}, signal ${String(outcome.signal)})`)
   if (outcome.code !== 0) throw new Error(`the app exited with code ${String(outcome.code)}`)
   if (problems.length > 0) throw new Error(`page problems:\n  ${problems.join('\n  ')}`)
