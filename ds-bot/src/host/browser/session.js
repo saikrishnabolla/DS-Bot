@@ -2,7 +2,7 @@
 // share this directory, so a new conversation part keeps the login. Another Bot never
 // opens it: profiles are not copied across the team.
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative as relativePath } from 'node:path'
 import { gateScope } from './gate.js'
 
@@ -86,9 +86,10 @@ async function loadChromium(playwrightUrl) {
 }
 
 /**
- * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadDir?: string, uploadRoots?: () => Promise<string[]>, connect?: (botId: string) => Promise<string>, getHold?: () => any, onHold?: (hold: any) => void }} options
+ * @param {{ botId: string, profileRoot: string, headless?: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, downloadDir?: string | (() => Promise<string | undefined>), uploadRoots?: () => Promise<string[]>, connect?: (botId: string) => Promise<string>, getHold?: () => any, onHold?: (hold: any) => void }} options
  */
 export async function openBotBrowser({ botId, profileRoot, downloadDir, headless = true, playwrightUrl, executablePath, actionTimeout = ACTION_TIMEOUT, connect, getHold, onHold, uploadRoots }) {
+  const getDownloadDir = typeof downloadDir === 'function' ? downloadDir : async () => downloadDir
   const userDataDir = join(profileRoot, botId)
   const chromium = await loadChromium(playwrightUrl)
   const browser = connect
@@ -113,7 +114,7 @@ export async function openBotBrowser({ botId, profileRoot, downloadDir, headless
       if (Array.isArray(saved) && saved.length > 0) await context.addCookies(saved)
     } catch { /* no cookies yet */ }
   }
-  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, getHold, onHold, uploadRoots })
+  return createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir: getDownloadDir, actionTimeout, getHold, onHold, uploadRoots })
 }
 
 function createSession({ context, browser, page, botId, userDataDir, cookieFile, downloadDir, actionTimeout, getHold, onHold, uploadRoots }) {
@@ -297,7 +298,7 @@ function createSession({ context, browser, page, botId, userDataDir, cookieFile,
     return new Error(`This looks like a payment ("${action.label}" on ${action.host}). The user makes payments themselves: call browser_handoff with reason "payment" and stop. Nothing was done.`)
   }
 
-  async function reserveDownloadPath(filename) {
+  async function reserveDownloadPath(filename, directory) {
     const name = Array.from(basename(filename), character => {
       const code = character.charCodeAt(0)
       return code < 32 || '<>:"/\\|?*'.includes(character) ? '_' : character
@@ -306,11 +307,18 @@ function createSession({ context, browser, page, botId, userDataDir, cookieFile,
     const extension = extname(safeName)
     const stem = extension ? safeName.slice(0, -extension.length) : safeName
     for (let index = 1; ; index += 1) {
-      const candidate = join(downloadDir, index === 1 ? safeName : `${stem} (${index})${extension}`)
+      const candidate = join(directory, index === 1 ? safeName : `${stem} (${index})${extension}`)
       try {
-        await stat(candidate)
+        const handle = await open(candidate, 'wx')
+        try {
+          await handle.close()
+        } catch (error) {
+          await unlink(candidate).catch(() => {})
+          throw error
+        }
+        return candidate
       } catch (error) {
-        if (error.code === 'ENOENT') return candidate
+        if (error.code === 'EEXIST') continue
         throw error
       }
     }
@@ -330,13 +338,16 @@ function createSession({ context, browser, page, botId, userDataDir, cookieFile,
       const message = String(error?.message ?? error).replace(/\s+/g, ' ').slice(0, 160)
       return message || `Download "${filename}" was refused. Nothing was saved.`
     }
+    let path
     try {
-      if (!downloadDir) throw new Error('No download directory is configured.')
-      await mkdir(downloadDir, { recursive: true })
-      const path = await reserveDownloadPath(filename)
+      const directory = await downloadDir()
+      if (!directory) throw new Error('No download directory is configured.')
+      await mkdir(directory, { recursive: true })
+      path = await reserveDownloadPath(filename, directory)
       await download.saveAs(path)
       return `Downloaded "${filename}" to ${path}.`
     } catch (error) {
+      if (path) await unlink(path).catch(() => {})
       await download.cancel().catch(() => {})
       await download.delete().catch(() => {})
       const message = String(error?.message ?? error).replace(/\s+/g, ' ').slice(0, 160)
@@ -635,8 +646,19 @@ function createSession({ context, browser, page, botId, userDataDir, cookieFile,
       if (roots.length === 0) {
         throw new Error(`Uploads must come from an allowed folder. ${paths[0]} is outside them. Nothing was uploaded.`)
       }
-      if (downloadDir) await mkdir(downloadDir, { recursive: true })
-      const realRoots = await Promise.all(roots.map(root => realpath(root)))
+      const directory = await downloadDir()
+      if (directory) await mkdir(directory, { recursive: true })
+      const realRoots = (await Promise.all(roots.map(async root => {
+        try {
+          return await realpath(root)
+        } catch (error) {
+          if (error.code === 'ENOENT') return undefined
+          throw error
+        }
+      }))).filter(root => root !== undefined)
+      if (realRoots.length === 0) {
+        throw new Error(`Uploads must come from an allowed folder. ${paths[0]} is outside them. Nothing was uploaded.`)
+      }
       const files = []
       const labels = []
       for (const path of paths) {
