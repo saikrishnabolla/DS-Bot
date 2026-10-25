@@ -1,5 +1,6 @@
 // Registers one browser plugin's tools. ds-bot passes a key function that resolves
 // the Bot; a standalone package can pass the Session id instead.
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { openBotBrowser } from './session.js'
 import { gateScope } from './gate.js'
@@ -30,23 +31,31 @@ export const browserOutput = {
 
 /**
  * @param {any} ctx
- * @param {{ toolDefs: any[], defineTool: Function, keyOf: (exec: any) => Promise<string|undefined>, profileRoot: string, downloadRoot?: string, downloadRoots?: (botId: string) => Promise<string[]>, uploadRoots?: (botId: string) => Promise<string[]>, headless: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, authorize?: (exec: any, botId: string, action: any) => Promise<void>, completeFor?: (exec: any) => Function, connect?: (botId: string, downloadRoots?: string[]) => Promise<string>, getHold?: (botId: string) => any, onHold?: (botId: string, hold: any) => void, subscribeHolds?: (listener: (botId: string, hold: any) => void) => (() => void) | undefined, openSession?: typeof openBotBrowser }} options
+ * @param {{ toolDefs: any[], defineTool: Function, keyOf: (exec: any) => Promise<string|undefined>, profileRoot: string, downloadRoot?: string, downloadRoots?: (botId: string) => Promise<string[]>, uploadRoots?: (botId: string) => Promise<string[]>, headless: boolean, playwrightUrl?: string, executablePath?: string, actionTimeout?: number, authorize?: (exec: any, botId: string, action: any) => Promise<void>, completeFor?: (exec: any) => Function, connect?: (botId: string, downloadRoots?: string[]) => Promise<string>, getHold?: (botId: string) => any, onHold?: (botId: string, hold: any) => void, subscribeHolds?: (listener: (botId: string, hold: any) => void) => (() => void) | undefined, openSession?: typeof openBotBrowser, api?: object }} options
  */
-export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRoot, downloadRoot, downloadRoots, uploadRoots, headless, playwrightUrl, executablePath, actionTimeout, authorize, completeFor, connect, getHold, onHold, subscribeHolds, openSession = openBotBrowser }) {
+export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRoot, downloadRoot, downloadRoots, uploadRoots, headless, playwrightUrl, executablePath, actionTimeout, authorize, completeFor, connect, getHold, onHold, subscribeHolds, openSession = openBotBrowser, api }) {
   const sessions = new Map()
   const unsubscribeHolds = subscribeHolds?.((botId, hold) => {
     if (hold?.by !== 'user') return
     const session = sessions.get(botId)
     if (!session) return
     sessions.delete(botId)
-    void session.close()
+    void Promise.resolve(session).then(opened => opened.close(), () => {})
   })
   ctx.effect(() => async () => {
     unsubscribeHolds?.()
     const open = [...sessions.values()]
     sessions.clear()
-    await Promise.all(open.map(session => session.close()))
+    await Promise.all(open.map(session => Promise.resolve(session).then(opened => opened.close(), () => {})))
   }, 'ds-bot: browser plugin')
+
+  // Closes a Bot's browser and removes its profile directory; used when the Bot is deleted.
+  async function drop(botId) {
+    const session = sessions.get(botId)
+    sessions.delete(botId)
+    if (session !== undefined) await Promise.resolve(session).then(opened => opened.close(), () => {})
+    await rm(join(profileRoot, botId), { recursive: true, force: true }).catch(() => {})
+  }
 
   for (const spec of toolDefs) {
     ctx.tools.register(defineTool({
@@ -60,24 +69,32 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
         if (getHold?.(botId)?.by === 'user') throw new Error('The user has taken over this browser. Wait for them to give it back.')
         let session = sessions.get(botId)
         if (spec.needsBrowser && session === undefined) {
-          const roots = downloadRoots ? await downloadRoots(botId) : undefined
-          session = await openSession({
-            botId,
-            profileRoot,
-            downloadDir: roots === undefined
-              ? join(downloadRoot ?? join(profileRoot, 'browser-downloads'), botId)
-              : async () => (await downloadRoots(botId))[0],
-            headless,
-            playwrightUrl,
-            executablePath,
-            actionTimeout,
-            connect: connect ? id => connect(id, roots ?? []) : undefined,
-            getHold: () => getHold?.(botId),
-            onHold: hold => onHold?.(botId, hold),
-            uploadRoots: uploadRoots ? () => uploadRoots(botId) : undefined,
+          // Stored before the first await so concurrent calls share one browser launch.
+          const opening = (async () => {
+            const roots = downloadRoots ? await downloadRoots(botId) : undefined
+            return openSession({
+              botId,
+              profileRoot,
+              downloadDir: roots === undefined
+                ? join(downloadRoot ?? join(profileRoot, 'browser-downloads'), botId)
+                : async () => (await downloadRoots(botId))[0],
+              headless,
+              playwrightUrl,
+              executablePath,
+              actionTimeout,
+              connect: connect ? id => connect(id, roots ?? []) : undefined,
+              getHold: () => getHold?.(botId),
+              onHold: hold => onHold?.(botId, hold),
+              uploadRoots: uploadRoots ? () => uploadRoots(botId) : undefined,
+            })
+          })()
+          sessions.set(botId, opening)
+          opening.catch(() => {
+            if (sessions.get(botId) === opening) sessions.delete(botId)
           })
-          sessions.set(botId, session)
+          session = opening
         }
+        session = await session
         const gate = authorize ? action => authorize(exec, botId, action) : undefined
         return gateScope.run(gate, () => spec.execute(args ?? {}, {
           botId,
@@ -88,4 +105,7 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
       },
     }))
   }
+
+  // An object return would be collected as an effect by cordis, so the api is an out-param.
+  if (api) api.drop = drop
 }
