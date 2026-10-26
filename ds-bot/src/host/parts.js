@@ -879,9 +879,13 @@ export function install(rt) {
     }
     if (job.moved) {
       rt.renewMemory(agent.id)
-      // The task move started inside the switch; stopping the earlier part while it
-      // still runs would drop the tasks it has not copied yet.
-      await job.movedSchedules
+      try {
+        await rt.moveSchedules(agent.id, currentOf(job))
+      } catch (error) {
+        // Keep the restart marker: stopping this part would delete unmoved tasks.
+        job.kept = true
+        throw error
+      }
       await ctx.workspaceRegistry.archiveSession(agent.id, { stopActivity: true })
         .catch(error => rt.warn('ds-bot: earlier part %s not archived: %s', agent.id, error))
     }
@@ -983,7 +987,6 @@ export function install(rt) {
     const now = await freshRoute(bot, session)
     if (now !== undefined && (now.ref !== picked?.ref || now.effort !== picked?.effort)) await selectRoute(bot, freshId, now)
     if (job.failed !== undefined) rescued.set(freshId, job.bare ? 'bare' : 'carried')
-    job.movedSchedules = rt.moveSchedules(agent.id, freshId)
     job.moved = true
     const resume = job.resume || job.overflow
     // Then what the old part held: the stopped turn's input, then whatever waited. It

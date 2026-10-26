@@ -132,23 +132,25 @@ test('a due reminder reaches a group as its prompts', () => {
   assert.equal(reminderText('plain text'), 'plain text')
 })
 
-// #571: a restart pass re-runs the task move; a crash between create and delete must
-// not leave a second copy of a recurring task on the fresh part.
-test('a repeated task move copies each task only once', async (t) => {
+test('a failed task move can resume without losing identical remaining tasks', async (t) => {
   const schedule = scheduleService()
   const { ctx, home, rt } = setup({ schedule })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
   await schedule.create('w2', { title: 'Ping', prompt: 'Check', every_seconds: 3600 })
   await schedule.create('w2', { title: 'Ping', prompt: 'Check', every_seconds: 3600 })
 
-  const remove = schedule.delete
-  schedule.delete = async () => { throw new Error('down') }
-  await rt.moveSchedules('w2', 's9')
+  const create = schedule.create
+  let attempts = 0
+  schedule.create = async (...args) => {
+    if (++attempts === 2) throw new Error('down')
+    return create(...args)
+  }
+  await assert.rejects(rt.moveSchedules('w2', 's9'), /down/)
   const on = id => [...schedule.tasks.values()].filter(task => task.sessionId === id)
-  assert.equal(on('s9').length, 2)
-  assert.equal(on('w2').length, 2)
+  assert.equal(on('s9').length, 1)
+  assert.equal(on('w2').length, 1)
 
-  schedule.delete = remove
+  schedule.create = create
   await rt.moveSchedules('w2', 's9')
   assert.equal(on('s9').length, 2)
   assert.equal(on('w2').length, 0)

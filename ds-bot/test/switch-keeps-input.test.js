@@ -349,6 +349,22 @@ test('an earlier part is stopped only after its tasks moved to the fresh part', 
   assert.deepEqual(order, [['move', 'b', 's1'], ['archive', 'b']])
 })
 
+test('a failed task move leaves the earlier part unarchived and marked for retry', async (t) => {
+  const host = await start({ services })
+  t.after(host.stop)
+  host.rt.moveSchedules = async () => { throw new Error('task storage unavailable') }
+  await moveWriter(host, [])
+  await until(() => host.warnings.some(line => line.includes('task storage unavailable')))
+  await settle()
+  assert.deepEqual(host.archived, [])
+  assert.deepEqual(host.state().switching, { b: { botId: 'b' } })
+
+  host.rt.moveSchedules = async () => {}
+  await host.rt.heldBack()
+  assert.deepEqual(host.archived, [['b', { stopActivity: true }]])
+  assert.deepEqual(host.state().switching, {})
+})
+
 test('unmarked earlier parts are never resolved by the restart pass', async (t) => {
   const host = await start({ services })
   await moveWriter(host, [])

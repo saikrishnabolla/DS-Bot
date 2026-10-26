@@ -39,11 +39,6 @@ function requestOf(record) {
   return null
 }
 
-// Two stored records describe the same task when their create requests match.
-function keyOfRequest(request) {
-  return request === null ? '' : JSON.stringify(request)
-}
-
 // The settings form's timing as a create request selector.
 function selectorOf(when) {
   const zone = typeof when?.timeZone === 'string' && when.timeZone !== '' ? when.timeZone : 'UTC'
@@ -133,41 +128,18 @@ export function install(rt) {
   // the fresh Session before the old one goes, so a failure leaves it where it was.
   async function moveSchedules(fromId, toId) {
     if (service === null) return
-    let records
-    try {
-      records = await service.list({ sessionId: fromId })
-    } catch (error) {
-      rt.warn('ds-bot: tasks of %s not moved: %s', fromId, error?.message ?? error)
-      return
-    }
-    // A retry after a crash between create and delete must not copy a task twice.
-    // Copies already on the fresh Session satisfy earlier records of the same
-    // request in order, so two genuinely identical tasks still both move.
-    const have = new Map()
-    try {
-      for (const record of await service.list({ sessionId: toId })) {
-        const key = keyOfRequest(requestOf(record))
-        have.set(key, (have.get(key) ?? 0) + 1)
-      }
-    } catch {
-      // Without a read-back every source task is copied; a retry then adds one copy
-      // per source record, which is the correct multiplicity anyway.
-    }
-    const seen = new Map()
+    const records = await service.list({ sessionId: fromId })
     for (const record of records) {
       const request = requestOf(record)
       if (request === null || (request.at !== undefined && Date.parse(request.at) <= Date.now())) continue
+      // A failed read or copy must prevent stopActivity from deleting an unmoved
+      // task. Equal requests can be separate tasks; copy each source record.
+      await service.create(toId, request)
       try {
-        const key = keyOfRequest(request)
-        const nth = (seen.get(key) ?? 0) + 1
-        seen.set(key, nth)
-        if (nth > (have.get(key) ?? 0)) {
-          await service.create(toId, request)
-          have.set(key, (have.get(key) ?? 0) + 1)
-        }
         await service.delete({ sessionId: fromId, id: record.id })
       } catch (error) {
-        rt.warn('ds-bot: task %s stayed with the earlier part: %s', record.title, error?.message ?? error)
+        // The copy is safe; archiving the earlier part will remove its old task.
+        rt.warn('ds-bot: earlier copy of task %s not removed: %s', record.title, error?.message ?? error)
       }
     }
   }
