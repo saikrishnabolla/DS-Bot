@@ -1284,6 +1284,7 @@ export function install(rt) {
 
   async function partPage(parts, index, cursor) {
     const part = parts[index]
+    const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
     // An archived earlier part may have no live agent left; its stored events
     // still page fine, so resolve failure only drops the live-session cap.
     const agent = await rt.resolveAgent(part.sessionId).catch(() => undefined)
@@ -1292,19 +1293,19 @@ export function install(rt) {
       ...(agent ? { throughSeq: Number(agent.session.seq) - 1 } : {}),
       ...(Number.isInteger(cursor?.beforeSeq) ? { beforeSeq: cursor.beforeSeq } : {}),
       maxMessages: EARLIER_PAGE,
-    }, AbortSignal.timeout(HISTORY_TIMEOUT_MS))
+    }, signal)
     const events = page.records.map(record => record.event)
     let seedTurn
     if (agent === undefined) {
       // Without the live session's projection, rows on a page that does not
       // hold its own turn/start would lose their turn; walk back for it.
       let before = events[0]?.seq
-      for (let depth = 0; Number.isInteger(before) && depth < 5 && seedTurn === undefined; depth += 1) {
+      while (Number.isInteger(before) && seedTurn === undefined) {
         const back = await ctx.sessionController.page({
           address: { kind: 'session', sessionId: part.sessionId },
           beforeSeq: before,
           maxMessages: EARLIER_PAGE,
-        }, AbortSignal.timeout(HISTORY_TIMEOUT_MS))
+        }, signal)
         const starts = back.records.map(record => record.event).filter(event => event.type === 'turn/start')
         if (starts.length > 0) {
           const last = starts.at(-1).data?.turn
