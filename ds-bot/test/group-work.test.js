@@ -35,19 +35,20 @@ async function start(t, room, services, extraRooms) {
       const calls = []
       const cancelled = []
       const held = []
+      const nextStep = []
       const inbox = {
-        nextStep: [],
+        nextStep,
         nextTurn: held,
         remove(id) {
-          const at = held.findIndex(message => message.id === id)
-          if (at === -1) return false
-          held.splice(at, 1)
-          return true
+          for (const list of [nextStep, held]) {
+            const at = list.findIndex(message => message.id === id)
+            if (at !== -1) { list.splice(at, 1); return true }
+          }
+          return false
         },
       }
-      const kinds = []
-      const keep = kind => (message) => { calls.push(message); held.push(message); kinds.push(kind) }
-      agents.set(sessionId, { session: { id: sessionId }, calls, cancelled, inbox, kinds, followup: keep('followup'), steer: keep('steer'), cancel(reason) { cancelled.push(reason) } })
+      const keep = list => message => { calls.push(message); list.push(message) }
+      agents.set(sessionId, { session: { id: sessionId }, calls, cancelled, inbox, followup: keep(held), steer: keep(nextStep), cancel(reason) { cancelled.push(reason) } })
     }
     return agents.get(sessionId)
   }
@@ -79,6 +80,7 @@ async function start(t, room, services, extraRooms) {
   const begin = (sessionId) => {
     const message = agentOf(sessionId).calls.at(-1)
     agentOf(sessionId).inbox.nextTurn.length = 0
+    agentOf(sessionId).inbox.nextStep.length = 0
     const turn = (turns.get(sessionId) ?? 0) + 1
     turns.set(sessionId, turn)
     emit(sessionId, 'turn/start', { turn })
@@ -304,8 +306,42 @@ test('a member called while still at earlier work lets the round go on at once',
   assert.deepEqual(kinds(result()), [['working', 'Writer']])
   // A member at work has not run its turn here, and an event is not a message.
   assert.equal(result().replies[0].duration, undefined)
-  // The call waits for the work before it.
-  assert.equal(host.agentOf('gb').inbox.nextTurn.length, 1)
+  // The correction reaches the running turn at its next step.
+  assert.equal(host.agentOf('gb').inbox.nextTurn.length, 0)
+  assert.equal(host.agentOf('gb').inbox.nextStep.length, 1)
+  assert.match(text(host.agentOf('gb').inbox.nextStep[0]), /再看看这个/)
+})
+
+test('a steered group call keeps the later caller when the earlier work ends', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const host = await start(t)
+  const first = host.round('c1', host.say('@Writer 整理文档'))
+  await settle(() => host.agentOf('gb').calls.length === 1)
+  host.begin('gb')
+  host.emit('gb', 'tool/call', { callId: 'work', name: 'write', arguments: '{}' })
+  t.mock.timers.tick(ROOM_WORK_GRACE_MS)
+  await settle(() => first() !== undefined)
+
+  await host.tool('post_to_group', { group: 'Ops', message: '@Writer 改用新模板' }, 'a')
+  const second = host.round('c2', host.takePost())
+  await settle(() => second() !== undefined)
+  const inbox = host.agentOf('gb').inbox
+  const correction = inbox.nextStep[0]
+  assert.ok(correction)
+  inbox.remove(correction.id)
+  host.emit('gb', 'user/message', { content: correction.content, source: correction.source })
+  host.finish('gb', '原来的工作完成了。')
+
+  await settle(() => inbox.nextTurn.length === 1)
+  const deferred = host.begin('gb')
+  assert.equal(deferred.source.role, 'room')
+  assert.equal(deferred.source.askedBy, 'a')
+  assert.equal(deferred.source.roomId, 'r1')
+  assert.match(text(deferred), /改用新模板/)
+  host.finish('gb', '已换成新模板。')
+  await settle(() => host.agentOf('r1').calls.some(message => message.source.askedBy === 'a'))
+  const report = host.agentOf('r1').calls.find(message => message.source.askedBy === 'a')
+  assert.match(text(report), /已换成新模板/)
 })
 
 test('a quick team tool does not let the round go on', async (t) => {
@@ -430,29 +466,6 @@ const busyRound = async (t, room, services) => {
   await settle(() => true)
   return { host, first }
 }
-
-test('a post steered into a busy group Session picks its speakers inside the running round', async (t) => {
-  const { host, first } = await busyRound(t)
-  await host.tool('post_to_group', { group: 'Ops', message: '@Tester 看一下文档', report_back: true }, 'a')
-  const post = host.takePost()
-  // The steered post lands as a user/message inside the running turn: it queues
-  // into the room inbox, and the running round drains it for its speakers.
-  host.emit('r1', 'user/message', post)
-  host.finish('gb', '整理好了。')
-  await settle(() => host.agentOf('gc').calls.length === 1)
-  assert.equal(host.begin('gc').source.askedBy, 'a')
-  host.finish('gc', '看过了。')
-  await settle(() => first() !== undefined)
-  assert.ok(first().replies.some(reply => reply.botId === 'c'))
-  // Its report_back reaches the poster once the round it joined ends.
-  await settle(() => host.agentOf('a').calls.length === 1)
-  assert.match(text(host.agentOf('a').calls[0]), /Tester: 看过了。/)
-
-  // The group Session itself hears the post at its next step while it works.
-  host.emit('r1', 'turn/start', { turn: 9 })
-  await host.tool('post_to_group', { group: 'Ops', message: '暂停一下' }, 'a')
-  assert.equal(host.agentOf('r1').kinds.at(-1), 'steer')
-})
 
 test('a post during a running round is in the log at once, once, and shows in the round', async (t) => {
   const { host, first } = await busyRound(t)

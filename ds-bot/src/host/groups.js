@@ -326,10 +326,10 @@ export function install(rt) {
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
-      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, files, ...(by ? { askedBy: by } : {}) })
+      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, files, steer: busy, ...(by ? { askedBy: by } : {}) })
       // Still held by an earlier request: this turn cannot start until the user answers.
       if (rt.waitsForApproval?.(sessionId)) rt.roomWaiters.get(exchangeId)?.approval()
-      // Still at earlier work: the call waits in its inbox and is answered after that.
+      // Still at earlier work: the call steers it at its next step; the round goes on.
       else if (busy) rt.roomWaiters.get(exchangeId)?.resolve({ working: true })
     } catch (error) {
       rt.warn('ds-bot: group delivery to %s failed: %s', member.name, error)
@@ -447,31 +447,12 @@ export function install(rt) {
     void rt.save().catch(() => {})
   }
 
-  // A member's post steered into the group Session's running turn lands in the
-  // room inbox mid-round: the relay took its snapshot at entry, so the post picks
-  // its speakers here, in the round it corrected, instead of losing its relay.
-  function drainRoomPosts(room, round, index) {
-    const queued = rt.roomInbox.get(room.id) ?? []
-    const posts = queued.filter(post => post.botId !== undefined)
-    if (posts.length === 0) return
-    rt.roomInbox.set(room.id, queued.filter(post => post.botId === undefined))
-    for (const post of posts) {
-      // The post wrote itself into the log already; it still needs its speakers and,
-      // when it asked for one, its report at the end of the round it joined.
-      callMembers(round, index - 1, openingSpeakers(room, post), `${post.name ?? 'a member'} posted to the group`, post.botId, 'bot')
-      if (post.reportBack === true) (round.postBacks ??= []).push(post)
-    }
-  }
-
   async function runRound(room, round, signal, agent) {
     // The inbox check keeps a message sent during the last speaker's turn inside
     // this round: it drains at the loop's head even once the slots ran out.
-    // Entries the drains below cannot take — user lines need their own round —
-    // must not hold the loop open, so only posts a Bot sent count here.
-    for (let index = 0; index < round.slots.length || waitingLines(agent).length > 0 || (rt.roomInbox.get(room.id) ?? []).some(post => post.botId !== undefined); index += 1) {
+    for (let index = 0; index < round.slots.length || waitingLines(agent).length > 0; index += 1) {
       if (signal.aborted) break
       drainRoomInbox(room, round, index, agent)
-      drainRoomPosts(room, round, index)
       if (index >= round.slots.length) break
       const slot = round.slots[index]
       const member = rt.botOf(slot.id)
@@ -666,9 +647,7 @@ export function install(rt) {
         for (const turn of round.started) void rt.stopRoomTurn?.(room.sessions?.[turn.botId] ?? turn.sessionId, turn.exchangeId)
       }
       await rt.save()
-      // Posts steered into the running turn reported back through the round too:
-      // the relay's snapshot only sees what queued before it.
-      for (const post of [...posts, ...(round.postBacks ?? [])]) {
+      for (const post of posts) {
         if (post.reportBack && rt.botOf(post.botId)) void reportRound(room, post, round)
       }
       exec.concludeTurn?.()
@@ -814,10 +793,7 @@ export function install(rt) {
       await rt.save()
     }
     const agent = await rt.resolveAgent(room.id)
-    // Same rule as a member turn: a group Session at work hears a post at its next
-    // step, not after it — otherwise corrections only queue while it keeps going.
-    const post = rt.live.get(room.id)?.turn !== undefined ? 'steer' : 'followup'
-    agent[post](createUserMessage({
+    agent.followup(createUserMessage({
       content: [{ type: 'text', text: `[Group post from ${sender.name}]\n${text}` }, ...files.map(attachment => ({ type: 'file', attachment }))],
       source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, ...extra, ...(logged !== undefined ? { logged } : {}) },
     }))
