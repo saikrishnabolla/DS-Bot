@@ -326,7 +326,10 @@ export function install(rt) {
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
-      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, files, ...(by ? { askedBy: by } : {}) })
+      // A member mid-turn would only read a queued post after that work: steer the
+      // call in, so a correction reaches it at the turn's next step instead of
+      // landing in its inbox once the crossing has already deepened.
+      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, files, steer: busy, ...(by ? { askedBy: by } : {}) })
       // Still held by an earlier request: this turn cannot start until the user answers.
       if (rt.waitsForApproval?.(sessionId)) rt.roomWaiters.get(exchangeId)?.approval()
       // Still at earlier work: the call waits in its inbox and is answered after that.
@@ -793,7 +796,10 @@ export function install(rt) {
       await rt.save()
     }
     const agent = await rt.resolveAgent(room.id)
-    agent.followup(createUserMessage({
+    // Same rule as a member turn: a group Session at work hears a post at its next
+    // step, not after it — otherwise corrections only queue while it keeps going.
+    const post = rt.live.get(room.id)?.turn !== undefined ? 'steer' : 'followup'
+    agent[post](createUserMessage({
       content: [{ type: 'text', text: `[Group post from ${sender.name}]\n${text}` }, ...files.map(attachment => ({ type: 'file', attachment }))],
       source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, ...extra, ...(logged !== undefined ? { logged } : {}) },
     }))
