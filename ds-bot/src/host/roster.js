@@ -143,9 +143,11 @@ export function install(rt) {
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
     // A thinking level needs a model to resolve against; with none it would be dropped
     // silently, so the create fails before a Session is made.
-    if (effort !== undefined && effort !== '' && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
-    // An explicit level wins; else the Bot starts on the profile default's level.
+    if (effort && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
+    // An explicit level wins; an explicit Default (null) picks the model's own
+    // level; an untouched pick inherits the profile default's level.
     const effortId = modelRef === undefined ? undefined
+      : effort === null || effort === '' ? undefined
       : (await rt.resolveEffort(modelRef, effort)) ?? await rt.defaultEffort(modelRef)
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
     const id = await createSession(cleanName, { dir })
@@ -235,7 +237,9 @@ export function install(rt) {
       color: bot.color,
       avatar: bot.avatar,
       model: served ? bot.model : undefined,
-      effort: served ? bot.effort : undefined,
+      // A copy of a Bot on the model's own default stays on it (null marks the
+      // explicit Default pick); else the create would inherit the profile level.
+      effort: served ? (bot.effort ?? null) : undefined,
       workDir,
       copyOf: bot.id,
     })
