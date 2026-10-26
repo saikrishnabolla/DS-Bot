@@ -14,7 +14,10 @@ test('browser handoff and resume return valid DSH outputs and clear the Bot hold
   t.after(async () => ctx.fiber.dispose())
 
   let hold = null
+  const ref = { attachmentId: 'sha256:abcd', mediaType: 'image/jpeg', bytes: 3, width: 1, height: 1 }
+  const saved = []
   const plugin = inner => {
+    inner.provide('attachments', { saveImage: async input => { saved.push(input); return ref } })
     mountBrowserPlugin(inner, {
       toolDefs: refsTools.filter(tool => ['browser_handoff', 'browser_resume', 'browser_screenshot'].includes(tool.name)),
       defineTool,
@@ -70,10 +73,50 @@ test('browser handoff and resume return valid DSH outputs and clear the Bot hold
 
   const screenshot = await execute('browser_screenshot', {})
   assert.equal(screenshot.isError, false, screenshot.error?.message)
-  assert.deepEqual(screenshot.value, { text: 'Screenshot of https://example.com/.', image: 'AAAA' })
+  assert.deepEqual(saved, [{
+    mediaType: 'image/jpeg',
+    data: Buffer.from('AAAA', 'base64'),
+    name: 'Browser screenshot',
+  }])
+  assert.deepEqual(screenshot.value, { text: 'Screenshot of https://example.com/.', attachment: ref })
   assert.deepEqual(screenshot.content, [
     { type: 'text', text: 'Screenshot of https://example.com/.' },
-    { type: 'image', data: 'AAAA', mediaType: 'image/jpeg' },
+    { type: 'image', attachment: ref },
+  ])
+})
+
+test('a screenshot degrades to text when no attachments service is mounted', async t => {
+  const ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  t.after(async () => ctx.fiber.dispose())
+
+  const plugin = inner => {
+    mountBrowserPlugin(inner, {
+      toolDefs: refsTools.filter(tool => tool.name === 'browser_screenshot'),
+      defineTool,
+      keyOf: async () => 'bot-1',
+      profileRoot: '/tmp/browser-profiles',
+      headless: true,
+      openSession: async () => ({
+        async shot() { return { text: 'Screenshot of https://example.com/.', image: 'AAAA' } },
+        async close() {},
+      }),
+    })
+  }
+  plugin.inject = ['tools']
+  await ctx.plugin(plugin)
+
+  const screenshot = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: ToolCallId('browser_screenshot'),
+    name: 'browser_screenshot',
+    arguments: {},
+  })
+  assert.equal(screenshot.isError, false, screenshot.error?.message)
+  assert.deepEqual(screenshot.value, { text: 'Screenshot of https://example.com/. (The screenshot could not be attached.)' })
+  assert.deepEqual(screenshot.content, [
+    { type: 'text', text: 'Screenshot of https://example.com/. (The screenshot could not be attached.)' },
   ])
 })
 
