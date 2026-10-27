@@ -325,7 +325,7 @@ function turnsHost() {
     noteFailure() {},
     warn() {},
     switchJobs: () => [],
-    dropKickoff() {},
+    userWrote() {},
   }
   installTurns(rt)
   let seq = 0
