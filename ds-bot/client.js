@@ -6835,6 +6835,10 @@ var ALWAYS = { chars: -1, lines: 0 };
 var PREVIEW_LINES = 10;
 var PREVIEW_CHARS = 600;
 var FENCE = /^ {0,3}(`{3,}|~{3,})/;
+function cutAt(text, end) {
+  const code = text.charCodeAt(end - 1);
+  return text.slice(0, code >= 55296 && code <= 56319 ? end - 1 : end);
+}
 function moreLines(text, max) {
   let lines = 1;
   for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
@@ -6844,22 +6848,43 @@ function moreLines(text, max) {
 }
 function foldPreview(text, limit = FOLD_AT, markdown = true) {
   if (text.length <= limit.chars && !moreLines(text, limit.lines)) return null;
-  let head = text.split("\n", PREVIEW_LINES).join("\n");
+  const body = text.replace(/^(\s*\n)+/, "");
+  if (body.trim() === "") return null;
+  let head = body.split("\n", PREVIEW_LINES).join("\n");
   if (head.length > PREVIEW_CHARS) {
     const cut = head.lastIndexOf("\n", PREVIEW_CHARS);
-    const end = cut > 0 ? cut : PREVIEW_CHARS;
-    const code = head.charCodeAt(end - 1);
-    head = head.slice(0, code >= 55296 && code <= 56319 ? end - 1 : end);
+    head = cutAt(head, cut > 0 ? cut : PREVIEW_CHARS);
   }
+  if (head.trim() === "") head = cutAt(body, PREVIEW_CHARS);
   if (!markdown) return head;
   let open = null;
-  for (const line of head.split("\n")) {
-    const marker = FENCE.exec(line)?.[1];
+  let openLine = -1;
+  let lines = head.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const marker = FENCE.exec(lines[i])?.[1];
     if (marker === void 0) continue;
-    if (open === null) open = marker;
-    else if (marker[0] === open[0] && marker.length >= open.length) open = null;
+    if (open === null) {
+      open = marker;
+      openLine = i;
+    } else if (marker[0] === open[0] && marker.length >= open.length) open = null;
   }
-  return open === null ? head : `${head}
+  if (open !== null && lines.slice(openLine + 1).join("").trim() === "") {
+    head = cutAt(body, PREVIEW_CHARS);
+    lines = head.split("\n");
+    open = null;
+    openLine = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const marker = FENCE.exec(lines[i])?.[1];
+      if (marker === void 0) continue;
+      if (open === null) {
+        open = marker;
+        openLine = i;
+      } else if (marker[0] === open[0] && marker.length >= open.length) open = null;
+    }
+  }
+  if (open === null) return head;
+  lines[openLine] = open;
+  return `${lines.join("\n")}
 ${open}`;
 }
 var stripLongNote = (text) => text.replace(/^\[A long message: \d+ characters\.[^\]\n]*\]\n/, "");
