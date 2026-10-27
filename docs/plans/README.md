@@ -49,3 +49,4 @@
 | [Bot 视图](2026-10-20-widget-views.md) | Bot 在回答里画视图：固定组件目录的 JSON 蓝图（含图表、输入和本地公式），目录外的放沙箱 html；提问卡回路的泛化 |
 | [Side chat（侧边对话）](2026-10-21-btw.md) | 人顺带问一句：侧栏里的常驻对话，以与会话同构的请求回答、不执行工具、不打断、不进模型可见历史；可追问、可开多条；Bot 之间的 `ask_bot` 另行提案 |
 | [消息布局和宽度](2026-10-22-message-layout.md) | 气泡 / 平铺两种布局；平铺时 Bot 的话带头像、名字、时间；气泡宽度和平铺正文宽度各用一个滑块，按正文列的百分比调 |
+| [Office 文档](2026-10-27-office-documents.md) | Bot 离线处理 .docx/.pptx/.xlsx：应用带的 payload、`office.js` 命令行、office 路由换成带 `office-tools` 的版本 |
