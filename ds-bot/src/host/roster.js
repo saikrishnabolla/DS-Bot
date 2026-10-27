@@ -143,8 +143,12 @@ export function install(rt) {
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
     // A thinking level needs a model to resolve against; with none it would be dropped
     // silently, so the create fails before a Session is made.
-    if (effort !== undefined && effort !== '' && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
-    const effortId = modelRef === undefined ? undefined : await rt.resolveEffort(modelRef, effort)
+    if (effort && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
+    // An explicit level wins; an explicit Default (null) picks the model's own
+    // level; an untouched pick inherits the profile default's level.
+    const effortId = modelRef === undefined ? undefined
+      : effort === null || effort === '' ? undefined
+      : (await rt.resolveEffort(modelRef, effort)) ?? await rt.defaultEffort(modelRef)
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
     const id = await createSession(cleanName, { dir })
     try {
@@ -233,13 +237,15 @@ export function install(rt) {
       color: bot.color,
       avatar: bot.avatar,
       model: served ? bot.model : undefined,
-      effort: served ? bot.effort : undefined,
+      // A copy of a Bot on the model's own default stays on it (null marks the
+      // explicit Default pick); else the create would inherit the profile level.
+      effort: served ? (bot.effort ?? null) : undefined,
       workDir,
       copyOf: bot.id,
     })
   }
 
-  async function updateBot(id, patch, actorId) {
+  async function updateBot(id, patch, actorId, fromSessionId) {
     const bot = rt.botOf(id)
     if (bot === undefined) throw new Error('Unknown Bot')
     if (patch.browserGrants !== undefined && actorId !== undefined) {
@@ -277,6 +283,8 @@ export function install(rt) {
       await ctx.sessionTitle.rename(agent.session, next)
       await followMemberNames(Object.values(state.rooms).filter(room => room.members.includes(id)))
     }
+    const roleBefore = bot.role
+    const instructionsBefore = bot.instructions
     if (patch.role !== undefined) bot.role = String(patch.role).trim().slice(0, 24)
     if (patch.instructions !== undefined) bot.instructions = String(patch.instructions).trim()
     let modelChanged = false
@@ -310,6 +318,23 @@ export function install(rt) {
       else bot.workDir = workDir
     }
     await rt.save()
+    // The system prompt reads the live profile every turn, but a Session with
+    // several rounds behind it follows the old kickoff's pull until a message
+    // lands; notify the Bot's chat so the next turn honors the new profile.
+    const notes = []
+    if (bot.role !== roleBefore) notes.push(`Your role is now "${bot.role || '(none)'}"`)
+    if (bot.instructions !== instructionsBefore) notes.push(`Your instructions now read:\n${bot.instructions || '(none)'}`)
+    // A held greeting means the model pick is still open: the kickoff it later sends
+    // already reads the new profile, and a notice would start a turn before that.
+    // A Bot editing itself in its own chat just got the tool result in the turn
+    // that made the edit; a notice there would only buy it a second, unsolicited
+    // reply. The same edit made from a group Session reaches no own-chat turn, so
+    // the notice still goes out.
+    const selfEditInChat = actorId === bot.id && fromSessionId === rt.chatOf(bot.id)
+    if (notes.length > 0 && bot.kickoff === undefined && !selfEditInChat) {
+      void rt.deliver({ toId: bot.id, text: notes.join('\n'), role: 'update' })
+        .catch(error => rt.warn('ds-bot: profile update for %s not delivered: %s', bot.name, error?.message ?? error))
+    }
     if (modelChanged) await rt.applyModel(bot, { force: true })
     if (moved) void rt.followFolder(bot.id)
     if (bot.model && bot.kickoff !== undefined) {
