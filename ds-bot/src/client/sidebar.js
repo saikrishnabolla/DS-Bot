@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { FishLogo } from './dsh-primitives.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignOutIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignOutIcon } from './icons.js'
 import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
@@ -327,7 +327,10 @@ export function TeamSidebar(props) {
   const requested = useRef(false)
   // The request mark always lapses on its own: a re-render before the shell's
   // flip must not leave it set, or the user's next switch would read as ours.
+  // A lapse checks the shell again, since our flip and another one landing in
+  // the same frame cancel out and no flip arrives to settle it.
   const requestLapse = useRef(0)
+  const [lapsed, setLapsed] = useState(0)
   useEffect(() => () => clearTimeout(requestLapse.current), [])
   // The window's own resize event lands before the shell's next-frame measure,
   // so it dates a width change even while our frame source still holds the old one.
@@ -363,9 +366,9 @@ export function TeamSidebar(props) {
     requested.current = true
     actions.toggleSidebar()
     clearTimeout(requestLapse.current)
-    requestLapse.current = setTimeout(() => { requested.current = false }, 300)
+    requestLapse.current = setTimeout(() => { requested.current = false; setLapsed(value => value + 1) }, 300)
     return undefined
-  }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left])
+  }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left, lapsed])
 
   // The drawer closes on a row pick, on Escape and on a press outside it.
   useEffect(() => {
@@ -445,13 +448,12 @@ export function TeamSidebar(props) {
         h('button', { type: 'button', className: 'bt-round bt-rail-expand', 'aria-label': t('Expand sidebar'), title: t('Expand sidebar'), onClick: expandLeft }, h(SidebarIcon)),
         main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, t('Setting up your Main Bot…')),
         h('span', { className: 'bt-rail-sep', 'aria-hidden': true }))
-  // The foot stands in for the shell's hidden footer: the account avatar, then
-  // Connect plugins as its row, and on the rail the new-chat and plug buttons.
+  // The foot stands in for the shell's hidden footer: the account avatar, and on
+  // the rail the new-chat button above it.
   const foot = mode === 'inline' ? null : wideContent
-    ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions }), h(ConnectPlugins, { wide: true, actions }))
+    ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions }))
     : h('div', { className: 'bt-leftcol-foot bt-leftcol-foot-rail' },
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
-        h('button', { type: 'button', className: 'bt-round', 'aria-label': t('Connect plugins'), title: t('Connect plugins'), onClick: () => actions.selectPanel('plugins') }, h(PlugIcon)),
         h(AccountLauncher, { seat: false, actions }))
   const content = h('div', { className: wideContent ? 'bt-side' : 'bt-side bt-rail', onKeyDown: typeToSearch },
     top,
@@ -559,17 +561,6 @@ function UpdateButton({ useUpdate, actions }) {
                 : h('button', {
                   type: 'button', className: 'bt-update-go', disabled: dshPhase === 'installing', onClick: startDsh,
                 }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null), document.body) : null)
-}
-
-// The footer entry to the shell's plugin panel.
-export function ConnectPlugins({ wide, actions }) {
-  if (!wide) return null
-  return h('span', { className: 'bt-connect-wrap' },
-    h('button', {
-      type: 'button', className: 'bt-connect bt-connect-foot',
-      onClick: () => actions.selectPanel('plugins'),
-    },
-    h(PlugIcon), t('Connect plugins')))
 }
 
 // Account seat of the Settings trigger: the visible label stays for assistive tech only.
@@ -826,9 +817,9 @@ export function BrandName() {
   return h('span', { style: { fontWeight: 600, fontSize: 14 } }, 'DS Bot')
 }
 
-// With the whale holding the settings seat, the Bot row is just the account menu
-// and Connect plugins; FooterAccount only shows when the seat went to no one. The
-// shell's footer classes are CSS-module names, so they match on their stems.
+// With the whale holding the settings seat, the Bot row is just the account menu;
+// FooterAccount only shows when the seat went to no one. The shell's footer classes
+// are CSS-module names, so they match on their stems.
 export const SIDEBAR_CSS = `
 .bt-confirm{width:260px;max-width:72vw;padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
 .bt-confirm-text{margin:0;font-size:13px;line-height:19px;color:var(--bt-ink-2)}
@@ -847,7 +838,6 @@ export const SIDEBAR_CSS = `
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
-[class*="_footArea"]:has(.bt-foot-account)>[class*="_footerActions"]>div>.bt-connect-wrap{grid-column:2}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"]{grid-column:3}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
 
