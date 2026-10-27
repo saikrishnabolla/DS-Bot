@@ -1512,9 +1512,9 @@ function countCards(state, sessionId, callIds, delta) {
 // src/client/team-actions.js
 function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
-  const yieldTo = (view) => panelFolded?.(view) === true;
+  const yieldTo = (state, view) => state.panelYield === true || panelFolded?.(view) === true;
   const openSideChat = (sessionId, chatId) => {
-    ui2.set((state) => ({ ...state, details: sessionId, view: "side", side: chatId ?? null, renaming: false, tab: null, panelYield: yieldTo("side") }));
+    ui2.set((state) => ({ ...state, details: sessionId, view: "side", side: chatId ?? null, renaming: false, tab: null, panelYield: yieldTo(state, "side") }));
   };
   return {
     openNewChat: (mode) => {
@@ -1539,7 +1539,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     toggleDetails: (id, force) => {
       ui2.set((state) => {
         const details = force || state.details !== id || state.view !== "details" ? id : null;
-        if (details === null && yieldTo("details")) return { ...state, renaming: false, tab: null, details: id, view: "details", panelYield: true };
+        if (details === null && panelFolded?.("details") === true) return { ...state, renaming: false, tab: null, details: id, view: "details", panelYield: true };
         return { ...state, renaming: false, tab: null, details, view: "details" };
       });
     },
@@ -1555,11 +1555,11 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
       });
     },
     showDetails: (id, tab = null) => {
-      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab, panelYield: yieldTo("details") }));
+      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab, panelYield: yieldTo(state, "details") }));
     },
     // Opening the conversation would move focus to its composer and blur the name field.
     renameBot: (id) => {
-      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: true, tab: null, panelYield: yieldTo("details") }));
+      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: true, tab: null, panelYield: yieldTo(state, "details") }));
     },
     // `id` opens one Bot (page 'bots') or one group chat (page 'groups').
     openSettings: (page = "general", id = null) => {
@@ -1579,7 +1579,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     },
     setPanelView: (view) => {
       if (view !== "details" && view !== "browser" && view !== "side") return;
-      ui2.set((state) => state.details && state.view !== view ? { ...state, view, panelYield: yieldTo(view) } : state);
+      ui2.set((state) => state.details && state.view !== view ? { ...state, view, panelYield: yieldTo(state, view) } : state);
     },
     // A side chat on the panel's own view, opened from the strip, the `···`
     // menus or `/side`. Closing the panel keeps the chats; only a tab's × deletes.
@@ -2473,9 +2473,9 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
    Mica the app styles DSH's sidebar the same way, via --bt-leftcol-fill there);
    it stays under the shell's title-bar switch (z 30) and the popovers (z 60),
    and the floating drawer keeps the opaque fill over the conversation. */
-.bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,var(--dsh-windows-titlebar-height,0px));background:var(--bt-leftcol-fill,var(--dsw-specific-sidebar-fill));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
+.bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,var(--dsh-windows-titlebar-height,0px));background:var(--bt-leftcol-fill,var(--bt-sidebar));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
 html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
-.bt-leftcol[data-left=drawer]{background:var(--dsw-specific-sidebar-fill);box-shadow:8px 0 24px rgba(0,0,0,.14)}
+.bt-leftcol[data-left=drawer]{background:var(--bt-sidebar);box-shadow:8px 0 24px rgba(0,0,0,.14)}
 .bt-leftcol>.bt-side{width:100%}
 .bt-leftcol-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
 .bt-rail{align-items:center;padding:0}
@@ -2483,8 +2483,10 @@ html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{b
 .bt-rail-top{display:flex;flex-direction:column;align-items:center;gap:6px;padding-bottom:8px}
 .bt-rail-sep{width:24px;height:1px;flex:none;background:var(--bt-line)}
 .bt-rail .bt-agent-ava{width:44px;height:44px}
-.bt-rail .bt-list{align-items:center;gap:4px}
-.bt-leftcol[data-left=rail]{padding:calc(var(--bt-lc-clear) + 8px) 16px 8px}
+.bt-rail .bt-list{align-self:stretch;align-items:center;gap:4px}
+/* The rail's list spans the whole column: the badges and dots that sit on a row's
+   edge need room beside the 56px rows, or the list scrolls sideways. */
+.bt-leftcol[data-left=rail]{padding:calc(var(--bt-lc-clear) + 8px) 0 8px}
 .bt-leftcol-foot-rail{flex-direction:column;gap:6px}
 .bt-dot{position:absolute;top:4px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--bt-accent);box-shadow:0 0 0 1.5px var(--bt-sidebar)}
 .bt-dot-wait{background:var(--bt-star)}
@@ -8500,10 +8502,10 @@ var RAIL_WIDTH = 88;
 var PANEL_MIN = { details: 320, browser: 360, side: 320 };
 var DSH_NARROW = 1024;
 var FALLBACK_SIDEBAR_WIDTH = 280;
-function frameLayout({ viewport, sidebarWidth, collapsedWidth = 0, pref, drawer = false, panel = null }) {
+function frameLayout({ viewport, sidebarWidth, pref, drawer = false, panel = null }) {
   const fits = pref === "open" && viewport >= sidebarWidth + MIN_CHAT;
   let left = fits ? "open" : drawer && pref === "open" ? "drawer" : "rail";
-  let occupied = left === "open" ? sidebarWidth : left === "rail" ? RAIL_WIDTH : collapsedWidth;
+  let occupied = left === "open" ? sidebarWidth : RAIL_WIDTH;
   let panelState = "none";
   if (panel !== null) {
     const need = (PANEL_MIN[panel.view] ?? PANEL_MIN.details) + MIN_CHAT;
@@ -8517,7 +8519,8 @@ function frameLayout({ viewport, sidebarWidth, collapsedWidth = 0, pref, drawer 
   return { left, panel: panelState, room: Math.max(0, viewport - occupied) };
 }
 var dshExpandedFor = (viewport, left) => viewport >= DSH_NARROW && left === "open";
-var userSidebarToggle = ({ before, after, requested = false }) => before.collapsed !== after.collapsed && !requested && before.viewport < DSH_NARROW === after.viewport < DSH_NARROW;
+var RESIZE_SETTLE_MS = 500;
+var userSidebarToggle = ({ before, after, requested = false, sinceResize = Infinity }) => before.collapsed !== after.collapsed && !requested && sinceResize >= RESIZE_SETTLE_MS && before.viewport < DSH_NARROW === after.viewport < DSH_NARROW;
 function readSidebarPref(storage = globalThis.localStorage) {
   try {
     return storage.getItem(STORAGE.sidebar) === "rail" ? "rail" : "open";
@@ -8948,7 +8951,6 @@ function TeamSidebar(props) {
   const layout = frameLayout({
     viewport: frameSnap.viewport,
     sidebarWidth: frameSnap.sidebarWidth,
-    collapsedWidth: frameSnap.collapsedWidth ?? 0,
     pref,
     drawer: uiNow.leftDrawer === true,
     panel: uiNow.details ? { view: uiNow.view, yielded: uiNow.panelYield === true } : null
@@ -8974,23 +8976,35 @@ function TeamSidebar(props) {
   useListGlide(listRef, wideContent, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
   const ourWidth = layout.left === "rail" ? RAIL_WIDTH : frameSnap.sidebarWidth;
+  const pushed = layout.left === "open" ? frameSnap.sidebarWidth : RAIL_WIDTH;
   (0, import_react15.useLayoutEffect)(() => {
     if (typeof document === "undefined") return;
-    chatRoom.setLeft(mode === "inline" || mode === "drawer" ? null : Math.max(0, ourWidth - (frameSnap.collapsedWidth ?? 0)));
-  }, [mode, ourWidth, frameSnap.collapsedWidth]);
+    chatRoom.setLeft(mode === "inline" ? null : Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)));
+  }, [mode, pushed, frameSnap.collapsedWidth]);
   (0, import_react15.useEffect)(() => () => {
     if (typeof document !== "undefined") chatRoom.setLeft(null);
   }, []);
   const dsh = (0, import_react15.useRef)(null);
   const requested = (0, import_react15.useRef)(false);
+  const requestLapse = (0, import_react15.useRef)(0);
+  (0, import_react15.useEffect)(() => () => clearTimeout(requestLapse.current), []);
+  const resizedAt = (0, import_react15.useRef)(0);
+  (0, import_react15.useEffect)(() => {
+    const onResize = () => {
+      resizedAt.current = performance.now();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   (0, import_react15.useLayoutEffect)(() => {
     if (typeof document === "undefined" || typeof actions.toggleSidebar !== "function") return void 0;
     const collapsed = dshCollapsed() ?? !wide;
     const prev = dsh.current;
-    dsh.current = { collapsed, viewport: frameSnap.viewport, left: layout.left };
+    const viewport = window.innerWidth;
+    dsh.current = { collapsed, viewport, left: layout.left };
     if (prev !== null && collapsed !== prev.collapsed) {
       if (requested.current) requested.current = false;
-      else if (userSidebarToggle({ before: prev, after: { collapsed, viewport: frameSnap.viewport } })) {
+      else if (userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
         if (prev.left === "open") actions.setSidebarPref?.("rail");
         else {
           actions.setSidebarPref?.("open");
@@ -9008,10 +9022,11 @@ function TeamSidebar(props) {
     if (requested.current) return void 0;
     requested.current = true;
     actions.toggleSidebar();
-    const timer = setTimeout(() => {
+    clearTimeout(requestLapse.current);
+    requestLapse.current = setTimeout(() => {
       requested.current = false;
     }, 300);
-    return () => clearTimeout(timer);
+    return void 0;
   }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left]);
   (0, import_react15.useEffect)(() => {
     if (mode !== "drawer") return void 0;
@@ -9051,6 +9066,7 @@ function TeamSidebar(props) {
     actions.openPalette(event.key);
   };
   const expandLeft = () => {
+    actions.setPanelYield?.(false);
     actions.setSidebarPref?.("open");
     if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true);
   };
@@ -9061,6 +9077,20 @@ function TeamSidebar(props) {
     } else if (layout.left === "drawer") actions.setLeftDrawer?.(false);
     else expandLeft();
   };
+  const toggleRef = (0, import_react15.useRef)(onTitleToggle);
+  toggleRef.current = onTitleToggle;
+  (0, import_react15.useEffect)(() => {
+    const onKey = (event) => {
+      if (event.defaultPrevented || event.isComposing || !pressesShellShortcut(event, "sidebar.left.toggle")) return;
+      if (event.target instanceof Element && event.target.closest(".xterm")) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleRef.current();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   const top = wideContent ? (0, import_react15.createElement)(
     "div",
     { className: "bt-side-top" },
@@ -9293,6 +9323,12 @@ function pressSettingsShortcut() {
     shiftKey: held.has("shift"),
     metaKey: held.has("meta")
   }));
+}
+function pressesShellShortcut(event, id) {
+  const binding = shellShortcuts?.catalog.getSnapshot().find((row) => row.id === id)?.binding;
+  if (!binding) return false;
+  const held = new Set(binding.modifiers);
+  return event.code === binding.code && event.ctrlKey === held.has("control") && event.altKey === held.has("alt") && event.shiftKey === held.has("shift") && event.metaKey === held.has("meta");
 }
 var NO_SUBSCRIBE = () => () => {
 };
@@ -17859,7 +17895,6 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
   const layout = frameLayout({
     viewport: frameSnap.viewport,
     sidebarWidth: frameSnap.sidebarWidth,
-    collapsedWidth: frameSnap.collapsedWidth ?? 0,
     pref,
     drawer: ui2.leftDrawer === true,
     panel: open ? { view: open.view, yielded: ui2.panelYield === true } : null
@@ -19471,8 +19506,9 @@ function apply(ctx) {
     const state = ui2.getSnapshot();
     if (state.details === null) return false;
     const f = frame.getSnapshot();
-    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: view ?? state.view, yielded: false } }).panel === "folded";
+    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: view ?? state.view, yielded: state.panelYield === true } }).panel === "folded";
   };
+  const yieldBrowser = (state) => state.panelYield === true || panelFolded("browser");
   const actions = {
     ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
@@ -19623,7 +19659,7 @@ function apply(ctx) {
         if (!bot) return;
         browsers.ensureTabs(bot.id);
         if (browsers.tabs.getSnapshot()[bot.id]?.active == null) browsers.openTab(bot.id);
-        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: panelFolded("browser") }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: yieldBrowser(state) }));
       },
       // '+' on the strip or the drawer's new-tab card: a blank tab in the browser view.
       browserNewTab: (id) => {
@@ -19631,7 +19667,7 @@ function apply(ctx) {
         if (!bot) return null;
         browsers.ensureTabs(bot.id);
         const tabId = browsers.openTab(bot.id);
-        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: panelFolded("browser") }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: yieldBrowser(state) }));
         return tabId;
       },
       // A drawer card: its tab active, the panel on the browser view.
@@ -19639,7 +19675,7 @@ function apply(ctx) {
         const bot = roster.getSnapshot().byId[id];
         if (!bot) return;
         browsers.activate(bot.id, tabId);
-        ui2.set((state) => ({ ...state, details: id, view: "browser", panelYield: panelFolded("browser") }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", panelYield: yieldBrowser(state) }));
       },
       browserEnsure: (botId) => browsers.ensureTabs(botId),
       browserCloseTab: (botId, tabId) => browsers.closeTab(botId, tabId),
@@ -19871,7 +19907,7 @@ function apply(ctx) {
       const f = frame.getSnapshot();
       const opened = s.details !== null && lastDetails === null;
       lastDetails = s.details;
-      const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } });
+      const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } });
       if (s.details === null) {
         if (s.panelYield) actions.setPanelYield(false);
       } else if (!s.panelYield && opened && layout.panel === "folded") actions.setPanelYield(true);
