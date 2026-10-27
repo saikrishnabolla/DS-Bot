@@ -4246,7 +4246,7 @@ var HANDOFF_CSS = `
 .bt-handoff .bt-q-foot{flex-wrap:wrap}
 `;
 
-// ../../../DeepSeek Bot/deep-ui/src/react/ui.js
+// ../../../DeepSeek Bot/deep-view/src/react/ui.js
 var import_react7 = require("react");
 var FallbackMarkdown = ({ text }) => (0, import_react7.createElement)("span", null, String(text ?? ""));
 var ViewUi = (0, import_react7.createContext)({ t: (key) => key, Markdown: FallbackMarkdown });
@@ -4267,7 +4267,7 @@ function CloseIcon2() {
   return (0, import_react7.createElement)("svg", { width: 16, height: 16, viewBox: "0 0 20 20", "aria-hidden": true }, (0, import_react7.createElement)("path", { d: "M5 5l10 10M15 5L5 15", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" }));
 }
 function Segmented2({ label, value, className, children }) {
-  return (0, import_react7.createElement)("div", { className: className ? `dui-seg ${className}` : "dui-seg", role: "group", "aria-label": label, "data-active": value }, children);
+  return (0, import_react7.createElement)("div", { className: className ? `dv-seg ${className}` : "dv-seg", role: "group", "aria-label": label, "data-active": value }, children);
 }
 var keyLetter2 = (index) => String.fromCharCode(65 + index);
 var isTypingTarget2 = (node) => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement || node instanceof HTMLElement && node.isContentEditable;
@@ -4313,7 +4313,7 @@ function useOptionKeys2(count, onPick, ownRef) {
   return count > 0 && listening <= 1;
 }
 
-// ../../../DeepSeek Bot/deep-ui/src/core/formula.js
+// ../../../DeepSeek Bot/deep-view/src/core/formula.js
 var FUNCTIONS = {
   min: { args: [1, Infinity], run: (...values) => Math.min(...values.map(num)) },
   max: { args: [1, Infinity], run: (...values) => Math.max(...values.map(num)) },
@@ -4594,7 +4594,7 @@ function evaluate(tree, lookup) {
   }
 }
 
-// ../../../DeepSeek Bot/deep-ui/src/core/views.js
+// ../../../DeepSeek Bot/deep-view/src/core/views.js
 var LAYOUT = ["stack", "row"];
 var DISPLAY = ["text", "metric", "table", "chart", "progress", "callout", "sources", "html"];
 var INPUT_TYPES = ["slider", "choice", "toggle", "number"];
@@ -5214,9 +5214,9 @@ function validateForm(node, values) {
   return { fields };
 }
 
-// ../../../DeepSeek Bot/deep-ui/src/react/chart.js
+// ../../../DeepSeek Bot/deep-view/src/react/chart.js
 var import_react8 = require("react");
-var PALETTE = ["var(--dui-accent)", "var(--dui-ink-tangerine)", "var(--dui-ink-green)", "var(--dui-ink-violet)", "var(--dui-ink-sky)", "var(--dui-ink-rose)", "var(--dui-ink-yellow)", "var(--dui-ink-cyan)", "var(--dui-ink-magenta)"];
+var PALETTE = ["var(--dv-accent)", "var(--dv-ink-tangerine)", "var(--dv-ink-green)", "var(--dv-ink-violet)", "var(--dv-ink-sky)", "var(--dv-ink-rose)", "var(--dv-ink-yellow)", "var(--dv-ink-cyan)", "var(--dv-ink-magenta)"];
 var colorAt = (index) => PALETTE[index % PALETTE.length];
 var TICK = 10;
 var LABEL = 11;
@@ -5294,13 +5294,13 @@ function columns({ categories, series, unit, kind }, width, active, shown) {
   const band = plot.w / categories.length;
   const parts = [];
   for (const tick of ticks) {
-    parts.push((0, import_react8.createElement)("line", { key: `g${tick}`, className: "dui-chart-grid", x1: plot.x, x2: plot.x + plot.w, y1: y(tick), y2: y(tick) }));
-    parts.push((0, import_react8.createElement)("text", { key: `t${tick}`, className: "dui-chart-tick", x: plot.x - 8, y: y(tick) + 3, textAnchor: "end" }, withUnit(tick, unit)));
+    parts.push((0, import_react8.createElement)("line", { key: `g${tick}`, className: "dv-chart-grid", x1: plot.x, x2: plot.x + plot.w, y1: y(tick), y2: y(tick) }));
+    parts.push((0, import_react8.createElement)("text", { key: `t${tick}`, className: "dv-chart-tick", x: plot.x - 8, y: y(tick) + 3, textAnchor: "end" }, withUnit(tick, unit)));
   }
   const points = [];
   categories.forEach((label, at) => {
     const cx = plot.x + band * at + band / 2;
-    parts.push((0, import_react8.createElement)("text", { key: `c${at}`, className: "dui-chart-label", x: cx, y: height - 7, textAnchor: "middle" }, fit(label, band - 4, LABEL)));
+    parts.push((0, import_react8.createElement)("text", { key: `c${at}`, className: "dv-chart-label", x: cx, y: height - 7, textAnchor: "middle" }, fit(label, band - 4, LABEL)));
     points.push({ x: cx, y: y(Math.max(...visible.map((item) => item.values[at]), lo)) });
   });
   if (kind === "bar") {
@@ -5317,7 +5317,7 @@ function columns({ categories, series, unit, kind }, width, active, shown) {
         const r = Math.min(4, barW / 2, tall);
         const up = value >= 0;
         const d = up ? `M${x},${top2 + tall}V${top2 + r}q0,-${r} ${r},-${r}h${barW - 2 * r}q${r},0 ${r},${r}V${top2 + tall}z` : `M${x},${top2}V${top2 + tall - r}q0,${r} ${r},${r}h${barW - 2 * r}q${r},0 ${r},-${r}V${top2}z`;
-        parts.push((0, import_react8.createElement)("path", { key: `b${at}-${row}`, className: "dui-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, d, style: { fill: item.color } }));
+        parts.push((0, import_react8.createElement)("path", { key: `b${at}-${row}`, className: "dv-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, d, style: { fill: item.color } }));
       });
     });
   } else {
@@ -5326,14 +5326,14 @@ function columns({ categories, series, unit, kind }, width, active, shown) {
       const line = item.values.map((value, at) => `${at === 0 ? "M" : "L"}${xs[at]},${y(value)}`).join("");
       if (kind === "area") {
         const base = y(Math.max(lo, Math.min(0, hi)));
-        parts.push((0, import_react8.createElement)("path", { key: `a${row}`, className: "dui-chart-area", d: `${line}L${xs.at(-1)},${base}L${xs[0]},${base}z`, style: { fill: item.color } }));
+        parts.push((0, import_react8.createElement)("path", { key: `a${row}`, className: "dv-chart-area", d: `${line}L${xs.at(-1)},${base}L${xs[0]},${base}z`, style: { fill: item.color } }));
       }
-      parts.push((0, import_react8.createElement)("path", { key: `l${row}`, className: "dui-chart-line", d: line, style: { stroke: item.color } }));
+      parts.push((0, import_react8.createElement)("path", { key: `l${row}`, className: "dv-chart-line", d: line, style: { stroke: item.color } }));
       item.values.forEach((value, at) => {
-        parts.push((0, import_react8.createElement)("circle", { key: `p${row}-${at}`, className: "dui-chart-dot", cx: xs[at], cy: y(value), r: active === at ? 4 : 2.5, style: { fill: item.color } }));
+        parts.push((0, import_react8.createElement)("circle", { key: `p${row}-${at}`, className: "dv-chart-dot", cx: xs[at], cy: y(value), r: active === at ? 4 : 2.5, style: { fill: item.color } }));
       });
     });
-    if (active !== null) parts.unshift((0, import_react8.createElement)("line", { key: "guide", className: "dui-chart-guide", x1: xs[active], x2: xs[active], y1: plot.y, y2: plot.y + plot.h }));
+    if (active !== null) parts.unshift((0, import_react8.createElement)("line", { key: "guide", className: "dv-chart-guide", x1: xs[active], x2: xs[active], y1: plot.y, y2: plot.y + plot.h }));
   }
   const hits = categories.map((_, at) => ({ x: plot.x + band * at, y: plot.y, w: band, h: plot.h }));
   return { parts, height, points, hits };
@@ -5353,21 +5353,21 @@ function rows({ categories, series, unit }, width, active, shown) {
   const x = (value) => plot.x + (value - lo) / (hi - lo) * plot.w;
   const parts = [];
   for (const tick of ticks) {
-    parts.push((0, import_react8.createElement)("line", { key: `g${tick}`, className: "dui-chart-grid", x1: x(tick), x2: x(tick), y1: plot.y, y2: plot.y + plot.h }));
-    parts.push((0, import_react8.createElement)("text", { key: `t${tick}`, className: "dui-chart-tick", x: x(tick), y: height - 6, textAnchor: "middle" }, withUnit(tick, unit)));
+    parts.push((0, import_react8.createElement)("line", { key: `g${tick}`, className: "dv-chart-grid", x1: x(tick), x2: x(tick), y1: plot.y, y2: plot.y + plot.h }));
+    parts.push((0, import_react8.createElement)("text", { key: `t${tick}`, className: "dv-chart-tick", x: x(tick), y: height - 6, textAnchor: "middle" }, withUnit(tick, unit)));
   }
   const points = [];
   const zero = x(Math.max(lo, Math.min(0, hi)));
   categories.forEach((label, at) => {
     const rowY = plot.y + rowH * at + 5;
-    parts.push((0, import_react8.createElement)("text", { key: `c${at}`, className: "dui-chart-label", x: labelW - 10, y: rowY + (rowH - 10) / 2 + 4, textAnchor: "end" }, fit(label, labelW - 12, LABEL)));
+    parts.push((0, import_react8.createElement)("text", { key: `c${at}`, className: "dv-chart-label", x: labelW - 10, y: rowY + (rowH - 10) / 2 + 4, textAnchor: "end" }, fit(label, labelW - 12, LABEL)));
     visible.forEach((item, row) => {
       const value = item.values[at];
       const by = rowY + row * (barH + 2);
       const left = Math.min(x(value), zero);
       const long = Math.max(1, Math.abs(x(value) - zero));
-      parts.push((0, import_react8.createElement)("rect", { key: `b${at}-${row}`, className: "dui-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, x: left, y: by, width: long, height: barH, rx: Math.min(4, long / 2), style: { fill: item.color } }));
-      parts.push((0, import_react8.createElement)("text", { key: `v${at}-${row}`, className: "dui-chart-value", x: left + long + 6, y: by + barH - 3 }, withUnit(value, unit)));
+      parts.push((0, import_react8.createElement)("rect", { key: `b${at}-${row}`, className: "dv-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, x: left, y: by, width: long, height: barH, rx: Math.min(4, long / 2), style: { fill: item.color } }));
+      parts.push((0, import_react8.createElement)("text", { key: `v${at}-${row}`, className: "dv-chart-value", x: left + long + 6, y: by + barH - 3 }, withUnit(value, unit)));
     });
     points.push({ x: Math.max(...visible.map((item) => x(item.values[at])), zero), y: rowY });
   });
@@ -5395,7 +5395,7 @@ function donut({ categories, series }, width, active, hover) {
       const full2 = sweep >= Math.PI * 2 - 1e-6;
       const p = (radius, theta) => `${cx + Math.cos(theta) * radius},${cy + Math.sin(theta) * radius}`;
       const d = full2 ? `M${p(r, angle)}A${r},${r} 0 1 1 ${p(r, angle + Math.PI)}A${r},${r} 0 1 1 ${p(r, angle)}M${p(inner, angle)}A${inner},${inner} 0 1 0 ${p(inner, angle + Math.PI)}A${inner},${inner} 0 1 0 ${p(inner, angle)}z` : `M${p(r, angle)}A${r},${r} 0 ${large} 1 ${p(r, end)}L${p(inner, end)}A${inner},${inner} 0 ${large} 0 ${p(inner, angle)}z`;
-      parts.push((0, import_react8.createElement)("path", { key: `s${at}`, className: "dui-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, d, fillRule: "evenodd", style: { fill: colorAt(at) }, onPointerEnter: () => hover(at) }));
+      parts.push((0, import_react8.createElement)("path", { key: `s${at}`, className: "dv-chart-mark", "data-dim": active !== null && active !== at ? "" : void 0, d, fillRule: "evenodd", style: { fill: colorAt(at) }, onPointerEnter: () => hover(at) }));
     }
     angle = end;
   });
@@ -5430,7 +5430,7 @@ function saveImage(svg, name) {
   const height = Number(svg.getAttribute("height"));
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   const page = getComputedStyle(document.body);
-  const background = page.getPropertyValue("--dui-main").trim() || page.backgroundColor;
+  const background = page.getPropertyValue("--dv-main").trim() || page.backgroundColor;
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml" }));
   const image = new Image();
   image.onload = () => {
@@ -5469,16 +5469,16 @@ function ChartTable({ data }) {
   const heads = series.map((item, index) => item.name || (series.length === 1 ? unit || ui2.t("Value") : `${ui2.t("Series")} ${index + 1}`));
   return (0, import_react8.createElement)(
     "div",
-    { className: "dui-widget-table" },
+    { className: "dv-widget-table" },
     (0, import_react8.createElement)(
       "table",
       null,
-      (0, import_react8.createElement)("thead", null, (0, import_react8.createElement)("tr", null, (0, import_react8.createElement)("th", { scope: "col" }), heads.map((head, index) => (0, import_react8.createElement)("th", { key: index, scope: "col", className: "dui-num" }, head)))),
+      (0, import_react8.createElement)("thead", null, (0, import_react8.createElement)("tr", null, (0, import_react8.createElement)("th", { scope: "col" }), heads.map((head, index) => (0, import_react8.createElement)("th", { key: index, scope: "col", className: "dv-num" }, head)))),
       (0, import_react8.createElement)("tbody", null, categories.map((label, at) => (0, import_react8.createElement)(
         "tr",
         { key: at },
         (0, import_react8.createElement)("th", { scope: "row" }, label),
-        series.map((item, index) => (0, import_react8.createElement)("td", { key: index, className: "dui-num" }, withUnit(item.values[at], series.length === 1 && !item.name ? "" : unit)))
+        series.map((item, index) => (0, import_react8.createElement)("td", { key: index, className: "dv-num" }, withUnit(item.values[at], series.length === 1 && !item.name ? "" : unit)))
       )))
     )
   );
@@ -5548,33 +5548,33 @@ function WidgetChart({ node, lookup, registerChart, refreshCharts }) {
     save: () => action.current.save()
   }), [registerChart, menuKey]);
   (0, import_react8.useEffect)(() => refreshCharts?.(), [refreshCharts, asTable, menuLabel]);
-  const legend = isDonut ? (0, import_react8.createElement)("div", { className: "dui-chart-legend dui-chart-legend-list" }, categories.map((name, at) => (0, import_react8.createElement)(
+  const legend = isDonut ? (0, import_react8.createElement)("div", { className: "dv-chart-legend dv-chart-legend-list" }, categories.map((name, at) => (0, import_react8.createElement)(
     "div",
     {
       key: at,
-      className: "dui-chart-key",
+      className: "dv-chart-key",
       "data-dim": active !== null && active !== at ? "" : void 0,
       onPointerEnter: () => setActive(at),
       onPointerLeave: () => setActive(null)
     },
     (0, import_react8.createElement)("i", { style: { background: colorAt(at) } }),
-    (0, import_react8.createElement)("span", { className: "dui-chart-key-name" }, name),
-    (0, import_react8.createElement)("span", { className: "dui-chart-key-value" }, share(at))
-  ))) : series.length > 1 ? (0, import_react8.createElement)("div", { className: "dui-chart-legend" }, series.map((item, index) => (0, import_react8.createElement)("button", {
+    (0, import_react8.createElement)("span", { className: "dv-chart-key-name" }, name),
+    (0, import_react8.createElement)("span", { className: "dv-chart-key-value" }, share(at))
+  ))) : series.length > 1 ? (0, import_react8.createElement)("div", { className: "dv-chart-legend" }, series.map((item, index) => (0, import_react8.createElement)("button", {
     key: index,
     type: "button",
-    className: "dui-chart-key",
+    className: "dv-chart-key",
     "aria-pressed": shown[index],
     onClick: () => toggle(index)
   }, (0, import_react8.createElement)("i", { style: { background: item.color } }), item.name || `${ui2.t("Series")} ${index + 1}`))) : null;
   const plot = (0, import_react8.createElement)(
     "div",
-    { className: "dui-chart-plot", style: isDonut ? { width: svgWidth } : void 0 },
+    { className: "dv-chart-plot", style: isDonut ? { width: svgWidth } : void 0 },
     (0, import_react8.createElement)(
       "svg",
       {
         ref: svg,
-        className: "dui-chart-svg",
+        className: "dv-chart-svg",
         width: svgWidth,
         height: drawn.height,
         viewBox: `0 0 ${svgWidth} ${drawn.height}`,
@@ -5586,93 +5586,93 @@ function WidgetChart({ node, lookup, registerChart, refreshCharts }) {
         onPointerLeave: () => setActive(null)
       },
       drawn.parts,
-      isDonut ? active === null ? (0, import_react8.createElement)("text", { className: "dui-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 5, textAnchor: "middle" }, unit === "%" ? "" : withUnit(drawn.total, unit)) : (0, import_react8.createElement)(
+      isDonut ? active === null ? (0, import_react8.createElement)("text", { className: "dv-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 5, textAnchor: "middle" }, unit === "%" ? "" : withUnit(drawn.total, unit)) : (0, import_react8.createElement)(
         import_react8.Fragment,
         null,
-        (0, import_react8.createElement)("text", { className: "dui-chart-center-name", x: svgWidth / 2, y: drawn.height / 2 - 4, textAnchor: "middle" }, fit(categories[active], drawn.size * 0.56, LABEL)),
-        (0, import_react8.createElement)("text", { className: "dui-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 14, textAnchor: "middle" }, share(active))
-      ) : drawn.hits.map((hit, at) => (0, import_react8.createElement)("rect", { key: `h${at}`, className: "dui-chart-hit", x: hit.x, y: hit.y, width: hit.w, height: hit.h, onPointerEnter: () => setActive(at) }))
+        (0, import_react8.createElement)("text", { className: "dv-chart-center-name", x: svgWidth / 2, y: drawn.height / 2 - 4, textAnchor: "middle" }, fit(categories[active], drawn.size * 0.56, LABEL)),
+        (0, import_react8.createElement)("text", { className: "dv-chart-center", x: svgWidth / 2, y: drawn.height / 2 + 14, textAnchor: "middle" }, share(active))
+      ) : drawn.hits.map((hit, at) => (0, import_react8.createElement)("rect", { key: `h${at}`, className: "dv-chart-hit", x: hit.x, y: hit.y, width: hit.w, height: hit.h, onPointerEnter: () => setActive(at) }))
     ),
     point && !asTable && !isDonut ? (0, import_react8.createElement)(
       "div",
-      { className: "dui-chart-tip", role: "status", style: { left: point.x, top: point.y } },
+      { className: "dv-chart-tip", role: "status", style: { left: point.x, top: point.y } },
       (0, import_react8.createElement)("b", null, categories[active]),
       tipRows.map((row, index) => (0, import_react8.createElement)("span", { key: index }, (0, import_react8.createElement)("i", { style: { background: row.color } }), row.name ? `${row.name}  ` : "", row.value))
     ) : null
   );
-  const body = asTable ? (0, import_react8.createElement)(ChartTable, { data }) : isDonut ? (0, import_react8.createElement)("div", { className: legendBeside ? "dui-chart-donut dui-chart-donut-beside" : "dui-chart-donut", onPointerLeave: () => setActive(null) }, plot, legend) : (0, import_react8.createElement)(import_react8.Fragment, null, legend, plot);
+  const body = asTable ? (0, import_react8.createElement)(ChartTable, { data }) : isDonut ? (0, import_react8.createElement)("div", { className: legendBeside ? "dv-chart-donut dv-chart-donut-beside" : "dv-chart-donut", onPointerLeave: () => setActive(null) }, plot, legend) : (0, import_react8.createElement)(import_react8.Fragment, null, legend, plot);
   return (0, import_react8.createElement)(
     "figure",
-    { ref: box, className: "dui-chart", "data-kind": kind },
+    { ref: box, className: "dv-chart", "data-kind": kind },
     (0, import_react8.createElement)("span", { id: labelId, hidden: true }, label),
     body,
     // The SVG stays mounted under the table, so the image can still be saved from it.
     asTable ? (0, import_react8.createElement)("div", { hidden: true }, plot) : null,
-    copied ? (0, import_react8.createElement)("span", { className: "dui-chart-copied", role: "status" }, ui2.t("Copied")) : null,
-    typeof node.caption === "string" && node.caption !== "" ? (0, import_react8.createElement)("figcaption", { className: "dui-view-caption" }, node.caption) : null
+    copied ? (0, import_react8.createElement)("span", { className: "dv-chart-copied", role: "status" }, ui2.t("Copied")) : null,
+    typeof node.caption === "string" && node.caption !== "" ? (0, import_react8.createElement)("figcaption", { className: "dv-view-caption" }, node.caption) : null
   );
 }
 var CHART_CSS = `
-.dui-chart{position:relative;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
-.dui-chart-plot{position:relative;min-width:0}
-.dui-chart-svg{display:block;overflow:visible;outline:none;font-family:inherit}
-.dui-chart-svg text{pointer-events:none}
-.dui-chart-svg:focus-visible{outline:2px solid var(--dui-accent);outline-offset:4px;border-radius:4px}
-.dui-chart-grid{stroke:var(--dui-line);stroke-width:1;stroke-dasharray:3 3}
-.dui-chart-tick{font-size:${TICK}px;fill:var(--dui-ink-3);font-variant-numeric:tabular-nums}
-.dui-chart-label{font-size:${LABEL}px;fill:var(--dui-ink-2)}
-.dui-chart-value{font-size:${LABEL}px;fill:var(--dui-ink-2);font-variant-numeric:tabular-nums}
-.dui-chart-center{font-size:15px;font-weight:600;fill:var(--dui-ink);font-variant-numeric:tabular-nums}
-.dui-chart-center-name{font-size:${LABEL}px;fill:var(--dui-ink-2)}
-.dui-chart-mark{transition:opacity .12s ease}
-.dui-chart-mark[data-dim]{opacity:.28}
-.dui-chart-line{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.dui-chart-area{opacity:.14}
-.dui-chart-dot{transition:r .12s ease}
-.dui-chart-guide{stroke:var(--dui-line-2);stroke-width:1}
-.dui-chart-hit{fill:transparent}
-.dui-chart-tip{position:absolute;z-index:4;pointer-events:none;transform:translate(-50%,calc(-100% - 8px));display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:10px;background:var(--dui-main);border:.5px solid var(--dui-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);font-size:12px;line-height:16px;color:var(--dui-ink);white-space:nowrap;font-variant-numeric:tabular-nums;animation:dui-veil-in .12s ease-out}
-.dui-chart-tip b{font-weight:600}
-.dui-chart-tip span{display:flex;align-items:center;gap:6px;color:var(--dui-ink-2)}
-.dui-chart-tip i,.dui-chart-key i{flex:none;width:8px;height:8px;border-radius:50%;corner-shape:round}
-.dui-chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;padding-right:32px}
-.dui-chart-key{display:inline-flex;align-items:center;gap:6px;min-height:20px;padding:0;border:0;background:none;font:inherit;font-size:12px;line-height:16px;color:var(--dui-ink-2);cursor:pointer;transition:opacity .12s ease}
-.dui-chart-key[aria-pressed=false]{opacity:.4}
-.dui-chart-key:focus-visible{outline:2px solid var(--dui-accent);outline-offset:2px;border-radius:4px}
-.dui-chart-legend-list{flex-direction:column;flex-wrap:nowrap;gap:6px;padding:0;min-width:0}
-.dui-chart-legend-list .dui-chart-key{cursor:default;width:100%}
-.dui-chart-legend-list .dui-chart-key[data-dim]{opacity:.4}
-.dui-chart-key-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dui-ink)}
-.dui-chart-key-value{flex:none;font-variant-numeric:tabular-nums}
-.dui-chart-donut{display:flex;flex-direction:column;align-items:center;gap:12px}
-.dui-chart-donut-beside{flex-direction:row;align-items:center;gap:24px}
-.dui-chart-donut-beside .dui-chart-legend-list{flex:1 1 auto;max-width:280px}
-.dui-chart-copied{position:absolute;top:2px;right:36px;font-size:12px;line-height:16px;color:var(--dui-ink-2);animation:dui-veil-in .16s ease-out}
-.dui-widget-table .dui-num{text-align:end;font-variant-numeric:tabular-nums}
-.dui-widget-table tbody th{padding:6px 10px;font-weight:400;text-align:start;color:var(--dui-ink);border-bottom:0}
-@media (prefers-reduced-motion:reduce){.dui-chart-mark,.dui-chart-dot{transition:none}.dui-chart-tip{animation:none}}
+.dv-chart{position:relative;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
+.dv-chart-plot{position:relative;min-width:0}
+.dv-chart-svg{display:block;overflow:visible;outline:none;font-family:inherit}
+.dv-chart-svg text{pointer-events:none}
+.dv-chart-svg:focus-visible{outline:2px solid var(--dv-accent);outline-offset:4px;border-radius:4px}
+.dv-chart-grid{stroke:var(--dv-line);stroke-width:1;stroke-dasharray:3 3}
+.dv-chart-tick{font-size:${TICK}px;fill:var(--dv-ink-3);font-variant-numeric:tabular-nums}
+.dv-chart-label{font-size:${LABEL}px;fill:var(--dv-ink-2)}
+.dv-chart-value{font-size:${LABEL}px;fill:var(--dv-ink-2);font-variant-numeric:tabular-nums}
+.dv-chart-center{font-size:15px;font-weight:600;fill:var(--dv-ink);font-variant-numeric:tabular-nums}
+.dv-chart-center-name{font-size:${LABEL}px;fill:var(--dv-ink-2)}
+.dv-chart-mark{transition:opacity .12s ease}
+.dv-chart-mark[data-dim]{opacity:.28}
+.dv-chart-line{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dv-chart-area{opacity:.14}
+.dv-chart-dot{transition:r .12s ease}
+.dv-chart-guide{stroke:var(--dv-line-2);stroke-width:1}
+.dv-chart-hit{fill:transparent}
+.dv-chart-tip{position:absolute;z-index:4;pointer-events:none;transform:translate(-50%,calc(-100% - 8px));display:flex;flex-direction:column;gap:2px;padding:6px 10px;border-radius:10px;background:var(--dv-main);border:.5px solid var(--dv-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);font-size:12px;line-height:16px;color:var(--dv-ink);white-space:nowrap;font-variant-numeric:tabular-nums;animation:dv-veil-in .12s ease-out}
+.dv-chart-tip b{font-weight:600}
+.dv-chart-tip span{display:flex;align-items:center;gap:6px;color:var(--dv-ink-2)}
+.dv-chart-tip i,.dv-chart-key i{flex:none;width:8px;height:8px;border-radius:50%;corner-shape:round}
+.dv-chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;padding-right:32px}
+.dv-chart-key{display:inline-flex;align-items:center;gap:6px;min-height:20px;padding:0;border:0;background:none;font:inherit;font-size:12px;line-height:16px;color:var(--dv-ink-2);cursor:pointer;transition:opacity .12s ease}
+.dv-chart-key[aria-pressed=false]{opacity:.4}
+.dv-chart-key:focus-visible{outline:2px solid var(--dv-accent);outline-offset:2px;border-radius:4px}
+.dv-chart-legend-list{flex-direction:column;flex-wrap:nowrap;gap:6px;padding:0;min-width:0}
+.dv-chart-legend-list .dv-chart-key{cursor:default;width:100%}
+.dv-chart-legend-list .dv-chart-key[data-dim]{opacity:.4}
+.dv-chart-key-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dv-ink)}
+.dv-chart-key-value{flex:none;font-variant-numeric:tabular-nums}
+.dv-chart-donut{display:flex;flex-direction:column;align-items:center;gap:12px}
+.dv-chart-donut-beside{flex-direction:row;align-items:center;gap:24px}
+.dv-chart-donut-beside .dv-chart-legend-list{flex:1 1 auto;max-width:280px}
+.dv-chart-copied{position:absolute;top:2px;right:36px;font-size:12px;line-height:16px;color:var(--dv-ink-2);animation:dv-veil-in .16s ease-out}
+.dv-widget-table .dv-num{text-align:end;font-variant-numeric:tabular-nums}
+.dv-widget-table tbody th{padding:6px 10px;font-weight:400;text-align:start;color:var(--dv-ink);border-bottom:0}
+@media (prefers-reduced-motion:reduce){.dv-chart-mark,.dv-chart-dot{transition:none}.dv-chart-tip{animation:none}}
 `;
 
-// ../../../DeepSeek Bot/deep-ui/src/react/frame.js
+// ../../../DeepSeek Bot/deep-view/src/react/frame.js
 var import_react9 = require("react");
 var THEME_VARS = [
-  ["--view-ink", "--bt-ink", "--dui-ink"],
-  ["--view-ink-2", "--bt-ink-2", "--dui-ink-2"],
-  ["--view-ink-3", "--bt-ink-3", "--dui-ink-3"],
-  ["--view-line", "--bt-line", "--dui-line"],
-  ["--view-line-2", "--bt-line-2", "--dui-line-2"],
-  ["--view-card", "--bt-card", "--dui-card"],
-  ["--view-main", "--bt-main", "--dui-main"],
-  ["--view-hover", "--bt-hover", "--dui-hover"],
-  ["--view-accent", "--bt-accent", "--dui-accent"],
-  ["--view-accent-ink", "--bt-accent-ink", "--dui-accent-ink"],
-  ["--view-green", "--bt-green", "--dui-green"],
-  ["--view-star", "--bt-star", "--dui-star"],
-  ["--view-danger", "--bt-danger", "--dui-danger"]
+  ["--view-ink", "--bt-ink", "--dv-ink"],
+  ["--view-ink-2", "--bt-ink-2", "--dv-ink-2"],
+  ["--view-ink-3", "--bt-ink-3", "--dv-ink-3"],
+  ["--view-line", "--bt-line", "--dv-line"],
+  ["--view-line-2", "--bt-line-2", "--dv-line-2"],
+  ["--view-card", "--bt-card", "--dv-card"],
+  ["--view-main", "--bt-main", "--dv-main"],
+  ["--view-hover", "--bt-hover", "--dv-hover"],
+  ["--view-accent", "--bt-accent", "--dv-accent"],
+  ["--view-accent-ink", "--bt-accent-ink", "--dv-accent-ink"],
+  ["--view-green", "--bt-green", "--dv-green"],
+  ["--view-star", "--bt-star", "--dv-star"],
+  ["--view-danger", "--bt-danger", "--dv-danger"]
 ];
 var FRAME_POLICY = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'";
-var HEIGHT = "dui-view-height";
-var THEME = "dui-view-theme";
+var HEIGHT = "dv-view-height";
+var THEME = "dv-view-theme";
 var MIN_HEIGHT = 24;
 function themeVars2() {
   if (typeof getComputedStyle !== "function" || typeof document === "undefined" || !document.body) return {};
@@ -5715,10 +5715,10 @@ function HtmlFrame({ node }) {
       observer?.disconnect();
     };
   }, []);
-  if (stopped) return (0, import_react9.createElement)("p", { className: "dui-view-frame-stopped" }, ui2.t("This view tried to open a page and was stopped."));
+  if (stopped) return (0, import_react9.createElement)("p", { className: "dv-view-frame-stopped" }, ui2.t("This view tried to open a page and was stopped."));
   return (0, import_react9.createElement)("iframe", {
     ref: frame,
-    className: "dui-view-frame",
+    className: "dv-view-frame",
     title: String(node.summary ?? ""),
     sandbox: "allow-scripts",
     srcDoc: doc,
@@ -5731,11 +5731,11 @@ function HtmlFrame({ node }) {
   });
 }
 var HTML_CSS = `
-.dui-view-frame{display:block;width:100%;border:0;background:transparent}
-.dui-view-frame-stopped{margin:0;font-size:13px;line-height:18px;color:var(--dui-ink-2)}
+.dv-view-frame{display:block;width:100%;border:0;background:transparent}
+.dv-view-frame-stopped{margin:0;font-size:13px;line-height:18px;color:var(--dv-ink-2)}
 `;
 
-// ../../../DeepSeek Bot/deep-ui/src/react/card.js
+// ../../../DeepSeek Bot/deep-view/src/react/card.js
 var import_react10 = require("react");
 var mdLabels = (ui2) => ({ code: { copyLabel: ui2.t("Copy"), copiedLabel: ui2.t("Copied") }, footnotes: ui2.t("Footnotes") });
 var TONES2 = ["good", "warn", "bad"];
@@ -5777,33 +5777,33 @@ function OptionsInput({ node, onSubmit, keys, busy = false }) {
   return (0, import_react10.createElement)(
     import_react10.Fragment,
     null,
-    (0, import_react10.createElement)("div", { className: "dui-q-list", role: "group" }, options.map((option, index) => {
+    (0, import_react10.createElement)("div", { className: "dv-q-list", role: "group" }, options.map((option, index) => {
       const selected = multi && picked.includes(option.label);
       return (0, import_react10.createElement)(
         "button",
         {
           key: option.label,
           type: "button",
-          className: "dui-q-opt",
+          className: "dv-q-opt",
           disabled: busy,
           "aria-pressed": multi ? selected : void 0,
           "aria-keyshortcuts": hints ? keyLetter2(index).toLowerCase() : void 0,
           onClick: () => choose(option.label)
         },
-        hints ? (0, import_react10.createElement)("span", { className: "dui-key", "aria-hidden": true }, keyLetter2(index)) : null,
+        hints ? (0, import_react10.createElement)("span", { className: "dv-key", "aria-hidden": true }, keyLetter2(index)) : null,
         (0, import_react10.createElement)(
           "span",
-          { className: "dui-q-body" },
-          (0, import_react10.createElement)("span", { className: "dui-q-label" }, option.label),
-          option.description ? (0, import_react10.createElement)("span", { className: "dui-q-desc" }, option.description) : null
+          { className: "dv-q-body" },
+          (0, import_react10.createElement)("span", { className: "dv-q-label" }, option.label),
+          option.description ? (0, import_react10.createElement)("span", { className: "dv-q-desc" }, option.description) : null
         ),
-        selected ? (0, import_react10.createElement)("span", { className: "dui-q-check", title: ui2.t("Selected") }, (0, import_react10.createElement)(CheckIcon2)) : null
+        selected ? (0, import_react10.createElement)("span", { className: "dv-q-check", title: ui2.t("Selected") }, (0, import_react10.createElement)(CheckIcon2)) : null
       );
     })),
     multi ? (0, import_react10.createElement)(
       "div",
-      { className: "dui-q-foot" },
-      (0, import_react10.createElement)("button", { type: "button", className: "dui-q-submit", disabled: busy || picked.length === 0, onClick: submit }, ui2.t("Submit"))
+      { className: "dv-q-foot" },
+      (0, import_react10.createElement)("button", { type: "button", className: "dv-q-submit", disabled: busy || picked.length === 0, onClick: submit }, ui2.t("Submit"))
     ) : null
   );
 }
@@ -5813,17 +5813,17 @@ function SettledOptions({ node, answer }) {
   const chosen = Array.isArray(selected) ? selected : [];
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-q-list", role: "group", "aria-label": ui2.t("Your answer") },
+    { className: "dv-q-list", role: "group", "aria-label": ui2.t("Your answer") },
     optionsOf2(node).map((option) => (0, import_react10.createElement)(
       "div",
-      { key: option.label, className: "dui-q-opt" },
+      { key: option.label, className: "dv-q-opt" },
       (0, import_react10.createElement)(
         "span",
-        { className: "dui-q-body" },
-        (0, import_react10.createElement)("span", { className: "dui-q-label" }, option.label),
-        option.description ? (0, import_react10.createElement)("span", { className: "dui-q-desc" }, option.description) : null
+        { className: "dv-q-body" },
+        (0, import_react10.createElement)("span", { className: "dv-q-label" }, option.label),
+        option.description ? (0, import_react10.createElement)("span", { className: "dv-q-desc" }, option.description) : null
       ),
-      chosen.includes(option.label) ? (0, import_react10.createElement)("span", { className: "dui-q-check", title: ui2.t("Selected") }, (0, import_react10.createElement)(CheckIcon2)) : null
+      chosen.includes(option.label) ? (0, import_react10.createElement)("span", { className: "dv-q-check", title: ui2.t("Selected") }, (0, import_react10.createElement)(CheckIcon2)) : null
     ))
   );
 }
@@ -5831,9 +5831,9 @@ function ConfirmInput({ node, onSubmit, busy = false }) {
   const ui2 = useViewUi();
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-q-foot" },
-    (0, import_react10.createElement)("button", { type: "button", className: "dui-q-btn", disabled: busy, onClick: () => onSubmit?.(node.id, { confirmed: false }) }, node.cancelLabel ?? ui2.t("Cancel")),
-    (0, import_react10.createElement)("button", { type: "button", className: "dui-q-submit", disabled: busy, onClick: () => onSubmit?.(node.id, { confirmed: true }) }, node.confirmLabel ?? ui2.t("Confirm"))
+    { className: "dv-q-foot" },
+    (0, import_react10.createElement)("button", { type: "button", className: "dv-q-btn", disabled: busy, onClick: () => onSubmit?.(node.id, { confirmed: false }) }, node.cancelLabel ?? ui2.t("Cancel")),
+    (0, import_react10.createElement)("button", { type: "button", className: "dv-q-submit", disabled: busy, onClick: () => onSubmit?.(node.id, { confirmed: true }) }, node.confirmLabel ?? ui2.t("Confirm"))
   );
 }
 function SettledConfirm({ node, answer }) {
@@ -5842,13 +5842,13 @@ function SettledConfirm({ node, answer }) {
   if (confirmed !== true && confirmed !== false) {
     return (0, import_react10.createElement)(
       "div",
-      { className: "dui-q-foot" },
-      (0, import_react10.createElement)("button", { type: "button", className: "dui-q-btn", disabled: true }, node.cancelLabel ?? ui2.t("Cancel")),
-      (0, import_react10.createElement)("button", { type: "button", className: "dui-q-submit", disabled: true }, node.confirmLabel ?? ui2.t("Confirm"))
+      { className: "dv-q-foot" },
+      (0, import_react10.createElement)("button", { type: "button", className: "dv-q-btn", disabled: true }, node.cancelLabel ?? ui2.t("Cancel")),
+      (0, import_react10.createElement)("button", { type: "button", className: "dv-q-submit", disabled: true }, node.confirmLabel ?? ui2.t("Confirm"))
     );
   }
   const label = confirmed ? node.confirmLabel ?? ui2.t("Confirm") : node.cancelLabel ?? ui2.t("Cancel");
-  return (0, import_react10.createElement)("span", { className: "dui-q-badge" }, label);
+  return (0, import_react10.createElement)("span", { className: "dv-q-badge" }, label);
 }
 function FormInput({ node, onSubmit, busy = false }) {
   const ui2 = useViewUi();
@@ -5860,7 +5860,7 @@ function FormInput({ node, onSubmit, busy = false }) {
   return (0, import_react10.createElement)(
     "form",
     {
-      className: "dui-widget-form",
+      className: "dv-widget-form",
       onSubmit: (event) => {
         event.preventDefault();
         submit();
@@ -5868,13 +5868,13 @@ function FormInput({ node, onSubmit, busy = false }) {
     },
     fields.map((field) => (0, import_react10.createElement)(
       "label",
-      { key: field.id, className: "dui-widget-field" },
-      (0, import_react10.createElement)("span", { className: "dui-widget-field-label" }, field.label),
+      { key: field.id, className: "dv-widget-field" },
+      (0, import_react10.createElement)("span", { className: "dv-widget-field-label" }, field.label),
       (0, import_react10.createElement)(
         "span",
-        { className: "dui-q-field" },
+        { className: "dv-q-field" },
         (0, import_react10.createElement)("input", {
-          className: "dui-q-input",
+          className: "dv-q-input",
           type: "text",
           value: draft[field.id] ?? "",
           autoComplete: "off",
@@ -5893,7 +5893,7 @@ function FormInput({ node, onSubmit, busy = false }) {
         })
       )
     )),
-    (0, import_react10.createElement)("div", { className: "dui-q-foot" }, (0, import_react10.createElement)("button", { type: "submit", className: "dui-q-submit", disabled: busy }, node.submitLabel ?? ui2.t("Submit")))
+    (0, import_react10.createElement)("div", { className: "dv-q-foot" }, (0, import_react10.createElement)("button", { type: "submit", className: "dv-q-submit", disabled: busy }, node.submitLabel ?? ui2.t("Submit")))
   );
 }
 function SettledForm({ node, answer }) {
@@ -5901,15 +5901,15 @@ function SettledForm({ node, answer }) {
   const values = fields !== null && typeof fields === "object" ? fields : {};
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-widget-form" },
+    { className: "dv-widget-form" },
     fieldsOf(node).map((field) => (0, import_react10.createElement)(
       "label",
-      { key: field.id, className: "dui-widget-field" },
-      (0, import_react10.createElement)("span", { className: "dui-widget-field-label" }, field.label),
+      { key: field.id, className: "dv-widget-field" },
+      (0, import_react10.createElement)("span", { className: "dv-widget-field-label" }, field.label),
       (0, import_react10.createElement)(
         "span",
-        { className: "dui-q-field" },
-        (0, import_react10.createElement)("input", { className: "dui-q-input", type: "text", value: values[field.id] ?? "", disabled: true, readOnly: true, "aria-label": field.label })
+        { className: "dv-q-field" },
+        (0, import_react10.createElement)("input", { className: "dv-q-input", type: "text", value: values[field.id] ?? "", disabled: true, readOnly: true, "aria-label": field.label })
       )
     ))
   );
@@ -5919,8 +5919,8 @@ function SubmitInput({ node, ctx }) {
   if (ctx.settled) return null;
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-q-foot" },
-    (0, import_react10.createElement)("button", { type: "button", className: "dui-q-submit", disabled: ctx.busy, onClick: () => ctx.onSubmit?.(node.id, {}) }, node.label || ui2.t("Send"))
+    { className: "dv-q-foot" },
+    (0, import_react10.createElement)("button", { type: "button", className: "dv-q-submit", disabled: ctx.busy, onClick: () => ctx.onSubmit?.(node.id, {}) }, node.label || ui2.t("Send"))
   );
 }
 function WidgetTable({ node, lookup }) {
@@ -5932,15 +5932,15 @@ function WidgetTable({ node, lookup }) {
   });
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-widget-table" },
+    { className: "dv-widget-table" },
     (0, import_react10.createElement)(
       "table",
       null,
-      (0, import_react10.createElement)("thead", null, (0, import_react10.createElement)("tr", null, columns2.map((column, index) => (0, import_react10.createElement)("th", { key: column.key ?? index, scope: "col", className: numeric2[index] ? "dui-num" : void 0 }, column.label)))),
+      (0, import_react10.createElement)("thead", null, (0, import_react10.createElement)("tr", null, columns2.map((column, index) => (0, import_react10.createElement)("th", { key: column.key ?? index, scope: "col", className: numeric2[index] ? "dv-num" : void 0 }, column.label)))),
       (0, import_react10.createElement)("tbody", null, rows2.map((row, rowIndex) => (0, import_react10.createElement)(
         "tr",
         { key: rowIndex },
-        columns2.map((column, columnIndex) => (0, import_react10.createElement)("td", { key: column.key ?? columnIndex, className: numeric2[columnIndex] ? "dui-num" : void 0 }, cellText2(row[columnIndex])))
+        columns2.map((column, columnIndex) => (0, import_react10.createElement)("td", { key: column.key ?? columnIndex, className: numeric2[columnIndex] ? "dv-num" : void 0 }, cellText2(row[columnIndex])))
       )))
     )
   );
@@ -5958,17 +5958,17 @@ function WidgetProgress({ node, lookup }) {
   const right = node.valueLabel !== void 0 ? asText(resolve(node.valueLabel, lookup, "")) : `${Math.round(percent3)}%`;
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-widget-progress", "data-tone": TONES2.includes(tone) ? tone : void 0 },
-    (0, import_react10.createElement)("span", { className: "dui-widget-progress-label" }, (0, import_react10.createElement)("span", { className: "dui-widget-progress-name" }, node.label), (0, import_react10.createElement)("span", null, right)),
+    { className: "dv-widget-progress", "data-tone": TONES2.includes(tone) ? tone : void 0 },
+    (0, import_react10.createElement)("span", { className: "dv-widget-progress-label" }, (0, import_react10.createElement)("span", { className: "dv-widget-progress-name" }, node.label), (0, import_react10.createElement)("span", null, right)),
     (0, import_react10.createElement)("div", {
-      className: "dui-widget-progress-track",
+      className: "dv-widget-progress-track",
       role: "progressbar",
       "aria-valuenow": Math.round(percent3),
       "aria-valuemin": 0,
       "aria-valuemax": 100,
       "aria-label": node.label ?? ui2.t("Progress"),
       "aria-valuetext": right
-    }, (0, import_react10.createElement)("div", { className: "dui-widget-progress-fill", style: { width: `${percent3}%` } }))
+    }, (0, import_react10.createElement)("div", { className: "dv-widget-progress-fill", style: { width: `${percent3}%` } }))
   );
 }
 function WidgetMetric({ node, lookup }) {
@@ -5976,10 +5976,10 @@ function WidgetMetric({ node, lookup }) {
   const caption = node.caption === void 0 ? "" : asText(resolve(node.caption, lookup, ""));
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-widget-metric", "data-tone": TONES2.includes(tone) ? tone : void 0 },
-    (0, import_react10.createElement)("span", { className: "dui-widget-metric-label" }, node.label),
-    (0, import_react10.createElement)("span", { className: "dui-widget-metric-value" }, asText(resolve(node.value, lookup, "—"))),
-    caption !== "" ? (0, import_react10.createElement)("span", { className: "dui-view-caption" }, caption) : null
+    { className: "dv-widget-metric", "data-tone": TONES2.includes(tone) ? tone : void 0 },
+    (0, import_react10.createElement)("span", { className: "dv-widget-metric-label" }, node.label),
+    (0, import_react10.createElement)("span", { className: "dv-widget-metric-value" }, asText(resolve(node.value, lookup, "—"))),
+    caption !== "" ? (0, import_react10.createElement)("span", { className: "dv-view-caption" }, caption) : null
   );
 }
 function WidgetCallout({ node, lookup }) {
@@ -5987,9 +5987,9 @@ function WidgetCallout({ node, lookup }) {
   const tone = resolve(node.tone, lookup);
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-callout", "data-tone": CALLOUT_TONES2.includes(tone) ? tone : "info" },
-    (0, import_react10.createElement)("span", { className: "dui-view-callout-icon", "aria-hidden": true }, (0, import_react10.createElement)(InfoIcon2)),
-    (0, import_react10.createElement)("div", { className: "dui-view-callout-text" }, (0, import_react10.createElement)(ui2.Markdown, { text: asText(resolve(node.text, lookup, "")), labels: mdLabels(ui2), variant: "compact" }))
+    { className: "dv-view-callout", "data-tone": CALLOUT_TONES2.includes(tone) ? tone : "info" },
+    (0, import_react10.createElement)("span", { className: "dv-view-callout-icon", "aria-hidden": true }, (0, import_react10.createElement)(InfoIcon2)),
+    (0, import_react10.createElement)("div", { className: "dv-view-callout-text" }, (0, import_react10.createElement)(ui2.Markdown, { text: asText(resolve(node.text, lookup, "")), labels: mdLabels(ui2), variant: "compact" }))
   );
 }
 var LinkIcon = () => (0, import_react10.createElement)(
@@ -6004,16 +6004,16 @@ function WidgetSources({ node }) {
   const items = (Array.isArray(node.items) ? node.items : []).filter((item) => typeof item?.url === "string" && /^https?:\/\//i.test(item.url));
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-sources", role: "list", "aria-label": ui2.t("Sources") },
-    items.map((item, index) => (0, import_react10.createElement)("a", { key: index, role: "listitem", className: "dui-view-source", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.url }, (0, import_react10.createElement)(LinkIcon), item.label))
+    { className: "dv-view-sources", role: "list", "aria-label": ui2.t("Sources") },
+    items.map((item, index) => (0, import_react10.createElement)("a", { key: index, role: "listitem", className: "dv-view-source", href: item.url, target: "_blank", rel: "noopener noreferrer", title: item.url }, (0, import_react10.createElement)(LinkIcon), item.label))
   );
 }
 function InputHead({ id, label, value }) {
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-input-head" },
-    (0, import_react10.createElement)("label", { htmlFor: id, className: "dui-view-input-label" }, label),
-    value !== void 0 ? (0, import_react10.createElement)("output", { htmlFor: id, className: "dui-view-input-value" }, value) : null
+    { className: "dv-view-input-head" },
+    (0, import_react10.createElement)("label", { htmlFor: id, className: "dv-view-input-label" }, label),
+    value !== void 0 ? (0, import_react10.createElement)("output", { htmlFor: id, className: "dv-view-input-value" }, value) : null
   );
 }
 var withUnit2 = (value, unit) => `${asText(value)}${unit ? ` ${unit}` : ""}`;
@@ -6024,18 +6024,18 @@ function SliderInput({ node, ctx }) {
   const percent3 = node.max > node.min ? (value - node.min) / (node.max - node.min) * 100 : 0;
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-input" },
+    { className: "dv-view-input" },
     (0, import_react10.createElement)(InputHead, { id, label: node.label, value: withUnit2(grouped2(value), node.unit) }),
     (0, import_react10.createElement)("input", {
       id,
       type: "range",
-      className: "dui-view-range",
+      className: "dv-view-range",
       min: node.min,
       max: node.max,
       step: node.step ?? "any",
       value,
       disabled: ctx.locked,
-      style: { "--dui-fill": `${percent3}%` },
+      style: { "--dv-fill": `${percent3}%` },
       onChange: (event) => ctx.setInput(node.id, Number(event.target.value))
     })
   );
@@ -6053,14 +6053,14 @@ function NumberInput({ node, ctx }) {
   };
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-input" },
+    { className: "dv-view-input" },
     (0, import_react10.createElement)(InputHead, { id, label: node.label }),
     (0, import_react10.createElement)(
       "span",
-      { className: "dui-q-field dui-view-number" },
+      { className: "dv-q-field dv-view-number" },
       (0, import_react10.createElement)("input", {
         id,
-        className: "dui-q-input",
+        className: "dv-q-input",
         type: "number",
         inputMode: "decimal",
         value: draft ?? asText(value),
@@ -6071,7 +6071,7 @@ function NumberInput({ node, ctx }) {
         onChange: (event) => accept(event.target.value),
         onBlur: () => setDraft(null)
       }),
-      node.unit ? (0, import_react10.createElement)("span", { className: "dui-view-unit" }, node.unit) : null
+      node.unit ? (0, import_react10.createElement)("span", { className: "dv-view-unit" }, node.unit) : null
     )
   );
 }
@@ -6085,24 +6085,24 @@ function ChoiceInput({ node, ctx }) {
   };
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-input" },
-    (0, import_react10.createElement)("span", { className: "dui-view-input-label", id: labelId }, node.label),
+    { className: "dv-view-input" },
+    (0, import_react10.createElement)("span", { className: "dv-view-input-label", id: labelId }, node.label),
     side ? (0, import_react10.createElement)(
       Segmented2,
-      { label: node.label, value: options.findIndex((option) => choiceValue(option) === current), className: "dui-view-seg" },
+      { label: node.label, value: options.findIndex((option) => choiceValue(option) === current), className: "dv-view-seg" },
       options.map((option) => (0, import_react10.createElement)("button", { key: option.label, type: "button", "aria-pressed": choiceValue(option) === current, disabled: ctx.locked, onClick: pick2(option) }, option.label))
     ) : (0, import_react10.createElement)(
       "div",
-      { className: "dui-view-radios", role: "radiogroup", "aria-labelledby": labelId },
+      { className: "dv-view-radios", role: "radiogroup", "aria-labelledby": labelId },
       options.map((option) => (0, import_react10.createElement)("button", {
         key: option.label,
         type: "button",
         role: "radio",
-        className: "dui-view-radio",
+        className: "dv-view-radio",
         "aria-checked": choiceValue(option) === current,
         disabled: ctx.locked,
         onClick: pick2(option)
-      }, (0, import_react10.createElement)("span", { className: "dui-view-radio-dot", "aria-hidden": true }), option.label))
+      }, (0, import_react10.createElement)("span", { className: "dv-view-radio-dot", "aria-hidden": true }), option.label))
     )
   );
 }
@@ -6110,12 +6110,12 @@ function ToggleInput({ node, ctx }) {
   const on = ctx.values[node.id] === true;
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-toggle" },
-    (0, import_react10.createElement)("span", { className: "dui-view-input-label" }, node.label),
+    { className: "dv-view-toggle" },
+    (0, import_react10.createElement)("span", { className: "dv-view-input-label" }, node.label),
     (0, import_react10.createElement)(
       "button",
-      { type: "button", role: "switch", className: "dui-switch", "aria-checked": on, "aria-label": node.label, disabled: ctx.locked, onClick: () => ctx.setInput(node.id, !on) },
-      (0, import_react10.createElement)("span", { className: "dui-switch-knob", "aria-hidden": true })
+      { type: "button", role: "switch", className: "dv-switch", "aria-checked": on, "aria-label": node.label, disabled: ctx.locked, onClick: () => ctx.setInput(node.id, !on) },
+      (0, import_react10.createElement)("span", { className: "dv-switch-knob", "aria-hidden": true })
     )
   );
 }
@@ -6129,13 +6129,13 @@ function WidgetNode({ node, ctx }) {
       const children = Array.isArray(node.children) ? node.children : [];
       return (0, import_react10.createElement)(
         "div",
-        { className: node.type === "row" ? "dui-view-row" : "dui-widget-stack" },
+        { className: node.type === "row" ? "dv-view-row" : "dv-widget-stack" },
         children.map((child, index) => (0, import_react10.createElement)(WidgetNode, { key: child?.id ?? index, node: child, ctx }))
       );
     }
     case "text": {
       const text = (0, import_react10.createElement)(ui2.Markdown, { text: asText(resolve(node.text, lookup, "")), labels: mdLabels(ui2), variant: "compact" });
-      return node.tone === "muted" ? (0, import_react10.createElement)("div", { className: "dui-view-muted" }, text) : text;
+      return node.tone === "muted" ? (0, import_react10.createElement)("div", { className: "dv-view-muted" }, text) : text;
     }
     case "metric":
       return (0, import_react10.createElement)(WidgetMetric, { node, lookup });
@@ -6216,15 +6216,15 @@ function ViewMenuList({ charts, pick: pick2 }) {
   const ui2 = useViewUi();
   return (0, import_react10.createElement)(
     "div",
-    { className: "dui-menu dui-view-menu", role: "menu" },
+    { className: "dv-menu dv-view-menu", role: "menu" },
     charts.map((chart, index) => (0, import_react10.createElement)(
       import_react10.Fragment,
       { key: index },
       charts.length > 1 ? (0, import_react10.createElement)(
         import_react10.Fragment,
         null,
-        index > 0 ? (0, import_react10.createElement)("div", { className: "dui-menu-sep", role: "separator" }) : null,
-        (0, import_react10.createElement)("div", { className: "dui-view-menu-label" }, chart.label ?? ui2.t("Chart {n}", { n: index + 1 }))
+        index > 0 ? (0, import_react10.createElement)("div", { className: "dv-menu-sep", role: "separator" }) : null,
+        (0, import_react10.createElement)("div", { className: "dv-view-menu-label" }, chart.label ?? ui2.t("Chart {n}", { n: index + 1 }))
       ) : null,
       (0, import_react10.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(chart.toggleTable) }, (0, import_react10.createElement)(TableIcon), chart.asTable ? ui2.t("View as chart") : ui2.t("View as table")),
       (0, import_react10.createElement)("button", { type: "button", role: "menuitem", onClick: pick2(chart.copy) }, (0, import_react10.createElement)(CopyIcon2), ui2.t("Copy data")),
@@ -6257,8 +6257,8 @@ function ViewMenu({ charts }) {
   };
   return (0, import_react10.createElement)(
     "div",
-    { ref: root, className: "dui-view-tools", "data-open": open ? "" : void 0 },
-    (0, import_react10.createElement)("button", { type: "button", className: "dui-view-more", "aria-label": ui2.t("Chart options"), "aria-haspopup": "menu", "aria-expanded": open, onClick: () => setOpen((value) => !value) }, (0, import_react10.createElement)(DotsIcon2)),
+    { ref: root, className: "dv-view-tools", "data-open": open ? "" : void 0 },
+    (0, import_react10.createElement)("button", { type: "button", className: "dv-view-more", "aria-label": ui2.t("Chart options"), "aria-haspopup": "menu", "aria-expanded": open, onClick: () => setOpen((value) => !value) }, (0, import_react10.createElement)(DotsIcon2)),
     open ? (0, import_react10.createElement)(ViewMenuList, { charts, pick: pick2 }) : null
   );
 }
@@ -6267,13 +6267,13 @@ function WidgetCard({ title, view, onSubmit, onDismiss, busy = false, raised = f
   const titleId = (0, import_react10.useId)();
   const { charts, registerChart, refreshCharts } = useChartHandles();
   const framed = raised || hasControls(view);
-  const className = ["dui-view", framed ? "dui-q" : "dui-view-bare", settled ? "dui-q-settled" : "", raised ? "dui-q-raised" : ""].filter(Boolean).join(" ");
+  const className = ["dv-view", framed ? "dv-q" : "dv-view-bare", settled ? "dv-q-settled" : "", raised ? "dv-q-raised" : ""].filter(Boolean).join(" ");
   const head = title || onDismiss || countType(view, "chart") > 0 ? (0, import_react10.createElement)(
     "div",
-    { className: "dui-view-head" },
-    title ? (0, import_react10.createElement)("p", { className: "dui-view-title", id: titleId }, title) : (0, import_react10.createElement)("span", { className: "dui-view-title" }),
+    { className: "dv-view-head" },
+    title ? (0, import_react10.createElement)("p", { className: "dv-view-title", id: titleId }, title) : (0, import_react10.createElement)("span", { className: "dv-view-title" }),
     countType(view, "chart") > 0 ? (0, import_react10.createElement)(ViewMenu, { charts }) : null,
-    onDismiss ? (0, import_react10.createElement)("button", { type: "button", className: "dui-q-x", "aria-label": ui2.t("Dismiss view"), title: ui2.t("Dismiss"), onClick: onDismiss, disabled: busy }, (0, import_react10.createElement)(CloseIcon2)) : null
+    onDismiss ? (0, import_react10.createElement)("button", { type: "button", className: "dv-q-x", "aria-label": ui2.t("Dismiss view"), title: ui2.t("Dismiss"), onClick: onDismiss, disabled: busy }, (0, import_react10.createElement)(CloseIcon2)) : null
   ) : null;
   return (0, import_react10.createElement)(
     "div",
@@ -6285,7 +6285,7 @@ function WidgetCard({ title, view, onSubmit, onDismiss, busy = false, raised = f
       "aria-busy": busy || void 0
     },
     head,
-    (0, import_react10.createElement)("div", { className: "dui-view-body" }, (0, import_react10.createElement)(WidgetView, { view, onSubmit, settled, answer, busy, registerChart, refreshCharts }))
+    (0, import_react10.createElement)("div", { className: "dv-view-body" }, (0, import_react10.createElement)(WidgetView, { view, onSubmit, settled, answer, busy, registerChart, refreshCharts }))
   );
 }
 function AnsweredView({ node }) {
@@ -6304,207 +6304,207 @@ function AnsweredView({ node }) {
   if (view === null || typeof view !== "object" || view.view === void 0) return null;
   const answers = Array.isArray(payload.answers) ? payload.answers : [];
   const answer = answers.find((entry) => entry?.id === view.id) ?? answers[0] ?? null;
-  return (0, import_react10.createElement)("div", { className: "dui-q-inline" }, (0, import_react10.createElement)(WidgetCard, { title: view.title ?? "", view: view.view, settled: true, answer }));
+  return (0, import_react10.createElement)("div", { className: "dv-q-inline" }, (0, import_react10.createElement)(WidgetCard, { title: view.title ?? "", view: view.view, settled: true, answer }));
 }
 var WIDGET_CSS = `
-.dui-view{min-width:0}
-.dui-view-bare{display:flex;flex-direction:column;gap:8px;width:100%;color:var(--dui-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;animation:dui-veil-in .2s ease-out backwards}
-.dui-view-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
-.dui-view-title{flex:1 1 0;min-width:0;margin:0;font-size:13px;line-height:18px;font-weight:500;color:var(--dui-ink);overflow-wrap:anywhere}
-.dui-q-settled .dui-view-title{color:var(--dui-ink-2)}
-.dui-view-tools{position:relative;flex:none;align-self:flex-start;opacity:0;transition:opacity .12s ease}
-.dui-view:hover .dui-view-tools,.dui-view-tools:focus-within,.dui-view-tools[data-open]{opacity:1}
-@media (hover:none){.dui-view-tools{opacity:1}}
-.dui-view-more{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;color:var(--dui-ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.dui-view-more:hover,.dui-view-tools[data-open] .dui-view-more{background:var(--dui-hover);color:var(--dui-ink)}
-.dui-view-more:focus-visible{outline:2px solid var(--dui-accent);outline-offset:1px}
-.dui-view-more svg{width:16px;height:16px}
-.dui-menu.dui-view-menu{position:absolute;top:32px;right:0;--dui-origin:top right;min-width:180px}
-.dui-menu.dui-view-menu button{gap:8px}
-.dui-view-menu-label{padding:2px 8px;font-size:11px;line-height:14px;color:var(--dui-ink-3);white-space:nowrap}
-.dui-view-body{min-width:0}
-.dui-widget-stack{display:flex;flex-direction:column;gap:12px;min-width:0}
-.dui-view-row{display:flex;flex-wrap:wrap;gap:12px 24px;min-width:0}
-.dui-view-row>*{flex:1 1 160px;min-width:0}
-.dui-widget-metric{display:flex;flex-direction:column;gap:1px;min-width:0}
-.dui-widget-metric-label{font-size:12px;line-height:16px;color:var(--dui-ink-2)}
-.dui-widget-metric-value{font-size:22px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--dui-ink);overflow-wrap:anywhere}
-.dui-widget-metric[data-tone=good] .dui-widget-metric-value{color:var(--dui-green)}
-.dui-widget-metric[data-tone=warn] .dui-widget-metric-value{color:var(--dui-star)}
-.dui-widget-metric[data-tone=bad] .dui-widget-metric-value{color:var(--dui-danger)}
-.dui-view-caption{font-size:12px;line-height:16px;color:var(--dui-ink-2);overflow-wrap:anywhere}
-.dui-view-muted{font-size:12px;line-height:16px;color:var(--dui-ink-2)}
-.dui-view-muted *{font-size:inherit!important;line-height:inherit!important;color:inherit!important}
-.dui-widget-table{max-width:100%;overflow-x:auto;border:.5px solid var(--dui-line-2);border-radius:10px}
-.dui-widget-table table{border-collapse:collapse;min-width:100%;font-size:13px;line-height:18px}
-.dui-widget-table th{padding:6px 10px;font-weight:500;text-align:start;white-space:nowrap;color:var(--dui-ink-2);border-bottom:.5px solid var(--dui-line-2)}
-.dui-widget-table td{padding:6px 10px;max-width:280px;color:var(--dui-ink);overflow-wrap:anywhere}
-.dui-widget-table tbody tr+tr>*{border-top:.5px solid var(--dui-line)}
-.dui-widget-table .dui-num{text-align:end;font-variant-numeric:tabular-nums}
-.dui-widget-form{display:flex;flex-direction:column;gap:8px;margin:0}
-.dui-widget-field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.dui-widget-field-label{font-size:12px;line-height:16px;color:var(--dui-ink-2)}
-.dui-widget-field .dui-q-field:has(.dui-q-input:disabled){cursor:default;opacity:.75}
-.dui-widget-progress{display:flex;flex-direction:column;gap:5px;min-width:0}
-.dui-widget-progress-label{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;color:var(--dui-ink-2);font-variant-numeric:tabular-nums}
-.dui-widget-progress-name{color:var(--dui-ink);font-weight:500}
-.dui-widget-progress-track{height:6px;border-radius:999px;background:var(--dui-hover);overflow:hidden}
-.dui-widget-progress-fill{height:100%;border-radius:inherit;background:var(--dui-accent);transition:width .12s ease,background-color .12s ease}
-.dui-widget-progress[data-tone=good] .dui-widget-progress-fill{background:var(--dui-green)}
-.dui-widget-progress[data-tone=warn] .dui-widget-progress-fill{background:var(--dui-star)}
-.dui-widget-progress[data-tone=bad] .dui-widget-progress-fill{background:var(--dui-danger)}
-.dui-widget-progress[data-tone=bad] .dui-widget-progress-label>span:last-child{color:var(--dui-danger)}
-.dui-view-callout{display:flex;gap:8px;padding:8px 12px;border-radius:10px;--dui-tone:var(--dui-accent);background:color-mix(in srgb,var(--dui-tone) 8%,transparent);color:var(--dui-ink)}
-.dui-view-callout[data-tone=good]{--dui-tone:var(--dui-green)}
-.dui-view-callout[data-tone=warn]{--dui-tone:var(--dui-star)}
-.dui-view-callout[data-tone=bad]{--dui-tone:var(--dui-danger)}
-.dui-view-callout-icon{flex:none;display:flex;padding-top:3px;color:var(--dui-tone)}
-.dui-view-callout-icon svg{width:16px;height:16px}
-.dui-view-callout-text{flex:1 1 auto;min-width:0}
-.dui-view-sources{display:flex;flex-wrap:wrap;gap:6px}
-.dui-view-source{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:20px;padding:0 6px;border-radius:4px;background:var(--dui-tag-bg,var(--dui-hover));color:var(--dui-ink-2);font-size:11px;line-height:16px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .12s ease,color .12s ease}
-.dui-view-source:hover{background:var(--dui-hover);color:var(--dui-ink)}
-.dui-view-source:focus-visible{outline:2px solid var(--dui-accent);outline-offset:1px}
-.dui-view-input{display:flex;flex-direction:column;gap:6px;min-width:0}
-.dui-view-input-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.dui-view-input-label{font-size:12px;line-height:16px;color:var(--dui-ink-2)}
-.dui-view-input-value{font-size:15px;line-height:20px;font-weight:600;color:var(--dui-ink);font-variant-numeric:tabular-nums}
-.dui-view-range{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;cursor:pointer}
-.dui-view-range:disabled{cursor:default;opacity:.6}
-.dui-view-range::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(to right,var(--dui-accent) var(--dui-fill,0%),var(--dui-hover) var(--dui-fill,0%))}
-.dui-view-range::-moz-range-track{height:6px;border-radius:999px;background:var(--dui-hover)}
-.dui-view-range::-moz-range-progress{height:6px;border-radius:999px;background:var(--dui-accent)}
-.dui-view-range::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-5px;border-radius:50%;corner-shape:round;background:var(--dui-knob);box-shadow:0 1px 3px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.12)}
-.dui-view-range::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--dui-knob);box-shadow:0 1px 3px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.12)}
-.dui-view-range:focus-visible{outline:2px solid var(--dui-accent);outline-offset:2px;border-radius:6px}
-.dui-view-number{max-width:200px;align-items:center;gap:6px}
-.dui-view-number .dui-q-input{font-variant-numeric:tabular-nums}
-.dui-view-unit{flex:none;font-size:13px;color:var(--dui-ink-2)}
-.dui-seg.dui-view-seg{align-self:flex-start;max-width:100%}
-.dui-seg.dui-view-seg button{flex:none;padding:0 12px;white-space:nowrap}
-.dui-view-radios{display:flex;flex-direction:column;gap:2px}
-.dui-view-radio{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 8px;margin:0 -8px;border:0;border-radius:8px;background:none;font:inherit;font-size:14px;line-height:20px;color:var(--dui-ink);text-align:start;cursor:pointer;transition:background-color .12s ease}
-.dui-view-radio:hover:not(:disabled){background:var(--dui-hover)}
-.dui-view-radio:disabled{cursor:default}
-.dui-view-radio:focus-visible{outline:2px solid var(--dui-accent);outline-offset:-2px}
-.dui-view-radio-dot{flex:none;width:16px;height:16px;border-radius:50%;corner-shape:round;box-shadow:inset 0 0 0 1.5px var(--dui-line-2);transition:box-shadow .12s ease}
-.dui-view-radio[aria-checked=true] .dui-view-radio-dot{box-shadow:inset 0 0 0 5px var(--dui-accent)}
-.dui-view-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
-.dui-view-toggle .dui-view-input-label{font-size:14px;line-height:20px;color:var(--dui-ink)}
-.dui-q.dui-view{gap:10px}
-.dui-q.dui-view:not(.dui-q-raised):not(.dui-q-settled)>.dui-view-head:has(.dui-view-title:empty){margin-bottom:-6px}
-.dui-q-raised .dui-view-head{padding:14px 16px 4px 20px}
-.dui-q-raised .dui-view-body{padding:0 16px 14px 20px}
-.dui-q-raised .dui-view-body .dui-q-list{padding:0;margin:0 -8px}
-.dui-q-inline .dui-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--dui-msg-w,.8) * 100%),560px));order:0}
-body[data-dui-layout=flat] .dui-q-inline .dui-view{max-width:calc(var(--dui-flat-w,1) * 100%)}
-.dui-q-inline:has(>.dui-view-bare){margin:8px 0 12px}
-@media (prefers-reduced-motion:reduce){.dui-widget-progress-fill,.dui-view-radio-dot,.dui-view-tools,.dui-view-more{transition:none}.dui-view-bare{animation:none}}
+.dv-view{min-width:0}
+.dv-view-bare{display:flex;flex-direction:column;gap:8px;width:100%;color:var(--dv-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;animation:dv-veil-in .2s ease-out backwards}
+.dv-view-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.dv-view-title{flex:1 1 0;min-width:0;margin:0;font-size:13px;line-height:18px;font-weight:500;color:var(--dv-ink);overflow-wrap:anywhere}
+.dv-q-settled .dv-view-title{color:var(--dv-ink-2)}
+.dv-view-tools{position:relative;flex:none;align-self:flex-start;opacity:0;transition:opacity .12s ease}
+.dv-view:hover .dv-view-tools,.dv-view-tools:focus-within,.dv-view-tools[data-open]{opacity:1}
+@media (hover:none){.dv-view-tools{opacity:1}}
+.dv-view-more{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:none;color:var(--dv-ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.dv-view-more:hover,.dv-view-tools[data-open] .dv-view-more{background:var(--dv-hover);color:var(--dv-ink)}
+.dv-view-more:focus-visible{outline:2px solid var(--dv-accent);outline-offset:1px}
+.dv-view-more svg{width:16px;height:16px}
+.dv-menu.dv-view-menu{position:absolute;top:32px;right:0;--dv-origin:top right;min-width:180px}
+.dv-menu.dv-view-menu button{gap:8px}
+.dv-view-menu-label{padding:2px 8px;font-size:11px;line-height:14px;color:var(--dv-ink-3);white-space:nowrap}
+.dv-view-body{min-width:0}
+.dv-widget-stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+.dv-view-row{display:flex;flex-wrap:wrap;gap:12px 24px;min-width:0}
+.dv-view-row>*{flex:1 1 160px;min-width:0}
+.dv-widget-metric{display:flex;flex-direction:column;gap:1px;min-width:0}
+.dv-widget-metric-label{font-size:12px;line-height:16px;color:var(--dv-ink-2)}
+.dv-widget-metric-value{font-size:22px;line-height:28px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--dv-ink);overflow-wrap:anywhere}
+.dv-widget-metric[data-tone=good] .dv-widget-metric-value{color:var(--dv-green)}
+.dv-widget-metric[data-tone=warn] .dv-widget-metric-value{color:var(--dv-star)}
+.dv-widget-metric[data-tone=bad] .dv-widget-metric-value{color:var(--dv-danger)}
+.dv-view-caption{font-size:12px;line-height:16px;color:var(--dv-ink-2);overflow-wrap:anywhere}
+.dv-view-muted{font-size:12px;line-height:16px;color:var(--dv-ink-2)}
+.dv-view-muted *{font-size:inherit!important;line-height:inherit!important;color:inherit!important}
+.dv-widget-table{max-width:100%;overflow-x:auto;border:.5px solid var(--dv-line-2);border-radius:10px}
+.dv-widget-table table{border-collapse:collapse;min-width:100%;font-size:13px;line-height:18px}
+.dv-widget-table th{padding:6px 10px;font-weight:500;text-align:start;white-space:nowrap;color:var(--dv-ink-2);border-bottom:.5px solid var(--dv-line-2)}
+.dv-widget-table td{padding:6px 10px;max-width:280px;color:var(--dv-ink);overflow-wrap:anywhere}
+.dv-widget-table tbody tr+tr>*{border-top:.5px solid var(--dv-line)}
+.dv-widget-table .dv-num{text-align:end;font-variant-numeric:tabular-nums}
+.dv-widget-form{display:flex;flex-direction:column;gap:8px;margin:0}
+.dv-widget-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dv-widget-field-label{font-size:12px;line-height:16px;color:var(--dv-ink-2)}
+.dv-widget-field .dv-q-field:has(.dv-q-input:disabled){cursor:default;opacity:.75}
+.dv-widget-progress{display:flex;flex-direction:column;gap:5px;min-width:0}
+.dv-widget-progress-label{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;color:var(--dv-ink-2);font-variant-numeric:tabular-nums}
+.dv-widget-progress-name{color:var(--dv-ink);font-weight:500}
+.dv-widget-progress-track{height:6px;border-radius:999px;background:var(--dv-hover);overflow:hidden}
+.dv-widget-progress-fill{height:100%;border-radius:inherit;background:var(--dv-accent);transition:width .12s ease,background-color .12s ease}
+.dv-widget-progress[data-tone=good] .dv-widget-progress-fill{background:var(--dv-green)}
+.dv-widget-progress[data-tone=warn] .dv-widget-progress-fill{background:var(--dv-star)}
+.dv-widget-progress[data-tone=bad] .dv-widget-progress-fill{background:var(--dv-danger)}
+.dv-widget-progress[data-tone=bad] .dv-widget-progress-label>span:last-child{color:var(--dv-danger)}
+.dv-view-callout{display:flex;gap:8px;padding:8px 12px;border-radius:10px;--dv-tone:var(--dv-accent);background:color-mix(in srgb,var(--dv-tone) 8%,transparent);color:var(--dv-ink)}
+.dv-view-callout[data-tone=good]{--dv-tone:var(--dv-green)}
+.dv-view-callout[data-tone=warn]{--dv-tone:var(--dv-star)}
+.dv-view-callout[data-tone=bad]{--dv-tone:var(--dv-danger)}
+.dv-view-callout-icon{flex:none;display:flex;padding-top:3px;color:var(--dv-tone)}
+.dv-view-callout-icon svg{width:16px;height:16px}
+.dv-view-callout-text{flex:1 1 auto;min-width:0}
+.dv-view-sources{display:flex;flex-wrap:wrap;gap:6px}
+.dv-view-source{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:20px;padding:0 6px;border-radius:4px;background:var(--dv-tag-bg,var(--dv-hover));color:var(--dv-ink-2);font-size:11px;line-height:16px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color .12s ease,color .12s ease}
+.dv-view-source:hover{background:var(--dv-hover);color:var(--dv-ink)}
+.dv-view-source:focus-visible{outline:2px solid var(--dv-accent);outline-offset:1px}
+.dv-view-input{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dv-view-input-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.dv-view-input-label{font-size:12px;line-height:16px;color:var(--dv-ink-2)}
+.dv-view-input-value{font-size:15px;line-height:20px;font-weight:600;color:var(--dv-ink);font-variant-numeric:tabular-nums}
+.dv-view-range{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;cursor:pointer}
+.dv-view-range:disabled{cursor:default;opacity:.6}
+.dv-view-range::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(to right,var(--dv-accent) var(--dv-fill,0%),var(--dv-hover) var(--dv-fill,0%))}
+.dv-view-range::-moz-range-track{height:6px;border-radius:999px;background:var(--dv-hover)}
+.dv-view-range::-moz-range-progress{height:6px;border-radius:999px;background:var(--dv-accent)}
+.dv-view-range::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-5px;border-radius:50%;corner-shape:round;background:var(--dv-knob);box-shadow:0 1px 3px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.12)}
+.dv-view-range::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--dv-knob);box-shadow:0 1px 3px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.12)}
+.dv-view-range:focus-visible{outline:2px solid var(--dv-accent);outline-offset:2px;border-radius:6px}
+.dv-view-number{max-width:200px;align-items:center;gap:6px}
+.dv-view-number .dv-q-input{font-variant-numeric:tabular-nums}
+.dv-view-unit{flex:none;font-size:13px;color:var(--dv-ink-2)}
+.dv-seg.dv-view-seg{align-self:flex-start;max-width:100%}
+.dv-seg.dv-view-seg button{flex:none;padding:0 12px;white-space:nowrap}
+.dv-view-radios{display:flex;flex-direction:column;gap:2px}
+.dv-view-radio{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 8px;margin:0 -8px;border:0;border-radius:8px;background:none;font:inherit;font-size:14px;line-height:20px;color:var(--dv-ink);text-align:start;cursor:pointer;transition:background-color .12s ease}
+.dv-view-radio:hover:not(:disabled){background:var(--dv-hover)}
+.dv-view-radio:disabled{cursor:default}
+.dv-view-radio:focus-visible{outline:2px solid var(--dv-accent);outline-offset:-2px}
+.dv-view-radio-dot{flex:none;width:16px;height:16px;border-radius:50%;corner-shape:round;box-shadow:inset 0 0 0 1.5px var(--dv-line-2);transition:box-shadow .12s ease}
+.dv-view-radio[aria-checked=true] .dv-view-radio-dot{box-shadow:inset 0 0 0 5px var(--dv-accent)}
+.dv-view-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
+.dv-view-toggle .dv-view-input-label{font-size:14px;line-height:20px;color:var(--dv-ink)}
+.dv-q.dv-view{gap:10px}
+.dv-q.dv-view:not(.dv-q-raised):not(.dv-q-settled)>.dv-view-head:has(.dv-view-title:empty){margin-bottom:-6px}
+.dv-q-raised .dv-view-head{padding:14px 16px 4px 20px}
+.dv-q-raised .dv-view-body{padding:0 16px 14px 20px}
+.dv-q-raised .dv-view-body .dv-q-list{padding:0;margin:0 -8px}
+.dv-q-inline .dv-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--dv-msg-w,.8) * 100%),560px));order:0}
+body[data-dv-layout=flat] .dv-q-inline .dv-view{max-width:calc(var(--dv-flat-w,1) * 100%)}
+.dv-q-inline:has(>.dv-view-bare){margin:8px 0 12px}
+@media (prefers-reduced-motion:reduce){.dv-widget-progress-fill,.dv-view-radio-dot,.dv-view-tools,.dv-view-more{transition:none}.dv-view-bare{animation:none}}
 ${CHART_CSS}
 ${HTML_CSS}
 `;
 
-// ../../../DeepSeek Bot/deep-ui/src/react/styles.js
+// ../../../DeepSeek Bot/deep-view/src/react/styles.js
 var THEME_CSS = `
 body{
---dui-ink:var(--dsw-alias-label-primary);
---dui-ink-2:var(--dsw-alias-label-secondary);
---dui-ink-3:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-caption));
---dui-line:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent);
---dui-line-2:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
---dui-card:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base)));
---dui-main:var(--dsw-alias-bg-base);
---dui-hover:var(--dsw-alias-interactive-bg-hover);
---dui-active:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-interactive-bg-hover));
---dui-accent:var(--dsw-alias-state-business-primary);
---dui-accent-ink:var(--dsw-alias-label-primary-inverted,#fff);
---dui-green:var(--dsw-alias-state-success-primary);
---dui-star:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-warn-label));
---dui-danger:var(--dsw-alias-state-error-primary);
---dui-knob:var(--dsw-alias-label-primary-inverted,#fff);
---dui-tag-bg:var(--dsw-alias-interactive-bg-hover);
---dui-ink-tangerine:var(--dsw-alias-brand-text,var(--dsw-alias-state-warn-primary));
---dui-ink-green:var(--dsw-alias-state-success-primary);
---dui-ink-violet:color-mix(in srgb,var(--dsw-alias-state-business-primary) 60%,var(--dsw-alias-state-error-primary));
---dui-ink-sky:var(--dsw-alias-link,var(--dsw-alias-state-business-primary));
---dui-ink-rose:var(--dsw-alias-state-error-primary);
---dui-ink-yellow:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warn-primary));
---dui-ink-cyan:var(--dsw-alias-state-success-tertiary,var(--dsw-alias-state-success-primary));
---dui-ink-magenta:var(--dsw-alias-state-error-secondary,var(--dsw-alias-state-error-primary));
+--dv-ink:var(--dsw-alias-label-primary);
+--dv-ink-2:var(--dsw-alias-label-secondary);
+--dv-ink-3:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-caption));
+--dv-line:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent);
+--dv-line-2:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
+--dv-card:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base)));
+--dv-main:var(--dsw-alias-bg-base);
+--dv-hover:var(--dsw-alias-interactive-bg-hover);
+--dv-active:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-interactive-bg-hover));
+--dv-accent:var(--dsw-alias-state-business-primary);
+--dv-accent-ink:var(--dsw-alias-label-primary-inverted,#fff);
+--dv-green:var(--dsw-alias-state-success-primary);
+--dv-star:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-warn-label));
+--dv-danger:var(--dsw-alias-state-error-primary);
+--dv-knob:var(--dsw-alias-label-primary-inverted,#fff);
+--dv-tag-bg:var(--dsw-alias-interactive-bg-hover);
+--dv-ink-tangerine:var(--dsw-alias-brand-text,var(--dsw-alias-state-warn-primary));
+--dv-ink-green:var(--dsw-alias-state-success-primary);
+--dv-ink-violet:color-mix(in srgb,var(--dsw-alias-state-business-primary) 60%,var(--dsw-alias-state-error-primary));
+--dv-ink-sky:var(--dsw-alias-link,var(--dsw-alias-state-business-primary));
+--dv-ink-rose:var(--dsw-alias-state-error-primary);
+--dv-ink-yellow:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warn-primary));
+--dv-ink-cyan:var(--dsw-alias-state-success-tertiary,var(--dsw-alias-state-success-primary));
+--dv-ink-magenta:var(--dsw-alias-state-error-secondary,var(--dsw-alias-state-error-primary));
 color-scheme:light}
 body[data-ds-dark-theme]{color-scheme:dark}
-.dui-q-inline .dui-view{max-width:100%}
+.dv-q-inline .dv-view{max-width:100%}
 `;
 var QUESTION_CSS = `
-.dui-q{margin:0 auto 8px;width:100%;max-width:var(--dsh-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--dui-q-edge:color-mix(in srgb,var(--dui-ink) 10%,transparent);--dui-q-rule:color-mix(in srgb,var(--dui-ink) 8%,transparent);--dui-q-rule-2:color-mix(in srgb,var(--dui-ink) 5%,transparent);background:var(--dui-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--dui-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--dui-ink);font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);animation:dui-veil-in .2s ease-out backwards}
-body[data-ds-dark-theme] .dui-q{--dui-q-edge:rgba(255,255,255,.16);--dui-q-rule:rgba(255,255,255,.12);--dui-q-rule-2:rgba(255,255,255,.08)}
-.dui-q-settled{animation:none}
-.dui-q-x{flex:none;width:20px;height:20px;border:0;padding:0;border-radius:6px;background:none;color:var(--dui-ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.dui-q-x svg{width:14px;height:14px}
-.dui-q-x:hover{background:var(--dui-hover);color:var(--dui-ink)}
-.dui-q-x:focus-visible,.dui-q-opt:focus-visible{outline:2px solid var(--dui-accent);outline-offset:-2px}
-.dui-q-list{display:flex;flex-direction:column;gap:1px;min-width:0;box-sizing:border-box;margin:0 -8px}
-.dui-q-opt{position:relative;display:flex;align-items:flex-start;gap:16px;width:100%;min-width:0;box-sizing:border-box;margin:0;border:0;border-radius:12px;background:transparent;padding:10px 8px;font:inherit;color:var(--dui-ink);text-align:start;cursor:pointer;transition:background-color .12s ease}
-.dui-q-opt+.dui-q-opt::before{content:"";position:absolute;left:calc(var(--dui-key,24px) + 24px);right:8px;top:-1px;height:1px;background:var(--dui-q-rule-2);pointer-events:none}
-button.dui-q-opt:hover::before,button.dui-q-opt:hover+.dui-q-opt::before,.dui-q-opt[aria-pressed=true]::before,.dui-q-opt[aria-pressed=true]+.dui-q-opt::before{opacity:0}
-button.dui-q-opt:hover{background:var(--dui-hover)}
-button.dui-q-opt:active{background:var(--dui-active)}
-.dui-q-opt[aria-pressed=true]{background:var(--dui-active)}
-.dui-key{flex:none;box-sizing:border-box;width:var(--dui-key,24px);height:var(--dui-key,24px);border-radius:8px;background:var(--dui-hover);color:var(--dui-ink-2);font-size:12px;line-height:var(--dui-key,24px);font-weight:500;text-align:center;font-variant-numeric:tabular-nums;transition:background-color .12s ease,color .12s ease}
-.dui-q-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;padding-top:2px}
-.dui-q-opt:has(.dui-q-desc){--dui-key:34px}
-.dui-q-opt:has(.dui-q-desc) .dui-key{margin-top:2px;border-radius:10px;font-size:13px}
-.dui-q-opt:has(.dui-q-desc) .dui-q-body{padding-top:0}
-.dui-q-label{font-size:14px;line-height:20px;font-weight:500;white-space:normal;overflow-wrap:anywhere}
-.dui-q-desc{font-size:12px;line-height:17px;color:var(--dui-ink-2);overflow-wrap:anywhere}
-.dui-q-check{flex:none;display:inline-flex;align-items:center;color:var(--dui-ink-2);animation:dui-check-pop .18s ease-out backwards}
-.dui-q-settled .dui-q-check{animation:none}
-.dui-q-check svg{width:16px;height:16px}
-.dui-q-settled .dui-key{opacity:.4}
-.dui-q-settled .dui-q-label{color:color-mix(in srgb,var(--dui-ink) 45%,transparent)}
-.dui-q.dui-q-settled{gap:6px;padding:12px 16px}
-.dui-q-settled .dui-q-opt{padding:4px 8px}
-.dui-q-badge{flex:none;height:20px;padding:0 7px;border-radius:999px;border:1px dotted var(--dui-line-2);color:var(--dui-ink-2);font-size:12px;line-height:18px;box-sizing:border-box}
-.dui-q-field{flex:1 1 0;min-width:0;display:flex;box-sizing:border-box;min-height:32px;padding:5px 11px;border-radius:8px;border:.5px solid var(--dui-line-2);background:none;cursor:text;transition:border-color .12s ease}
-.dui-q-field:focus-within{border-color:color-mix(in srgb,var(--dui-ink) 30%,transparent)}
-.dui-q-input{flex:1;width:100%;min-width:0;max-height:120px;margin:0;padding:0;border:0;outline:none;background:transparent;color:var(--dui-ink);font:inherit;font-size:14px;line-height:20px;resize:none;overflow-y:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
-.dui-q-input::placeholder{color:var(--dui-ink-3)}
-.dui-q-submit,.dui-q-btn{flex:none;height:36px;padding:0 14px;border:0;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .12s ease,background-color .12s ease}
-.dui-q-submit{background:var(--dui-accent);color:var(--dui-accent-ink,#fff);animation:dui-veil-in .16s ease-out backwards}
-.dui-q-submit:hover:not(:disabled){opacity:.86}
-.dui-q-submit:disabled{opacity:.4;cursor:default}
-.dui-q-btn{background:var(--dui-hover);color:var(--dui-ink)}
-.dui-q-btn:hover{background:var(--dui-active)}
-.dui-q-foot{display:flex;justify-content:flex-end;gap:8px}
-.dui-menu{position:fixed;pointer-events:auto;z-index:60;min-width:200px;padding:6px;border-radius:12px;background:var(--dui-main);border:.5px solid var(--dui-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1),0 0 0 1px rgba(228,228,228,.04);display:flex;flex-direction:column;gap:2px;transform-origin:var(--dui-origin,top left);animation:dui-veil-in .14s ease-out;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);box-sizing:border-box}
-.dui-menu.dui-view-menu{position:absolute;z-index:4}
-.dui-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dui-ink);cursor:pointer;box-sizing:border-box}
-.dui-menu button:hover{background:var(--dui-hover)}
-.dui-menu 
-.dui-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dui-ink);cursor:pointer;box-sizing:border-box}
-.dui-menu button:hover{background:var(--dui-hover)}
-.dui-menu button svg{flex:none;width:16px;height:16px;margin:0 1px}
-.dui-menu-sep{height:.5px;flex:none;background:var(--dui-line-2);margin:4px 8px}
-.dui-seg{position:relative;display:flex;gap:2px;padding:2px;border-radius:10px;background:var(--dui-hover)}
-.dui-seg button{position:relative;z-index:1;flex:1;height:30px;border:0;border-radius:8px;background:none;font:inherit;font-size:13px;color:var(--dui-ink-2);cursor:pointer;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease}
-.dui-seg button[aria-pressed=true]{background:var(--dui-card);color:var(--dui-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.dui-seg button:disabled{opacity:.4;cursor:default}
-.dui-switch{position:relative;flex:none;width:36px;height:20px;padding:0;border:0;border-radius:999px;background:var(--dui-line-2);cursor:pointer;transition:background-color .15s ease}
-.dui-switch[aria-checked=true]{background:var(--dui-accent)}
-.dui-switch:disabled{opacity:.4;cursor:default}
-.dui-switch-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dui-knob);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s ease}
-.dui-switch[aria-checked=true] .dui-switch-knob{transform:translateX(16px)}
-.dui-switch:focus-visible{outline:2px solid var(--dui-accent);outline-offset:2px}
-.dui-gone{display:none}
-@keyframes dui-veil-in{from{opacity:0;filter:blur(6px)}}
-@keyframes dui-check-pop{from{opacity:0;scale:.4}}
-@media (prefers-reduced-motion:reduce){.dui-q,.dui-view-bare,.dui-q-submit,.dui-menu,.dui-q-check{animation:none}}
+.dv-q{margin:0 auto 8px;width:100%;max-width:var(--dsh-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--dv-q-edge:color-mix(in srgb,var(--dv-ink) 10%,transparent);--dv-q-rule:color-mix(in srgb,var(--dv-ink) 8%,transparent);--dv-q-rule-2:color-mix(in srgb,var(--dv-ink) 5%,transparent);background:var(--dv-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--dv-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--dv-ink);font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);animation:dv-veil-in .2s ease-out backwards}
+body[data-ds-dark-theme] .dv-q{--dv-q-edge:rgba(255,255,255,.16);--dv-q-rule:rgba(255,255,255,.12);--dv-q-rule-2:rgba(255,255,255,.08)}
+.dv-q-settled{animation:none}
+.dv-q-x{flex:none;width:20px;height:20px;border:0;padding:0;border-radius:6px;background:none;color:var(--dv-ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.dv-q-x svg{width:14px;height:14px}
+.dv-q-x:hover{background:var(--dv-hover);color:var(--dv-ink)}
+.dv-q-x:focus-visible,.dv-q-opt:focus-visible{outline:2px solid var(--dv-accent);outline-offset:-2px}
+.dv-q-list{display:flex;flex-direction:column;gap:1px;min-width:0;box-sizing:border-box;margin:0 -8px}
+.dv-q-opt{position:relative;display:flex;align-items:flex-start;gap:16px;width:100%;min-width:0;box-sizing:border-box;margin:0;border:0;border-radius:12px;background:transparent;padding:10px 8px;font:inherit;color:var(--dv-ink);text-align:start;cursor:pointer;transition:background-color .12s ease}
+.dv-q-opt+.dv-q-opt::before{content:"";position:absolute;left:calc(var(--dv-key,24px) + 24px);right:8px;top:-1px;height:1px;background:var(--dv-q-rule-2);pointer-events:none}
+button.dv-q-opt:hover::before,button.dv-q-opt:hover+.dv-q-opt::before,.dv-q-opt[aria-pressed=true]::before,.dv-q-opt[aria-pressed=true]+.dv-q-opt::before{opacity:0}
+button.dv-q-opt:hover{background:var(--dv-hover)}
+button.dv-q-opt:active{background:var(--dv-active)}
+.dv-q-opt[aria-pressed=true]{background:var(--dv-active)}
+.dv-key{flex:none;box-sizing:border-box;width:var(--dv-key,24px);height:var(--dv-key,24px);border-radius:8px;background:var(--dv-hover);color:var(--dv-ink-2);font-size:12px;line-height:var(--dv-key,24px);font-weight:500;text-align:center;font-variant-numeric:tabular-nums;transition:background-color .12s ease,color .12s ease}
+.dv-q-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;padding-top:2px}
+.dv-q-opt:has(.dv-q-desc){--dv-key:34px}
+.dv-q-opt:has(.dv-q-desc) .dv-key{margin-top:2px;border-radius:10px;font-size:13px}
+.dv-q-opt:has(.dv-q-desc) .dv-q-body{padding-top:0}
+.dv-q-label{font-size:14px;line-height:20px;font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.dv-q-desc{font-size:12px;line-height:17px;color:var(--dv-ink-2);overflow-wrap:anywhere}
+.dv-q-check{flex:none;display:inline-flex;align-items:center;color:var(--dv-ink-2);animation:dv-check-pop .18s ease-out backwards}
+.dv-q-settled .dv-q-check{animation:none}
+.dv-q-check svg{width:16px;height:16px}
+.dv-q-settled .dv-key{opacity:.4}
+.dv-q-settled .dv-q-label{color:color-mix(in srgb,var(--dv-ink) 45%,transparent)}
+.dv-q.dv-q-settled{gap:6px;padding:12px 16px}
+.dv-q-settled .dv-q-opt{padding:4px 8px}
+.dv-q-badge{flex:none;height:20px;padding:0 7px;border-radius:999px;border:1px dotted var(--dv-line-2);color:var(--dv-ink-2);font-size:12px;line-height:18px;box-sizing:border-box}
+.dv-q-field{flex:1 1 0;min-width:0;display:flex;box-sizing:border-box;min-height:32px;padding:5px 11px;border-radius:8px;border:.5px solid var(--dv-line-2);background:none;cursor:text;transition:border-color .12s ease}
+.dv-q-field:focus-within{border-color:color-mix(in srgb,var(--dv-ink) 30%,transparent)}
+.dv-q-input{flex:1;width:100%;min-width:0;max-height:120px;margin:0;padding:0;border:0;outline:none;background:transparent;color:var(--dv-ink);font:inherit;font-size:14px;line-height:20px;resize:none;overflow-y:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
+.dv-q-input::placeholder{color:var(--dv-ink-3)}
+.dv-q-submit,.dv-q-btn{flex:none;height:36px;padding:0 14px;border:0;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .12s ease,background-color .12s ease}
+.dv-q-submit{background:var(--dv-accent);color:var(--dv-accent-ink,#fff);animation:dv-veil-in .16s ease-out backwards}
+.dv-q-submit:hover:not(:disabled){opacity:.86}
+.dv-q-submit:disabled{opacity:.4;cursor:default}
+.dv-q-btn{background:var(--dv-hover);color:var(--dv-ink)}
+.dv-q-btn:hover{background:var(--dv-active)}
+.dv-q-foot{display:flex;justify-content:flex-end;gap:8px}
+.dv-menu{position:fixed;pointer-events:auto;z-index:60;min-width:200px;padding:6px;border-radius:12px;background:var(--dv-main);border:.5px solid var(--dv-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1),0 0 0 1px rgba(228,228,228,.04);display:flex;flex-direction:column;gap:2px;transform-origin:var(--dv-origin,top left);animation:dv-veil-in .14s ease-out;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);box-sizing:border-box}
+.dv-menu.dv-view-menu{position:absolute;z-index:4}
+.dv-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dv-ink);cursor:pointer;box-sizing:border-box}
+.dv-menu button:hover{background:var(--dv-hover)}
+.dv-menu 
+.dv-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dv-ink);cursor:pointer;box-sizing:border-box}
+.dv-menu button:hover{background:var(--dv-hover)}
+.dv-menu button svg{flex:none;width:16px;height:16px;margin:0 1px}
+.dv-menu-sep{height:.5px;flex:none;background:var(--dv-line-2);margin:4px 8px}
+.dv-seg{position:relative;display:flex;gap:2px;padding:2px;border-radius:10px;background:var(--dv-hover)}
+.dv-seg button{position:relative;z-index:1;flex:1;height:30px;border:0;border-radius:8px;background:none;font:inherit;font-size:13px;color:var(--dv-ink-2);cursor:pointer;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease}
+.dv-seg button[aria-pressed=true]{background:var(--dv-card);color:var(--dv-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.dv-seg button:disabled{opacity:.4;cursor:default}
+.dv-switch{position:relative;flex:none;width:36px;height:20px;padding:0;border:0;border-radius:999px;background:var(--dv-line-2);cursor:pointer;transition:background-color .15s ease}
+.dv-switch[aria-checked=true]{background:var(--dv-accent)}
+.dv-switch:disabled{opacity:.4;cursor:default}
+.dv-switch-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dv-knob);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s ease}
+.dv-switch[aria-checked=true] .dv-switch-knob{transform:translateX(16px)}
+.dv-switch:focus-visible{outline:2px solid var(--dv-accent);outline-offset:2px}
+.dv-gone{display:none}
+@keyframes dv-veil-in{from{opacity:0;filter:blur(6px)}}
+@keyframes dv-check-pop{from{opacity:0;scale:.4}}
+@media (prefers-reduced-motion:reduce){.dv-q,.dv-view-bare,.dv-q-submit,.dv-menu,.dv-q-check{animation:none}}
 `;
 
-// ../../../DeepSeek Bot/deep-ui/src/react/index.js
-var DEEP_UI_CSS = THEME_CSS + QUESTION_CSS + WIDGET_CSS;
+// ../../../DeepSeek Bot/deep-view/src/react/index.js
+var DEEP_VIEW_CSS = THEME_CSS + QUESTION_CSS + WIDGET_CSS;
 
-// ../../../DeepSeek Bot/deep-ui/src/core/reply.js
+// ../../../DeepSeek Bot/deep-view/src/core/reply.js
 var REPLY_KIND = "user-question-reply";
 function viewCardText(args) {
   let card = args;
@@ -6702,23 +6702,23 @@ function AnsweredReply({ node }) {
   }
   return (0, import_react11.createElement)(AnsweredCell, { node });
 }
-var WIDGET_CSS2 = `${DEEP_UI_CSS}
+var WIDGET_CSS2 = `${DEEP_VIEW_CSS}
 body{
---dui-ink:var(--bt-ink);--dui-ink-2:var(--bt-ink-2);--dui-ink-3:var(--bt-ink-3);
---dui-line:var(--bt-line);--dui-line-2:var(--bt-line-2);
---dui-card:var(--bt-card);--dui-main:var(--bt-main);
---dui-hover:var(--bt-hover);--dui-active:var(--bt-active);
---dui-accent:var(--bt-accent);--dui-accent-ink:var(--bt-accent-ink);
---dui-green:var(--bt-green);--dui-star:var(--bt-star);--dui-danger:var(--bt-danger);
---dui-knob:var(--bt-knob);--dui-tag-bg:var(--bt-tag-bg);
---dui-ink-tangerine:var(--bt-ink-tangerine);--dui-ink-green:var(--bt-ink-green);
---dui-ink-violet:var(--bt-ink-violet);--dui-ink-sky:var(--bt-ink-sky);
---dui-ink-rose:var(--bt-ink-rose);--dui-ink-yellow:var(--bt-ink-yellow);
---dui-ink-cyan:var(--bt-ink-cyan);--dui-ink-magenta:var(--bt-ink-magenta)}
-.bt-q-inline .dui-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--bt-msg-w,.8) * 100%),560px));order:0}
-.bt-q-inline .dui-q{margin:0;max-width:min(550px,86%);order:0}
-body[data-bt-layout=flat] .bt-q-inline .dui-view{max-width:calc(var(--bt-flat-w,1) * 100%)}
-.bt-q-inline:has(>.dui-view-bare){margin:8px 0 12px}
+--dv-ink:var(--bt-ink);--dv-ink-2:var(--bt-ink-2);--dv-ink-3:var(--bt-ink-3);
+--dv-line:var(--bt-line);--dv-line-2:var(--bt-line-2);
+--dv-card:var(--bt-card);--dv-main:var(--bt-main);
+--dv-hover:var(--bt-hover);--dv-active:var(--bt-active);
+--dv-accent:var(--bt-accent);--dv-accent-ink:var(--bt-accent-ink);
+--dv-green:var(--bt-green);--dv-star:var(--bt-star);--dv-danger:var(--bt-danger);
+--dv-knob:var(--bt-knob);--dv-tag-bg:var(--bt-tag-bg);
+--dv-ink-tangerine:var(--bt-ink-tangerine);--dv-ink-green:var(--bt-ink-green);
+--dv-ink-violet:var(--bt-ink-violet);--dv-ink-sky:var(--bt-ink-sky);
+--dv-ink-rose:var(--bt-ink-rose);--dv-ink-yellow:var(--bt-ink-yellow);
+--dv-ink-cyan:var(--bt-ink-cyan);--dv-ink-magenta:var(--bt-ink-magenta)}
+.bt-q-inline .dv-view{margin:0;width:100%;max-width:min(100%,max(calc(var(--bt-msg-w,.8) * 100%),560px));order:0}
+.bt-q-inline .dv-q{margin:0;max-width:min(550px,86%);order:0}
+body[data-bt-layout=flat] .bt-q-inline .dv-view{max-width:calc(var(--bt-flat-w,1) * 100%)}
+.bt-q-inline:has(>.dv-view-bare){margin:8px 0 12px}
 `;
 
 // src/client/secret-card.js
