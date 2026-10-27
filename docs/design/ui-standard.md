@@ -111,9 +111,10 @@ Bot 名字、提及用同一个颜色写字；纯黑读起来像标题，所以�
 
 ### 3.1 字族
 
-- 界面：`-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`。
+- 界面：`var(--bt-font)`，即 DSH 的正文字体 `--dsw-font-family`（用户在 DSH 里设了正文字体就用它）；没有 DSH 主题时退回 `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`。
 - 代码、密钥、路径：`ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`。
 - 对话内容的字号跟随 DSH 的 `--dsh-content-font-size`（默认 14px）。
+- 中文字体不点名：桌面应用把 DSH 的内置字体换成一份不写中文字体的（`app/src/fonts.css`），中文交给系统回退（macOS 经 `-apple-system` 是苹方，Linux 由 fontconfig 选，Windows 用系统或用户装的中文字体）；DSH Desktop / Web 里跟随 DSH。
 
 ### 3.2 字号档
 
@@ -125,7 +126,8 @@ Bot 名字、提及用同一个颜色写字；纯黑读起来像标题，所以�
 | 注释 | 11 / 16 | 400–500 | 计数、时间、小芯片 | `.bt-chip` |
 | 小 | 12 / 16 | 400–500 | 标签、说明、小按钮、错误 | `.bt-tag`、`.bt-note`、`.bt-soft-sm` |
 | 正文 | 13 / 18 | 400 | 设置行、菜单项、面板正文、列表 | `.bt-set-row`、`.bt-menu button` |
-| 内容 | 14 / 22 | 400 | 对话气泡、输入框、主按钮 | `.bt-bubble`、`.bt-soft` |
+| 内容 | 14 / 22 | 400 | 输入框、主按钮 | `.bt-soft` |
+| 气泡 | 14 / 24 | 400 | 对话气泡的正文；行高是字号 + 10，跟随 --dsh-content-font-size | `.bt-bubble`、`.bt-ububble` |
 | 胶囊 | 14 / 20 | 400 | 顶部胶囊 | `.bt-pill` |
 | 小标题 | 15 / 20 | 600 | 对话框标题、卡片标题 | `.bt-settings-head h2`、`.bt-q-title` |
 | 标题 | 17 / 24 | 500 | 详情面板里的 Bot 名 | `.bt-drawer-name` |
