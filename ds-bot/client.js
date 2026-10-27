@@ -2584,6 +2584,7 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-q-submit:disabled{opacity:.4;cursor:default}
 .bt-q-btn{background:var(--bt-hover);color:var(--bt-ink)}
 .bt-q-btn:hover{background:var(--bt-active)}
+.bt-q-submit:focus-visible,.bt-q-btn:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-q-foot{display:flex;justify-content:flex-end;gap:8px}
 .bt-q-raised{width:calc(var(--dsh-chat-content-width,748px) - 32px);max-width:calc(100% - 32px);gap:0;padding:0;box-shadow:0 2px 8px rgba(20,20,20,.035),inset 0 0 0 .5px color-mix(in srgb,var(--bt-ink) 5%,transparent)}
 .bt-q-raised .bt-q-head{padding:14px 16px 4px 20px}
@@ -4231,7 +4232,6 @@ var HANDOFF_CSS = `
 .bt-handoff-dot{flex:none;width:6px;height:6px;border-radius:50%;corner-shape:round;background:var(--bt-green)}
 .bt-handoff.bt-q-raised .bt-q-head{padding-bottom:12px}
 .bt-handoff .bt-q-foot{flex-wrap:wrap}
-.bt-handoff :is(.bt-q-btn,.bt-q-submit):focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 `;
 
 // src/shared/formula.js
