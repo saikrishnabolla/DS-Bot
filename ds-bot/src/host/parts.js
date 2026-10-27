@@ -1256,13 +1256,14 @@ export function install(rt) {
   // Earlier parts of a Bot's own chat, newest page first, for the chat to show above
   // the current part as one conversation.
   const EARLIER_PAGE = 60
-  function displayItems(partId, events, session) {
+  function displayItems(partId, events, session, seedTurn) {
     const hidden = new Set(state.exchangeTurns[partId] ?? [])
     const items = []
     // The turn/start still in effect. A steered or queued user message stays in
     // it; only another turn/start moves on. A later page does not repeat the
-    // turn/start from the page before, so seed that turn when the projection has it.
-    let turn = openTurnAt(ctx.get?.('sessionProjections'), session, events[0]?.seq)
+    // turn/start from the page before, so seed that turn when the projection has
+    // it — or when the caller walked the log back to it (no live session).
+    let turn = seedTurn ?? openTurnAt(ctx.get?.('sessionProjections'), session, events[0]?.seq)
     const stamp = (event, item) => {
       if (typeof event.seq === 'number' && Number.isInteger(event.seq)) item.seq = event.seq
       if (turn !== undefined) item.turn = turn
@@ -1317,15 +1318,39 @@ export function install(rt) {
 
   async function partPage(parts, index, cursor) {
     const part = parts[index]
-    const agent = await rt.resolveAgent(part.sessionId)
+    const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+    // An archived earlier part may have no live agent left; its stored events
+    // still page fine, so resolve failure only drops the live-session cap.
+    const agent = await rt.resolveAgent(part.sessionId).catch(() => undefined)
     const page = await ctx.sessionController.page({
       address: { kind: 'session', sessionId: part.sessionId },
-      throughSeq: Number(agent.session.seq) - 1,
+      ...(agent ? { throughSeq: Number(agent.session.seq) - 1 } : {}),
       ...(Number.isInteger(cursor?.beforeSeq) ? { beforeSeq: cursor.beforeSeq } : {}),
       maxMessages: EARLIER_PAGE,
-    }, AbortSignal.timeout(HISTORY_TIMEOUT_MS))
+    }, signal)
     const events = page.records.map(record => record.event)
-    const items = displayItems(part.sessionId, events, agent.session)
+    let seedTurn
+    if (agent === undefined) {
+      // Without the live session's projection, rows on a page that does not
+      // hold its own turn/start would lose their turn; walk back for it.
+      let before = events[0]?.seq
+      while (Number.isInteger(before) && seedTurn === undefined) {
+        const back = await ctx.sessionController.page({
+          address: { kind: 'session', sessionId: part.sessionId },
+          beforeSeq: before,
+          maxMessages: EARLIER_PAGE,
+        }, signal)
+        const starts = back.records.map(record => record.event).filter(event => event.type === 'turn/start')
+        if (starts.length > 0) {
+          const last = starts.at(-1).data?.turn
+          if (Number.isInteger(last)) seedTurn = last
+          break
+        }
+        if (!back.hasMore) break
+        before = back.records[0]?.event?.seq
+      }
+    }
+    const items = displayItems(part.sessionId, events, agent?.session, seedTurn)
     const more = page.hasMore && events.length > 0
     // The line above a part's first message marks where it began.
     if (!more && index > 0) items.unshift({ kind: 'divider', time: part.startedAt })

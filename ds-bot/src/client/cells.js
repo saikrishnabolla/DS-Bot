@@ -587,6 +587,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       if (source.role === 'kickoff' || source.role === 'room') return null
       // The secret card itself shows what the user did; the note to the Bot stays out.
       if (source.role === 'secret' || deferred) return null
+      // A profile notice is the user's edit landing in the Bot's chat, not a peer
+      // message: show it as an event, with no exchange to open.
+      if (source.role === 'update') return h('div', { className: 'bt-event' }, t('Profile updated'))
       if (source.role === 'post') {
         // A post logged into a running round already shows there, not again as a trigger.
         if (source.logged !== undefined) return null
@@ -812,6 +815,56 @@ function useLiveNote(actions, sessionId, id, entry) {
   }, [sessionId, id, key])
 }
 
+// Reads the replies of a settled group_relay result. Compaction can prune the
+// middle of a long tool result, which leaves invalid JSON: then every complete
+// reply object that survived is recovered so the turn still draws what it can.
+const RELAY_LIST = /"replies"\s*:\s*\[/
+// Compaction marks a pruned span with a literal bracketed note like
+// "[... tool result middle pruned ...]". Its "]" looks like the end of the
+// replies array to a naive scan, so the text is split on the marker first.
+const PRUNE_MARKER = /\[\.\.\. tool result middle pruned \.\.\.\]/
+function parseReplies(text) {
+  try { return { replies: JSON.parse(text).replies ?? [], broken: false } } catch { /* fall through */ }
+  const replies = []
+  const head = RELAY_LIST.exec(text)
+  if (head) {
+    for (const piece of text.slice(head.index + head[0].length).split(PRUNE_MARKER)) {
+      // The cut can start inside a string, leaving a fragment that keeps the
+      // scanner inside quotes: restart at the first complete reply instead.
+      const first = piece.indexOf('{"')
+      if (first !== -1) scanReplies(piece, first, replies)
+    }
+  }
+  return { replies, broken: true }
+}
+
+function scanReplies(text, start, replies) {
+  let depth = 0
+  let from = -1
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; continue }
+    if (ch === '{') {
+      if (depth === 0) from = i
+      depth += 1
+    } else if (ch === '}') {
+      depth -= 1
+      if (depth === 0 && from >= 0) {
+        try { replies.push(JSON.parse(text.slice(from, i + 1))) } catch { /* partial object */ }
+        from = -1
+      }
+    } else if (ch === ']' && depth === 0) break
+  }
+}
+
 function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi, useWork }) {
   const [live, setLive] = useState({ replies: [], speaking: null })
   useEffect(() => {
@@ -831,14 +884,21 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
     return () => { stop = true; clearTimeout(timer) }
   }, [done, sessionId, callId])
   let replies = live.replies
+  let broken = false
   if (done) {
-    try { replies = JSON.parse(contentText(content)).replies ?? [] } catch { replies = [] }
+    const parsed = parseReplies(contentText(content))
+    replies = parsed.replies.length ? parsed.replies : live.replies
+    broken = parsed.broken
   }
   // Members speak one at a time, so only the current speaker is typing.
   const pending = done || !live.speaking ? [] : [live.speaking]
   const speakerTool = useWork?.(work => work.bots?.[live.speaking]?.tool) ?? undefined
   const speakerDoing = useWork?.(work => (work.bots?.[live.speaking]?.tool ? workPhrase(work.bots[live.speaking]) : undefined)) ?? undefined
-  if (replies.length === 0 && pending.length === 0) return null
+  if (replies.length === 0 && pending.length === 0) {
+    // A pruned tool result left nothing to draw; keep a marker row instead of an
+    // empty turn, which reads as a blank gap on a narrow first paint.
+    return broken ? h('div', { className: 'bt-group-replies' }, h('div', { className: 'bt-event' }, t('The group replies could not be shown'))) : null
+  }
   const room = roster.roomsById[sessionId]
   return h('div', { className: 'bt-group-replies' },
     stackReplies(replies).map(({ reply, index, texts, time, duration }) => {
