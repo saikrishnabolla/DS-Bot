@@ -144,8 +144,24 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 .bt-row-preview{font-size:13px;line-height:18px;color:var(--bt-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-unread{width:8px;height:8px;border-radius:50%;background:var(--bt-accent);flex:none;margin-right:2px;animation:bt-fade .13s cubic-bezier(.22,1,.36,1)}
 .bt-unread-wait{background:var(--bt-star)}
-.bt-rail{align-items:center;padding:0 0 8px}
-.bt-rail .bt-row{justify-content:center;padding:6px 0;min-height:44px}
+/* Our own left column, portalled over the shell's collapsed sidebar: it starts
+   below the window's title strip and stays under the shell's title-bar switch
+   (z 30) and the popovers (z 60). */
+.bt-leftcol{position:fixed;left:0;top:var(--dsh-frame-top-clearance,0px);bottom:0;z-index:25;display:flex;background:var(--bt-sidebar);border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:6px 12px;color:var(--bt-ink);font-family:var(--bt-font)}
+html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
+.bt-leftcol[data-left=drawer]{box-shadow:8px 0 24px rgba(0,0,0,.14)}
+.bt-leftcol>.bt-side{width:100%}
+.bt-leftcol-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
+.bt-rail{align-items:center;padding:0}
+.bt-rail .bt-row{justify-content:center;width:56px;height:56px;min-height:56px;padding:0;border-radius:16px}
+.bt-rail-top{display:flex;flex-direction:column;align-items:center;gap:6px;padding-bottom:8px}
+.bt-rail-sep{width:24px;height:1px;flex:none;background:var(--bt-line)}
+.bt-rail .bt-agent-ava{width:44px;height:44px}
+.bt-rail .bt-list{align-items:center;gap:4px}
+.bt-leftcol[data-left=rail]{padding:8px 16px}
+.bt-leftcol-foot-rail{flex-direction:column;gap:6px}
+.bt-dot{position:absolute;top:4px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--bt-accent);box-shadow:0 0 0 1.5px var(--bt-sidebar)}
+.bt-dot-wait{background:var(--bt-star)}
 .bt-side-foot{display:flex;padding-top:8px}
 .bt-connect{flex:1;height:36px;border-radius:999px;border:1px solid var(--bt-line);background:var(--bt-main);color:var(--bt-ink);font-family:inherit;font-size:14px;line-height:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background-color .12s ease}
 .bt-connect:hover{background:var(--bt-hover)}
@@ -360,7 +376,7 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-panel[data-leaving]{transform:translateX(100%);transition:transform .3s cubic-bezier(.2,0,0,1);pointer-events:none}
 .bt-panel[data-instant]{transition:none}
 @keyframes bt-pane-in{from{transform:translateX(100%)}}
-[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-panel-grip{position:absolute;left:-5px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
 .bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 4px,var(--bt-line-2) 4px,var(--bt-line-2) 6px,transparent 6px)}
 .bt-drag-shield{position:fixed;inset:0;z-index:45;cursor:col-resize}
@@ -550,7 +566,7 @@ button.bt-set-row:hover{background:var(--bt-hover)}
    the sidebar is open. Elsewhere an open sidebar uses the team's own top row. */
 html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
 html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
-html[data-windows-titlebar] .bt-side-collapse,html[data-platform=darwin] .bt-side-collapse{display:none}
+html[data-windows-titlebar] :is(.bt-side-collapse,.bt-rail-expand),html[data-platform=darwin] :is(.bt-side-collapse,.bt-rail-expand){display:none}
 /* The footer ends in the Bot row: the whale's settings seat, then Connect plugins. Every
    other plugin's entry takes a whole row above it, in the shell's order, so none of them
    squeezes the Bot row. */

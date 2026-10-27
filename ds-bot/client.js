@@ -1503,7 +1503,7 @@ function countCards(state, sessionId, callIds, delta) {
 }
 
 // src/client/team-actions.js
-function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock }) {
+function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
   const openSideChat = (sessionId, chatId) => {
     ui2.set((state) => ({ ...state, details: sessionId, view: "side", side: chatId ?? null, renaming: false, tab: null }));
@@ -1531,6 +1531,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     toggleDetails: (id, force) => {
       ui2.set((state) => {
         const details = force || state.details !== id || state.view !== "details" ? id : null;
+        if (details === null && panelFolded?.() === true) return { ...state, renaming: false, tab: null, details: id, view: "details", panelYield: true };
         return { ...state, renaming: false, tab: null, details, view: "details" };
       });
     },
@@ -2459,8 +2460,24 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 .bt-row-preview{font-size:13px;line-height:18px;color:var(--bt-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-unread{width:8px;height:8px;border-radius:50%;background:var(--bt-accent);flex:none;margin-right:2px;animation:bt-fade .13s cubic-bezier(.22,1,.36,1)}
 .bt-unread-wait{background:var(--bt-star)}
-.bt-rail{align-items:center;padding:0 0 8px}
-.bt-rail .bt-row{justify-content:center;padding:6px 0;min-height:44px}
+/* Our own left column, portalled over the shell's collapsed sidebar: it starts
+   below the window's title strip and stays under the shell's title-bar switch
+   (z 30) and the popovers (z 60). */
+.bt-leftcol{position:fixed;left:0;top:var(--dsh-frame-top-clearance,0px);bottom:0;z-index:25;display:flex;background:var(--bt-sidebar);border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:6px 12px;color:var(--bt-ink);font-family:var(--bt-font)}
+html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
+.bt-leftcol[data-left=drawer]{box-shadow:8px 0 24px rgba(0,0,0,.14)}
+.bt-leftcol>.bt-side{width:100%}
+.bt-leftcol-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
+.bt-rail{align-items:center;padding:0}
+.bt-rail .bt-row{justify-content:center;width:56px;height:56px;min-height:56px;padding:0;border-radius:16px}
+.bt-rail-top{display:flex;flex-direction:column;align-items:center;gap:6px;padding-bottom:8px}
+.bt-rail-sep{width:24px;height:1px;flex:none;background:var(--bt-line)}
+.bt-rail .bt-agent-ava{width:44px;height:44px}
+.bt-rail .bt-list{align-items:center;gap:4px}
+.bt-leftcol[data-left=rail]{padding:8px 16px}
+.bt-leftcol-foot-rail{flex-direction:column;gap:6px}
+.bt-dot{position:absolute;top:4px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--bt-accent);box-shadow:0 0 0 1.5px var(--bt-sidebar)}
+.bt-dot-wait{background:var(--bt-star)}
 .bt-side-foot{display:flex;padding-top:8px}
 .bt-connect{flex:1;height:36px;border-radius:999px;border:1px solid var(--bt-line);background:var(--bt-main);color:var(--bt-ink);font-family:inherit;font-size:14px;line-height:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background-color .12s ease}
 .bt-connect:hover{background:var(--bt-hover)}
@@ -2675,7 +2692,7 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-panel[data-leaving]{transform:translateX(100%);transition:transform .3s cubic-bezier(.2,0,0,1);pointer-events:none}
 .bt-panel[data-instant]{transition:none}
 @keyframes bt-pane-in{from{transform:translateX(100%)}}
-[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-panel-grip{position:absolute;left:-5px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
 .bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 4px,var(--bt-line-2) 4px,var(--bt-line-2) 6px,transparent 6px)}
 .bt-drag-shield{position:fixed;inset:0;z-index:45;cursor:col-resize}
@@ -2865,7 +2882,7 @@ button.bt-set-row:hover{background:var(--bt-hover)}
    the sidebar is open. Elsewhere an open sidebar uses the team's own top row. */
 html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
 html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
-html[data-windows-titlebar] .bt-side-collapse,html[data-platform=darwin] .bt-side-collapse{display:none}
+html[data-windows-titlebar] :is(.bt-side-collapse,.bt-rail-expand),html[data-platform=darwin] :is(.bt-side-collapse,.bt-rail-expand){display:none}
 /* The footer ends in the Bot row: the whale's settings seat, then Connect plugins. Every
    other plugin's entry takes a whole row above it, in the shell's order, so none of them
    squeezes the Bot row. */
@@ -8245,6 +8262,210 @@ function showsDshRow(dsh, app) {
   return dsh.kind === "app" && APP_OFFER.has(app?.phase) && sameVersion(app.version, dsh.verified);
 }
 
+// src/client/storage.js
+var STORAGE = {
+  unread: "ds-bot:unread",
+  reactions: "ds-bot:reactions",
+  seen: "ds-bot:seen",
+  prefs: "ds-bot:prefs",
+  surface: "ds-bot:surface",
+  agentSessions: "ds-bot:agent-sessions",
+  browserWidth: "ds-bot:browser-width",
+  sidebar: "ds-bot:sidebar",
+  browsers: "ds-bot.browser.v2"
+};
+var LEGACY_PREFIXES = ["dsh-bot:", "dsh-bot-team:"];
+var LEGACY_BROWSER_KEYS = ["ds-bot.browser.v1", "dsh-bot.browser.v1"];
+var LEGACY_THEMES = { grok: "mono" };
+function legacyKeys(key) {
+  if (key === STORAGE.browsers) return LEGACY_BROWSER_KEYS;
+  const name = key.slice(key.indexOf(":") + 1);
+  return LEGACY_PREFIXES.map((prefix) => `${prefix}${name}`);
+}
+var migrateBrowsers = (storage) => {
+  if (storage.getItem(STORAGE.browsers) !== null) {
+    for (const key of LEGACY_BROWSER_KEYS) storage.removeItem(key);
+    return;
+  }
+  for (const key of LEGACY_BROWSER_KEYS) {
+    try {
+      const value = storage.getItem(key);
+      if (value === null) continue;
+      const previous = JSON.parse(value) ?? {};
+      const tabs = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
+        const tab = { id: `v1-${botId}`, url: page.url ?? "", title: page.title ?? "" };
+        return [botId, { tabs: [tab], active: tab.id }];
+      }));
+      storage.setItem(STORAGE.browsers, JSON.stringify(tabs));
+      for (const earlier of LEGACY_BROWSER_KEYS) storage.removeItem(earlier);
+      return;
+    } catch {
+    }
+  }
+};
+function migrateStorage(storage = globalThis.localStorage) {
+  for (const key of Object.values(STORAGE)) {
+    if (key === STORAGE.browsers) continue;
+    for (const legacy of legacyKeys(key)) {
+      try {
+        const value = storage.getItem(legacy);
+        if (value !== null && storage.getItem(key) === null) storage.setItem(key, value);
+        storage.removeItem(legacy);
+      } catch {
+      }
+    }
+  }
+  try {
+    migrateBrowsers(storage);
+  } catch {
+  }
+  try {
+    const prefs = JSON.parse(storage.getItem(STORAGE.prefs) ?? "null");
+    if (prefs && Object.hasOwn(LEGACY_THEMES, prefs.theme ?? "")) {
+      storage.setItem(STORAGE.prefs, JSON.stringify({ ...prefs, theme: LEGACY_THEMES[prefs.theme] }));
+    }
+  } catch {
+  }
+}
+
+// src/client/frame-layout.js
+var MIN_CHAT = 420;
+var RAIL_WIDTH = 88;
+var PANEL_MIN = { details: 320, browser: 360, side: 320 };
+var DSH_NARROW = 1024;
+var FALLBACK_SIDEBAR_WIDTH = 280;
+function frameLayout({ viewport, sidebarWidth, collapsedWidth = 0, pref, drawer = false, panel = null }) {
+  const fits = pref === "open" && viewport >= sidebarWidth + MIN_CHAT;
+  let left = fits ? "open" : drawer && pref === "open" ? "drawer" : "rail";
+  let occupied = left === "open" ? sidebarWidth : left === "rail" ? RAIL_WIDTH : collapsedWidth;
+  let panelState = "none";
+  if (panel !== null) {
+    const need = (PANEL_MIN[panel.view] ?? PANEL_MIN.details) + MIN_CHAT;
+    if (occupied + need <= viewport) panelState = "shown";
+    else if (panel.yielded === true) {
+      left = "rail";
+      occupied = RAIL_WIDTH;
+      panelState = RAIL_WIDTH + need <= viewport ? "shown" : "overlay";
+    } else panelState = "folded";
+  }
+  return { left, panel: panelState, room: Math.max(0, viewport - occupied) };
+}
+var dshExpandedFor = (viewport, left) => viewport >= DSH_NARROW && left === "open";
+var userSidebarToggle = ({ before, after, requested = false }) => before.collapsed !== after.collapsed && !requested && before.viewport < DSH_NARROW === after.viewport < DSH_NARROW;
+function readSidebarPref(storage = globalThis.localStorage) {
+  try {
+    return storage.getItem(STORAGE.sidebar) === "rail" ? "rail" : "open";
+  } catch {
+    return "open";
+  }
+}
+function writeSidebarPref(pref, storage = globalThis.localStorage) {
+  try {
+    storage.setItem(STORAGE.sidebar, pref === "rail" ? "rail" : "open");
+  } catch {
+  }
+}
+
+// src/client/frame-watch.js
+var sidebarTrackWidth = () => typeof document === "undefined" ? null : document.querySelector('[class*="_sidebarCol"]')?.getBoundingClientRect().width ?? null;
+var dshCollapsed = () => {
+  if (typeof document === "undefined") return null;
+  const column = document.querySelector('[class*="_sidebarCol"]');
+  return column ? column.parentElement?.hasAttribute("data-sidebar-collapsed") ?? false : null;
+};
+var collapsedTrackWidth = () => document.documentElement.hasAttribute("data-windows-titlebar") || document.documentElement.dataset.platform === "darwin" ? 0 : 56;
+var room = { rule: null, selector: "" };
+var roomRule = () => {
+  const live = room.rule?.parentStyleSheet?.ownerNode?.isConnected;
+  if (live && room.selector) return room.rule;
+  const column = document.querySelector('[class*="_centerCol"]');
+  const selector = column ? [...column.classList].filter((name) => name.includes("_centerCol")).map((name) => `.${CSS.escape(name)}`).join(",") : "";
+  if (live && !selector) return room.rule;
+  const declarations2 = room.rule?.style.cssText ?? "";
+  room.rule?.parentStyleSheet?.ownerNode?.remove();
+  const style = installStyles(`${selector || '[class*="_centerCol"]'}{${declarations2}}`, "chat-room");
+  room.rule = style.sheet.cssRules[0];
+  room.selector = selector;
+  return room.rule;
+};
+var margin = (side, width, style) => {
+  if (width === null) style.removeProperty(`margin-${side}`);
+  else style.setProperty(`margin-${side}`, `${width}px`, "important");
+};
+var roomHold = 0;
+var chatRoom = {
+  /** The margin the Bot panel takes on the right, in px, or null for the shell's own. */
+  setRight(width) {
+    margin("right", width, roomRule().style);
+  },
+  /** The margin our own left column takes while the shell sidebar is collapsed. */
+  setLeft(width) {
+    margin("left", width, roomRule().style);
+  },
+  /** While on, a margin change lands at once instead of gliding. */
+  hold(on) {
+    cancelAnimationFrame(roomHold);
+    if (on) {
+      roomRule().style.setProperty("transition", "none", "important");
+      return;
+    }
+    roomHold = requestAnimationFrame(() => {
+      roomHold = requestAnimationFrame(() => roomRule().style.removeProperty("transition"));
+    });
+  },
+  /** The columns themselves, for a drag's per-frame writes. */
+  columns() {
+    roomRule();
+    return room.selector ? [...document.querySelectorAll(room.selector)] : [];
+  }
+};
+function installFrameWatch(frame) {
+  let sidebarWidth = FALLBACK_SIDEBAR_WIDTH;
+  let collapsedWidth = collapsedTrackWidth();
+  let raf = 0;
+  const watched = /* @__PURE__ */ new Set();
+  const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => schedule()) : null;
+  const read = () => {
+    const width = sidebarTrackWidth();
+    const collapsed = dshCollapsed();
+    if (width !== null) {
+      if (collapsed === true) collapsedWidth = width;
+      else if (collapsed === false) sidebarWidth = width;
+    }
+    frame.set((state) => {
+      const next = { viewport: window.innerWidth, sidebarWidth, collapsedWidth, collapsed: collapsed === true };
+      return state.viewport === next.viewport && state.sidebarWidth === next.sidebarWidth && state.collapsedWidth === next.collapsedWidth && state.collapsed === next.collapsed ? state : next;
+    });
+  };
+  const measure = () => {
+    for (const selector of ['[class*="_sidebarCol"]', '[class*="_centerCol"]']) {
+      for (const column of document.querySelectorAll(selector)) {
+        if (!watched.has(column)) {
+          watched.add(column);
+          observer?.observe(column);
+        }
+      }
+    }
+    read();
+  };
+  const schedule = () => {
+    if (raf === 0) raf = requestAnimationFrame(() => {
+      raf = 0;
+      measure();
+    });
+  };
+  measure();
+  const mutations = new MutationObserver(schedule);
+  mutations.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-sidebar-collapsed"] });
+  window.addEventListener("resize", schedule);
+  return () => {
+    cancelAnimationFrame(raf);
+    mutations.disconnect();
+    observer?.disconnect();
+    window.removeEventListener("resize", schedule);
+  };
+}
+
 // src/client/sidebar.js
 var import_react14 = require("react");
 var import_react_dom3 = require("react-dom");
@@ -8321,7 +8542,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
       onClick: () => actions.openSession(id),
       onContextMenu
     },
-    (0, import_react14.createElement)(BotAvatar, { bot, size: 36, state, main }),
+    (0, import_react14.createElement)(BotAvatar, { bot, size: wide ? 36 : 44, state, main }),
     pinned && !wide ? (0, import_react14.createElement)(PinMark) : null,
     wide ? (0, import_react14.createElement)(
       "span",
@@ -8329,7 +8550,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
       (0, import_react14.createElement)("span", { className: "bt-row-name" }, (0, import_react14.createElement)("span", { className: "bt-row-title" }, bot.name), pinned ? (0, import_react14.createElement)(PinMark) : null),
       runningLine ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, runningLine) : awayLine ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, awayLine) : waitsFor ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, waitsFor) : preview ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, preview) : null
     ) : null,
-    wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : null
+    wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : !wide && !active && (alert || unread) ? (0, import_react14.createElement)("span", { className: `bt-dot${alert ? " bt-dot-wait" : ""}`, "aria-hidden": true }) : null
   );
 }
 function RoomRow({ room: room2, roster, actions, useSessions, useSessionStatus, useSessionRetainInfo, useWork, wide, marked }) {
@@ -8360,7 +8581,7 @@ function RoomRow({ room: room2, roster, actions, useSessions, useSessionStatus, 
         actions.openMenu({ kind: "room", id, x: event.clientX, y: event.clientY });
       }
     },
-    (0, import_react14.createElement)(RoomAvatar, { room: room2, roster, size: 36 }),
+    (0, import_react14.createElement)(RoomAvatar, { room: room2, roster, size: wide ? 36 : 44 }),
     pinned && !wide ? (0, import_react14.createElement)(PinMark) : null,
     wide ? (0, import_react14.createElement)(
       "span",
@@ -8368,7 +8589,7 @@ function RoomRow({ room: room2, roster, actions, useSessions, useSessionStatus, 
       (0, import_react14.createElement)("span", { className: "bt-row-name" }, (0, import_react14.createElement)("span", { className: "bt-row-title" }, room2.name), pinned ? (0, import_react14.createElement)(PinMark) : null),
       workingLine ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, workingLine) : preview ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, preview) : null
     ) : null,
-    wide && approval && !active ? (0, import_react14.createElement)("span", { className: "bt-unread bt-unread-wait", "aria-hidden": true }) : wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : null
+    wide && approval && !active ? (0, import_react14.createElement)("span", { className: "bt-unread bt-unread-wait", "aria-hidden": true }) : wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : !wide && !active && (approval || unread) ? (0, import_react14.createElement)("span", { className: `bt-dot${approval ? " bt-dot-wait" : ""}`, "aria-hidden": true }) : null
   );
 }
 function AgentSessionRow({ session, agent, actions, renaming, index }) {
@@ -8478,14 +8699,14 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
           actions.openMenu({ kind: "agent", id: agent.id, x: event.clientX, y: event.clientY });
         }
       },
-      (0, import_react14.createElement)("span", { className: `bt-agent-ava${running ? " bt-run" : ""}` }, (0, import_react14.createElement)(import_dsh_client_ui_primitives.FishLogo, { size: 22 })),
+      (0, import_react14.createElement)("span", { className: `bt-agent-ava${running ? " bt-run" : ""}` }, (0, import_react14.createElement)(import_dsh_client_ui_primitives.FishLogo, { size: wide ? 22 : 24 })),
       wide ? (0, import_react14.createElement)(
         "span",
         { className: "bt-row-body" },
         (0, import_react14.createElement)("span", { className: "bt-row-name" }, "DSH Agent"),
         preview ? (0, import_react14.createElement)("span", { className: "bt-row-preview" }, preview) : null
       ) : null,
-      wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : null
+      wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : !wide && unread && !active ? (0, import_react14.createElement)("span", { className: "bt-dot", "aria-hidden": true }) : null
     ),
     (0, import_react14.createElement)(
       "div",
@@ -8533,16 +8754,28 @@ function useListGlide(listRef, layout, key) {
     tops.current = { layout, map: next };
   }, [layout, key]);
 }
+function LeftColumn({ mode, width, children }) {
+  return (0, import_react_dom3.createPortal)((0, import_react14.createElement)("div", { className: "bt-leftcol", "data-left": mode, style: { width: `${width}px` } }, children), document.body);
+}
 function TeamSidebar(props) {
-  const { wide, expandSidebar, useRoster, useUi, useSessions, actions } = props;
+  const { wide, useRoster, useUi, useSessions, actions } = props;
   const listRef = (0, import_react14.useRef)(null);
-  const closing = (0, import_react14.useRef)(false);
-  (0, import_react14.useLayoutEffect)(() => {
-    closing.current = false;
-  });
   const roster = useRoster((value) => value);
   const markedUnread = useUi((value) => value.unread);
+  const uiNow = useUi((value) => value);
   props.useRegistry((value) => value);
+  const frameSnap = props.useFrame ? props.useFrame((value) => value) : { viewport: typeof window === "undefined" ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 };
+  const pref = props.useSidebarPref ? props.useSidebarPref((value) => value) : "open";
+  const layout = frameLayout({
+    viewport: frameSnap.viewport,
+    sidebarWidth: frameSnap.sidebarWidth,
+    collapsedWidth: frameSnap.collapsedWidth ?? 0,
+    pref,
+    drawer: uiNow.leftDrawer === true,
+    panel: uiNow.details ? { view: uiNow.view, yielded: uiNow.panelYield === true } : null
+  });
+  const mode = wide ? "inline" : layout.left;
+  const wideContent = mode !== "rail";
   const updated = useSessions((list) => {
     const stamps = {};
     for (const id of list.ids) stamps[id] = list.byId[id]?.updatedAt ?? 0;
@@ -8559,15 +8792,69 @@ function TeamSidebar(props) {
     return entries2.sort((a, b) => Number(Boolean(b.item.pinned)) - Number(Boolean(a.item.pinned)) || b.at - a.at);
   }, [roster, updated]);
   const main = roster.byId[roster.mainBotId];
-  useListGlide(listRef, wide, order.map((entry) => entry.item.id).join(","));
+  useListGlide(listRef, wideContent, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
+  const ourWidth = layout.left === "rail" ? RAIL_WIDTH : frameSnap.sidebarWidth;
+  (0, import_react14.useLayoutEffect)(() => {
+    if (typeof document === "undefined") return;
+    chatRoom.setLeft(mode === "inline" || mode === "drawer" ? null : Math.max(0, ourWidth - (frameSnap.collapsedWidth ?? 0)));
+  }, [mode, ourWidth, frameSnap.collapsedWidth]);
+  (0, import_react14.useEffect)(() => () => {
+    if (typeof document !== "undefined") chatRoom.setLeft(null);
+  }, []);
+  const dsh = (0, import_react14.useRef)(null);
+  const requested = (0, import_react14.useRef)(false);
+  (0, import_react14.useLayoutEffect)(() => {
+    if (typeof document === "undefined" || typeof actions.toggleSidebar !== "function") return void 0;
+    const collapsed = dshCollapsed() ?? !wide;
+    const prev = dsh.current;
+    dsh.current = { collapsed, viewport: frameSnap.viewport, left: layout.left };
+    if (prev !== null && collapsed !== prev.collapsed) {
+      if (requested.current) requested.current = false;
+      else if (userSidebarToggle({ before: prev, after: { collapsed, viewport: frameSnap.viewport } })) {
+        if (prev.left === "open") actions.setSidebarPref?.("rail");
+        else {
+          actions.setSidebarPref?.("open");
+          if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true);
+        }
+        actions.setPanelYield?.(false);
+        return void 0;
+      }
+    }
+    const wantOpen = dshExpandedFor(frameSnap.viewport, layout.left);
+    if (collapsed === !wantOpen) {
+      requested.current = false;
+      return void 0;
+    }
+    if (requested.current) return void 0;
+    requested.current = true;
+    actions.toggleSidebar();
+    const timer = setTimeout(() => {
+      requested.current = false;
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left]);
+  (0, import_react14.useEffect)(() => {
+    if (mode !== "drawer") return void 0;
+    const onDown = (event) => {
+      if (event.target instanceof Element && event.target.closest(".bt-leftcol")) return;
+      actions.setLeftDrawer?.(false);
+    };
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      actions.setLeftDrawer?.(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [mode]);
   const navigate = (open, id) => {
     const result = open(id);
-    if (wide && window.innerWidth < 1024 && !closing.current) {
-      closing.current = true;
-      expandSidebar?.();
-      actions.toggleSidebar();
-    }
+    if (uiNow.leftDrawer === true) actions.setLeftDrawer?.(false);
     return result;
   };
   const rowActions = {
@@ -8577,38 +8864,58 @@ function TeamSidebar(props) {
     openAgentSession: (id) => navigate(actions.openAgentSession, id),
     newAgentSession: (id) => navigate(actions.newAgentSession, id)
   };
-  const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide };
+  const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide: wideContent };
   const typeToSearch = (event) => {
     if (event.defaultPrevented || event.key.length !== 1 || event.key === " " || event.metaKey || event.ctrlKey || event.altKey || event.nativeEvent.isComposing) return;
     if (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable]")) return;
     event.preventDefault();
     actions.openPalette(event.key);
   };
-  return (0, import_react14.createElement)(
+  const expandLeft = () => {
+    actions.setSidebarPref?.("open");
+    if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true);
+  };
+  const top = wideContent ? (0, import_react14.createElement)(
     "div",
-    { className: wide ? "bt-side" : "bt-side bt-rail", onKeyDown: typeToSearch },
-    wide ? (0, import_react14.createElement)(
-      "div",
-      { className: "bt-side-top" },
-      (0, import_react14.createElement)("span", { className: "bt-brand" }, (0, import_react14.createElement)(BrandMark, { size: 22 }), (0, import_react14.createElement)(BrandName)),
-      (0, import_react14.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
-      (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Search"), title: t("Search"), onClick: () => actions.openPalette() }, (0, import_react14.createElement)(SearchIcon)),
-      (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react14.createElement)(PlusIcon)),
-      (0, import_react14.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: () => actions.toggleSidebar() }, (0, import_react14.createElement)(SidebarIcon))
-    ) : (0, import_react14.createElement)(
-      import_react14.Fragment,
-      null,
-      (0, import_react14.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
-      (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react14.createElement)(PlusIcon))
-    ),
-    wide && roster.readOnly ? (0, import_react14.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
+    { className: "bt-side-top" },
+    (0, import_react14.createElement)("span", { className: "bt-brand" }, (0, import_react14.createElement)(BrandMark, { size: 22 }), (0, import_react14.createElement)(BrandName)),
+    (0, import_react14.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Search"), title: t("Search"), onClick: () => actions.openPalette() }, (0, import_react14.createElement)(SearchIcon)),
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react14.createElement)(PlusIcon)),
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: () => {
+      actions.setLeftDrawer?.(false);
+      actions.setSidebarPref?.("rail");
+    } }, (0, import_react14.createElement)(SidebarIcon))
+  ) : (0, import_react14.createElement)(
+    "div",
+    { className: "bt-rail-top" },
+    (0, import_react14.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round bt-rail-expand", "aria-label": t("Expand sidebar"), title: t("Expand sidebar"), onClick: expandLeft }, (0, import_react14.createElement)(SidebarIcon)),
+    main ? (0, import_react14.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react14.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
+    (0, import_react14.createElement)("span", { className: "bt-rail-sep", "aria-hidden": true })
+  );
+  const foot = mode === "inline" ? null : wideContent ? (0, import_react14.createElement)("div", { className: "bt-leftcol-foot" }, (0, import_react14.createElement)(AccountLauncher, { seat: false, actions }), (0, import_react14.createElement)(ConnectPlugins, { wide: true, actions })) : (0, import_react14.createElement)(
+    "div",
+    { className: "bt-leftcol-foot bt-leftcol-foot-rail" },
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react14.createElement)(PlusIcon)),
+    (0, import_react14.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Connect plugins"), title: t("Connect plugins"), onClick: () => actions.selectPanel("plugins") }, (0, import_react14.createElement)(PlugIcon)),
+    (0, import_react14.createElement)(AccountLauncher, { seat: false, actions })
+  );
+  const content = (0, import_react14.createElement)(
+    "div",
+    { className: wideContent ? "bt-side" : "bt-side bt-rail", onKeyDown: typeToSearch },
+    top,
+    wideContent && roster.readOnly ? (0, import_react14.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
     (0, import_react14.createElement)(
       "div",
       { ref: listRef, className: "bt-list", role: "region", "aria-label": t("Bot list") },
-      main ? (0, import_react14.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react14.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
+      wideContent ? main ? (0, import_react14.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react14.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")) : null,
       order.map((entry) => entry.kind === "bot" ? (0, import_react14.createElement)(BotRow, { key: entry.item.id, ...rowProps, bot: entry.item, marked: markedUnread[entry.item.id] === true }) : entry.kind === "room" ? (0, import_react14.createElement)(RoomRow, { key: entry.item.id, ...rowProps, room: entry.item, marked: markedUnread[entry.item.id] === true }) : (0, import_react14.createElement)(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true }))
-    )
+    ),
+    foot
   );
+  if (mode === "inline") return content;
+  return (0, import_react14.createElement)(LeftColumn, { mode, width: ourWidth }, content);
 }
 function UpdateButton({ useUpdate, actions }) {
   const update = useUpdate((value) => value);
@@ -9022,7 +9329,7 @@ var SIDEBAR_CSS = `
 .bt-brand .bt-mark{flex:none}
 .bt-pin{flex:none;display:inline-flex;color:var(--bt-ink-3)}
 .bt-rail .bt-row{position:relative}
-.bt-rail .bt-pin{position:absolute;top:3px;left:calc(50% + 12px)}
+.bt-rail .bt-pin{position:absolute;top:1px;left:calc(50% + 14px)}
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
@@ -10013,71 +10320,6 @@ function turnDetector({ loud = 0.12, quiet = 0.06, quietMs = 1200 } = {}) {
     if (level < quiet) quietSince ||= now;
     return quietSince && now - quietSince >= quietMs ? "done" : "speech";
   };
-}
-
-// src/client/storage.js
-var STORAGE = {
-  unread: "ds-bot:unread",
-  reactions: "ds-bot:reactions",
-  seen: "ds-bot:seen",
-  prefs: "ds-bot:prefs",
-  surface: "ds-bot:surface",
-  agentSessions: "ds-bot:agent-sessions",
-  browserWidth: "ds-bot:browser-width",
-  browsers: "ds-bot.browser.v2"
-};
-var LEGACY_PREFIXES = ["dsh-bot:", "dsh-bot-team:"];
-var LEGACY_BROWSER_KEYS = ["ds-bot.browser.v1", "dsh-bot.browser.v1"];
-var LEGACY_THEMES = { grok: "mono" };
-function legacyKeys(key) {
-  if (key === STORAGE.browsers) return LEGACY_BROWSER_KEYS;
-  const name = key.slice(key.indexOf(":") + 1);
-  return LEGACY_PREFIXES.map((prefix) => `${prefix}${name}`);
-}
-var migrateBrowsers = (storage) => {
-  if (storage.getItem(STORAGE.browsers) !== null) {
-    for (const key of LEGACY_BROWSER_KEYS) storage.removeItem(key);
-    return;
-  }
-  for (const key of LEGACY_BROWSER_KEYS) {
-    try {
-      const value = storage.getItem(key);
-      if (value === null) continue;
-      const previous = JSON.parse(value) ?? {};
-      const tabs = Object.fromEntries(Object.entries(previous).filter(([, page]) => page && typeof page === "object").map(([botId, page]) => {
-        const tab = { id: `v1-${botId}`, url: page.url ?? "", title: page.title ?? "" };
-        return [botId, { tabs: [tab], active: tab.id }];
-      }));
-      storage.setItem(STORAGE.browsers, JSON.stringify(tabs));
-      for (const earlier of LEGACY_BROWSER_KEYS) storage.removeItem(earlier);
-      return;
-    } catch {
-    }
-  }
-};
-function migrateStorage(storage = globalThis.localStorage) {
-  for (const key of Object.values(STORAGE)) {
-    if (key === STORAGE.browsers) continue;
-    for (const legacy of legacyKeys(key)) {
-      try {
-        const value = storage.getItem(legacy);
-        if (value !== null && storage.getItem(key) === null) storage.setItem(key, value);
-        storage.removeItem(legacy);
-      } catch {
-      }
-    }
-  }
-  try {
-    migrateBrowsers(storage);
-  } catch {
-  }
-  try {
-    const prefs = JSON.parse(storage.getItem(STORAGE.prefs) ?? "null");
-    if (prefs && Object.hasOwn(LEGACY_THEMES, prefs.theme ?? "")) {
-      storage.setItem(STORAGE.prefs, JSON.stringify({ ...prefs, theme: LEGACY_THEMES[prefs.theme] }));
-    }
-  } catch {
-  }
 }
 
 // src/client/surface.js
@@ -16396,9 +16638,6 @@ var DEFAULT_WIDTH = 520;
 var DETAILS_WIDTH = 320;
 var DETAILS_MAX = 520;
 var MIN_WIDTH = 360;
-var MIN_CHAT = 420;
-var PANEL_MIN = { details: DETAILS_WIDTH, browser: MIN_WIDTH, side: DETAILS_WIDTH };
-var overlayAt = (view, viewport) => viewport < MIN_CHAT + PANEL_MIN[view];
 var READ_FLASH_MS = 2400;
 var EMPTY_PAGE = { url: "", title: "", favicon: null, loading: false, canGoBack: false, canGoForward: false, error: null, excerpt: "" };
 var EMPTY_TABS2 = { ids: [], active: null };
@@ -16435,47 +16674,8 @@ var savedWidth = () => {
     return null;
   }
 };
-var widthRange = (view, viewport) => view === "browser" ? [MIN_WIDTH, viewport - MIN_CHAT] : [DETAILS_WIDTH, Math.min(DETAILS_MAX, viewport - MIN_CHAT)];
+var widthRange = (view, room2) => view === "browser" ? [MIN_WIDTH, room2 - MIN_CHAT] : [DETAILS_WIDTH, Math.min(DETAILS_MAX, room2 - MIN_CHAT)];
 var fitWidth = (width, [low, high]) => Math.round(Math.max(low, Math.min(width, high)));
-var room = { rule: null, selector: "" };
-var roomRule = () => {
-  const live = room.rule?.parentStyleSheet?.ownerNode?.isConnected;
-  if (live && room.selector) return room.rule;
-  const column = document.querySelector('[class*="_centerCol"]');
-  const selector = column ? [...column.classList].filter((name) => name.includes("_centerCol")).map((name) => `.${CSS.escape(name)}`).join(",") : "";
-  if (live && !selector) return room.rule;
-  const declarations2 = room.rule?.style.cssText ?? "";
-  room.rule?.parentStyleSheet?.ownerNode?.remove();
-  const style = installStyles(`${selector || '[class*="_centerCol"]'}{${declarations2}}`, "chat-room");
-  room.rule = style.sheet.cssRules[0];
-  room.selector = selector;
-  return room.rule;
-};
-var roomHold = 0;
-var chatRoom = {
-  /** The column's right margin in px, or null for the shell's own. */
-  set(width) {
-    const { style } = roomRule();
-    if (width === null) style.removeProperty("margin-right");
-    else style.setProperty("margin-right", `${width}px`, "important");
-  },
-  /** While on, a margin change lands at once instead of gliding. */
-  hold(on) {
-    cancelAnimationFrame(roomHold);
-    if (on) {
-      roomRule().style.setProperty("transition", "none", "important");
-      return;
-    }
-    roomHold = requestAnimationFrame(() => {
-      roomHold = requestAnimationFrame(() => roomRule().style.removeProperty("transition"));
-    });
-  },
-  /** The columns themselves, for a drag's per-frame writes. */
-  columns() {
-    roomRule();
-    return room.selector ? [...document.querySelectorAll(room.selector)] : [];
-  }
-};
 var shortAddress = (url) => String(url ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
 var reducedMotion2 = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 var tabLabel = (page) => page.title || shortAddress(page.url) || t("New tab");
@@ -17078,7 +17278,7 @@ function ImportCard({ flow, page, busy, onApply, onCancel, onCloseAndImport, onD
     )
   ));
 }
-function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }) {
+function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }) {
   const bot = roster.byId[pane.id];
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow);
   const sideChats = bot ? sideChatsOf(roster, bot.id) : [];
@@ -17093,13 +17293,11 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
   const [landed, setLanded] = (0, import_react42.useState)(false);
   const [settling, setSettling] = (0, import_react42.useState)(false);
   const [width, setWidth] = (0, import_react42.useState)(savedWidth);
-  const [viewport, setViewport] = (0, import_react42.useState)(() => window.innerWidth);
   const [dragging, setDragging] = (0, import_react42.useState)(false);
   const [resizing, setResizing] = (0, import_react42.useState)(false);
   const instant = dragging || resizing;
   const [reading, setReading] = (0, import_react42.useState)(false);
-  const overlay = overlayAt(view, viewport);
-  const panelWidth = fitWidth(width ?? (view === "browser" ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, viewport));
+  const panelWidth = fitWidth(width ?? (view === "browser" ? DEFAULT_WIDTH : DETAILS_WIDTH), widthRange(view, room2));
   (0, import_react42.useLayoutEffect)(() => {
     if (view === "browser" && width === null) setWidth(DEFAULT_WIDTH);
   }, [view, width]);
@@ -17116,27 +17314,23 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
     const switched = settling && shownView.current !== view;
     shownView.current = view;
     if (switched) chatRoom.hold(true);
-    chatRoom.set(leaving || overlay ? null : panelWidth);
+    chatRoom.setRight(leaving || overlay ? null : panelWidth);
     if (switched) chatRoom.hold(false);
   }, [view, panelWidth, leaving, overlay]);
   (0, import_react42.useEffect)(() => () => {
-    chatRoom.set(null);
+    chatRoom.setRight(null);
     chatRoom.hold(false);
   }, []);
+  const mounted = (0, import_react42.useRef)(false);
   (0, import_react42.useEffect)(() => {
-    let timer;
-    const onResize = () => {
-      setResizing(true);
-      setViewport(window.innerWidth);
-      clearTimeout(timer);
-      timer = setTimeout(() => setResizing(false), 160);
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
+    if (!mounted.current) {
+      mounted.current = true;
+      return void 0;
+    }
+    setResizing(true);
+    const timer = setTimeout(() => setResizing(false), 160);
+    return () => clearTimeout(timer);
+  }, [room2]);
   (0, import_react42.useEffect)(() => {
     if (!settling) return void 0;
     const timer = setTimeout(() => setSettling(false), SPRING_SHAPE.duration + 40);
@@ -17249,7 +17443,7 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
     const panel = root.current;
     const grip = event.currentTarget;
     grip.setPointerCapture?.(event.pointerId);
-    const range = widthRange(view, window.innerWidth);
+    const range = widthRange(view, room2);
     const from = { x: event.clientX, width: panelWidth };
     let next = panelWidth;
     setDragging(true);
@@ -17260,7 +17454,7 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
     const onMove = (move) => {
       next = fitWidth(from.width + from.x - move.clientX, range);
       panel.style.width = `${next}px`;
-      if (columns2.length === 0) chatRoom.set(next);
+      if (columns2.length === 0) chatRoom.setRight(next);
       for (const column of columns2) column.style.setProperty("margin-right", `${next}px`, "important");
     };
     const ends = ["pointerup", "pointercancel", "lostpointercapture"];
@@ -17268,7 +17462,7 @@ function BotPanel({ pane, leaving, roster, actions, useSessions, useSessionStatu
       if (end.type === "pointerup") onMove(end);
       grip.removeEventListener("pointermove", onMove);
       for (const name of ends) grip.removeEventListener(name, onEnd);
-      chatRoom.set(next);
+      chatRoom.setRight(next);
       for (const column of columns2) {
         column.style.removeProperty("margin-right");
         column.style.removeProperty("transition");
@@ -17458,10 +17652,12 @@ var import_react43 = require("react");
 var import_react_dom9 = require("react-dom");
 var DIALOG_EXIT_MS = 160;
 var MENU_EXIT_MS3 = 120;
-function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useBrowserHolds, useUpdate, actions }) {
+function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity, useWork, useRegistry, useBrowserPages, useBrowserTabs, useBrowserHolds, useUpdate, useFrame, useSidebarPref, actions }) {
   const roster = useRoster((value) => value);
   const ui2 = useUi((value) => value);
   useRegistry((value) => value);
+  const frameSnap = useFrame ? useFrame((value) => value) : { viewport: window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 };
+  const pref = useSidebarPref ? useSidebarPref((value) => value) : "open";
   const current = useSessions((list) => Object.values(list.byId).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)?.id ?? null);
   const previous = (0, import_react43.useRef)(current);
   (0, import_react43.useEffect)(() => {
@@ -17470,16 +17666,25 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
     if (current) actions.followPanel?.(current);
   }, [current]);
   const open = ui2.details ? { id: ui2.details, view: ui2.view ?? "details", renaming: ui2.renaming, tab: ui2.tab, side: ui2.side } : null;
-  const [kept, setKept] = (0, import_react43.useState)(open);
+  const layout = frameLayout({
+    viewport: frameSnap.viewport,
+    sidebarWidth: frameSnap.sidebarWidth,
+    collapsedWidth: frameSnap.collapsedWidth ?? 0,
+    pref,
+    drawer: ui2.leftDrawer === true,
+    panel: open ? { view: open.view, yielded: ui2.panelYield === true } : null
+  });
+  const shown = open !== null && layout.panel !== "folded" ? open : null;
+  const [kept, setKept] = (0, import_react43.useState)(shown);
   (0, import_react43.useEffect)(() => {
-    if (open) {
-      setKept(open);
+    if (shown) {
+      setKept(shown);
       return void 0;
     }
     const timer = setTimeout(() => setKept(null), PANEL_LINGER_MS);
     return () => clearTimeout(timer);
-  }, [ui2.details, ui2.view, ui2.renaming, ui2.tab]);
-  const pane = open ?? kept;
+  }, [ui2.details, ui2.view, ui2.renaming, ui2.tab, shown === null]);
+  const pane = shown ?? kept;
   const [settings, settingsLeaving] = useLinger(ui2.settings, DIALOG_EXIT_MS);
   const memoryOwner = (id) => {
     const bot = roster.byId[id];
@@ -17493,7 +17698,7 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
   return (0, import_react43.createElement)(
     import_react43.Fragment,
     null,
-    pane ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(BotPanel, { pane, leaving: open === null, roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,
+    pane ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === "overlay", roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,
     ui2.newChat ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(NewChat, { key: ui2.newChat, mode: ui2.newChat, roster, actions }), document.body) : null,
     ui2.palette ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(CommandPalette, { key: ui2.palette.token, start: ui2.palette.query, token: ui2.palette.token, roster, actions, useSessions }), document.body) : null,
     ui2.exchange ? (0, import_react_dom9.createPortal)((0, import_react43.createElement)(ExchangeDialog, { pair: ui2.exchange, roster, actions }), document.body) : null,
@@ -18730,7 +18935,9 @@ function apply(ctx) {
   const reactionStore = sharedMap(STORAGE.reactions);
   const seenStore = sharedMap(STORAGE.seen);
   let seenAt = seenStore.read();
-  const ui2 = createSource({ details: null, view: "details", renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} });
+  const ui2 = createSource({ details: null, view: "details", renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false });
+  const sidebarPref = createSource(readSidebarPref());
+  const frame = createSource({ viewport: typeof window === "undefined" ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0, collapsed: false });
   const surface = createSource({ mode: readMode(), plain: false });
   let agentSessionCache = /* @__PURE__ */ new Set();
   try {
@@ -19070,8 +19277,14 @@ function apply(ctx) {
     expected2 = target;
     ctx.uiWorkspace.openSession(target);
   }, current: mainView });
+  const panelFolded = () => {
+    const state = ui2.getSnapshot();
+    if (state.details === null) return false;
+    const f = frame.getSnapshot();
+    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: state.view, yielded: false } }).panel === "folded";
+  };
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock }),
+    ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
     isAgentSession: (id) => isAgentSessionId(id),
@@ -19153,6 +19366,15 @@ function apply(ctx) {
     toggleSidebar: () => {
       ctx.layout.toggleSidebar();
     },
+    // The left column's own preference; the sidebar sync pulls the shell's
+    // collapsed flag after it (TeamSidebar's frame effect).
+    setSidebarPref: (pref) => {
+      const next = pref === "rail" ? "rail" : "open";
+      writeSidebarPref(next);
+      sidebarPref.set(next);
+    },
+    setLeftDrawer: (on) => ui2.set((state) => state.leftDrawer === on ? state : { ...state, leftDrawer: on }),
+    setPanelYield: (on) => ui2.set((state) => state.panelYield === on ? state : { ...state, panelYield: on }),
     // Agent mode hands the surface back to the shell; everything open on the Bot
     // surface closes first so nothing stale reopens on the way back.
     setSurface: (mode) => {
@@ -19307,7 +19529,7 @@ function apply(ctx) {
   const browserPages = browsers?.pages ?? createSource({});
   const browserTabs = browsers?.tabs ?? createSource({});
   const browserHolds = browsers?.holds ?? createSource({});
-  const face = () => ({ actions, hooks: { roster, ui: ui2, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update } });
+  const face = () => ({ actions, hooks: { roster, ui: ui2, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update, frame, sidebarPref } });
   ctx.effect(() => noticeApprovals({
     work,
     roster,
@@ -19451,6 +19673,25 @@ function apply(ctx) {
     if (controller === void 0 || span === void 0) return;
     controller.toggleSource(CHATS_SOURCE, { trigger: "@", query: "", quoted: false, position: "inline", span });
   };
+  const installFrameSync = () => {
+    let last = { details: ui2.getSnapshot().details, view: ui2.getSnapshot().view };
+    const sync = () => {
+      const s = ui2.getSnapshot();
+      const f = frame.getSnapshot();
+      const opened = s.details !== null && (s.details !== last.details || s.view !== last.view);
+      last = { details: s.details, view: s.view };
+      const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } });
+      if (s.details === null) {
+        if (s.panelYield) actions.setPanelYield(false);
+      } else if (!s.panelYield && opened && layout.panel === "folded") actions.setPanelYield(true);
+      else if (s.panelYield && layout.panel === "shown") actions.setPanelYield(false);
+      if (s.leftDrawer === true && layout.left !== "drawer") actions.setLeftDrawer(false);
+    };
+    const offs = [ui2.subscribe(sync), frame.subscribe(sync), sidebarPref.subscribe(sync)];
+    return () => {
+      for (const off of offs) off();
+    };
+  };
   const installShell = () => [
     () => installCompiledStyles(SHELL_CSS, "shell"),
     () => installCompiledStyles(SIDEBAR_CSS, "sidebar"),
@@ -19466,6 +19707,8 @@ function apply(ctx) {
     () => installCompiledStyles(SIDE_CSS, "side"),
     // Strip and panel styles also serve the side-chat tabs, which need no bridge.
     () => installCompiledStyles(BROWSER_CSS, "browser"),
+    () => installFrameWatch(frame),
+    () => installFrameSync(),
     () => installTheme(),
     () => shadow("sidebar.workspaces", { priority: BOT_PRIORITY, inject: face }, TeamSidebar),
     () => shadow("sidebar.brand.mark", { priority: BOT_PRIORITY }, BrandMark),

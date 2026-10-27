@@ -5,7 +5,7 @@ import { noteClientError } from './diagnostics.js'
 // source), requests to the host, and the notes the transcript keeps. The shell around the
 // views adds navigation and its own panels. `after` reads the team again once a request
 // is done; `partFor` maps a Bot id, or any part of its chat, to its current part.
-export function teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock }) {
+export function teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }) {
   // A memory is a Bot's or a group chat's; both are opened by id.
   const memoryOf = id => (roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id })
   // The panel on a side chat's view, on the chat the strip tab or menu named.
@@ -23,6 +23,9 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     toggleDetails: (id, force) => {
       ui.set((state) => {
         const details = force || state.details !== id || state.view !== 'details' ? id : null
+        // A folded panel is open but not shown: its opener then means "show it"
+        // (the column yields it room), not "close it".
+        if (details === null && panelFolded?.() === true) return { ...state, renaming: false, tab: null, details: id, view: 'details', panelYield: true }
         return { ...state, renaming: false, tab: null, details, view: 'details' }
       })
     },

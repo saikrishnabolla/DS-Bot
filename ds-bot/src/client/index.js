@@ -8,6 +8,8 @@ import { MENTION_ORIGIN, currentPart } from './text.js'
 import { SHELL_CSS, CONVERSATION_CSS, installStyles, installCompiledStyles } from './styles.js'
 import { lookOf } from './mark.js'
 import { TeamSidebar, ConnectPlugins, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts, openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
+import { frameLayout, readSidebarPref, writeSidebarPref, FALLBACK_SIDEBAR_WIDTH } from './frame-layout.js'
+import { installFrameWatch } from './frame-watch.js'
 import { HeaderPill } from './header.js'
 import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
@@ -55,7 +57,11 @@ export function apply(ctx) {
   let seenAt = seenStore.read()
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
-  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} })
+  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false })
+  // The left column's kept preference, and the measured frame geometry the
+  // layout rules in frame-layout.js read (installFrameWatch feeds it).
+  const sidebarPref = createSource(readSidebarPref())
+  const frame = createSource({ viewport: typeof window === 'undefined' ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0, collapsed: false })
   // Bot mode paints the whole team surface; Agent mode withdraws every slot and
   // style so the shell's own interface returns. `plain` stays false until a Bot-mode
   // view hosts a plain session, which drops only the conversation replacements.
@@ -375,8 +381,16 @@ export function apply(ctx) {
   }
   const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id
   const show = listedOpener({ list: ctx.sessions.list, refresh: () => Promise.resolve(ctx.sessions.refresh?.()).catch(quietly('refresh sessions')), open: (target) => { expected = target; ctx.uiWorkspace.openSession(target) }, current: mainView })
+  // Whether the open Bot panel is folded away for lack of room: its opener then
+  // means "show it" (the column yields), not "close it".
+  const panelFolded = () => {
+    const state = ui.getSnapshot()
+    if (state.details === null) return false
+    const f = frame.getSnapshot()
+    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: state.view, yielded: false } }).panel === 'folded'
+  }
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock }),
+    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
     isAgentSession: id => isAgentSessionId(id),
@@ -455,6 +469,15 @@ export function apply(ctx) {
     },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
+    // The left column's own preference; the sidebar sync pulls the shell's
+    // collapsed flag after it (TeamSidebar's frame effect).
+    setSidebarPref: (pref) => {
+      const next = pref === 'rail' ? 'rail' : 'open'
+      writeSidebarPref(next)
+      sidebarPref.set(next)
+    },
+    setLeftDrawer: (on) => ui.set(state => (state.leftDrawer === on ? state : { ...state, leftDrawer: on })),
+    setPanelYield: (on) => ui.set(state => (state.panelYield === on ? state : { ...state, panelYield: on })),
     // Agent mode hands the surface back to the shell; everything open on the Bot
     // surface closes first so nothing stale reopens on the way back.
     setSurface: (mode) => {
@@ -616,7 +639,7 @@ export function apply(ctx) {
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
   const browserHolds = browsers?.holds ?? createSource({})
-  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update } })
+  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update, frame, sidebarPref } })
   ctx.effect(() => noticeApprovals({
     work,
     roster,
@@ -771,6 +794,28 @@ export function apply(ctx) {
     controller.toggleSource(CHATS_SOURCE, { trigger: '@', query: '', quoted: false, position: 'inline', span })
   }
 
+  // The panel's yield flag and the drawer's flag follow the frame: opening (or
+  // re-aiming) a panel that does not fit yields the column to the rail; a panel
+  // that fits again, or is closed, and a drawer that no longer applies drop
+  // their flags.
+  const installFrameSync = () => {
+    let last = { details: ui.getSnapshot().details, view: ui.getSnapshot().view }
+    const sync = () => {
+      const s = ui.getSnapshot()
+      const f = frame.getSnapshot()
+      const opened = s.details !== null && (s.details !== last.details || s.view !== last.view)
+      last = { details: s.details, view: s.view }
+      const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } })
+      if (s.details === null) {
+        if (s.panelYield) actions.setPanelYield(false)
+      } else if (!s.panelYield && opened && layout.panel === 'folded') actions.setPanelYield(true)
+      else if (s.panelYield && layout.panel === 'shown') actions.setPanelYield(false)
+      if (s.leftDrawer === true && layout.left !== 'drawer') actions.setLeftDrawer(false)
+    }
+    const offs = [ui.subscribe(sync), frame.subscribe(sync), sidebarPref.subscribe(sync)]
+    return () => { for (const off of offs) off() }
+  }
+
   // The shell group paints the team surface around the session; the conversation
   // group re-skins the session itself. Each step returns a disposer from slots.inject,
   // so a surface change withdraws the whole group and the outlets re-render.
@@ -789,6 +834,8 @@ export function apply(ctx) {
     () => installCompiledStyles(SIDE_CSS, 'side'),
     // Strip and panel styles also serve the side-chat tabs, which need no bridge.
     () => installCompiledStyles(BROWSER_CSS, 'browser'),
+    () => installFrameWatch(frame),
+    () => installFrameSync(),
     () => installTheme(),
     () => shadow('sidebar.workspaces', { priority: BOT_PRIORITY, inject: face }, TeamSidebar),
     () => shadow('sidebar.brand.mark', { priority: BOT_PRIORITY }, BrandMark),
