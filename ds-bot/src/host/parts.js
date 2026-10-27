@@ -765,7 +765,10 @@ export function install(rt) {
         if (currentOf(owner) !== sessionId) {
           await forward(owner, held)
           for (const message of held) agent.inbox.remove(message.id)
-          await ctx.workspaceRegistry.archiveSession(sessionId)
+          // An interrupted switch may not have finished moving the tasks over; stop
+          // the earlier part only after they sit on the part that replaced it.
+          await rt.moveSchedules?.(sessionId, currentOf(owner))
+          await ctx.workspaceRegistry.archiveSession(sessionId, { stopActivity: true })
             .catch(error => rt.warn('ds-bot: earlier part %s not archived: %s', sessionId, error))
         } else {
           try { wake(agent) } catch (error) { rt.warn('ds-bot: part %s could not be woken for its kept input: %s', sessionId, error) }
@@ -853,7 +856,14 @@ export function install(rt) {
     }
     if (job.moved) {
       rt.renewMemory(agent.id)
-      await ctx.workspaceRegistry.archiveSession(agent.id)
+      try {
+        await rt.moveSchedules(agent.id, currentOf(job))
+      } catch (error) {
+        // Keep the restart marker: stopping this part would delete unmoved tasks.
+        job.kept = true
+        throw error
+      }
+      await ctx.workspaceRegistry.archiveSession(agent.id, { stopActivity: true })
         .catch(error => rt.warn('ds-bot: earlier part %s not archived: %s', agent.id, error))
     }
   }
@@ -954,7 +964,6 @@ export function install(rt) {
     const now = await freshRoute(bot, session)
     if (now !== undefined && (now.ref !== picked?.ref || now.effort !== picked?.effort)) await selectRoute(bot, freshId, now)
     if (job.failed !== undefined) rescued.set(freshId, job.bare ? 'bare' : 'carried')
-    void rt.moveSchedules(agent.id, freshId)
     job.moved = true
     const resume = job.resume || job.overflow
     // Then what the old part held: the stopped turn's input, then whatever waited. It
