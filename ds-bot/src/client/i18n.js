@@ -566,6 +566,7 @@ const ZH = {
   '{name} looked up its own chat for “{text}”': '{name} 在自己的对话里查找「{text}」',
   '{name} is typing…': '{name} 正在输入…',
   "{name} didn't answer in time": '{name} 没有及时回应',
+  '{name} did not answer or call anyone; call a member with @Name': '{name} 没有回答，也没有叫谁；用 @名字 叫一个成员来回答',
   'Paused after {count} Bot relays. Waiting: {names}': 'Bot 之间已接力 {count} 次，先停下了。还在等：{names}',
   'Continue': '继续',
   '{name} paused for your approval': '{name} 停下来等你批准',
