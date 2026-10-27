@@ -1050,6 +1050,11 @@ var ZH = {
   "Working folder: {folder}": "工作文件夹：{folder}",
   Folder: "文件夹",
   Folders: "文件夹",
+  Privacy: "隐私",
+  Private: "隐私",
+  "Other Bots cannot read its folder, memory or chats, and you approve what it shares with them.": "其他 Bot 不能读取它的文件夹、记忆或对话；它分享给其他 Bot 的内容需要你批准。",
+  "A Main Bot cannot be private.": "主 Bot 不能设为隐私 Bot。",
+  "A private Bot cannot be a Main Bot.": "隐私 Bot 不能设为主 Bot。",
   "Team workspace": "总工作区",
   "Team workspace: {folder}": "总工作区：{folder}",
   "Where Bots without a folder of their own work.": "没有单独设置文件夹的 Bot 在这里工作。",
@@ -1096,6 +1101,17 @@ var HOST_ERRORS = [
   [/^There is no folder at (.+)$/, "找不到文件夹 $1"],
   [/^(.+) is a file, not a folder$/, "$1 是文件，不是文件夹"],
   [/^(.+) holds DeepSeek Harness data, so Bots cannot work there$/, "$1 里有 DeepSeek Harness 的数据，Bot 不能在这里工作"],
+  [/^(.+) needs a folder of its own to be private$/, "$1 需要有自己的工作文件夹，才能设为隐私 Bot"],
+  [/^(.+) is a Main Bot, so it cannot be private$/, "$1 是主 Bot，不能设为隐私 Bot"],
+  [/^(.+) is in a group chat, where every member reads what is said\. Remove it from its groups first$/, "$1 还在群聊里，群成员都能看到群里的内容。请先把它移出群聊"],
+  [/^(.+) is private, so it cannot be a Main Bot$/, "$1 是隐私 Bot，不能设为主 Bot"],
+  [/^(.+) is private, so it cannot be copied$/, "$1 是隐私 Bot，不能复制"],
+  [/^(.+) is a private Bot and cannot be in a group chat: what is said in a group is read by every member$/, "$1 是隐私 Bot，不能加入群聊：群成员都能看到群里的内容"],
+  [/^(.+) is in or around the team workspace, so (.+) cannot be private there\. Give it a folder of its own$/, "$1 与总工作区重叠，$2 不能在这里设为隐私 Bot。请给它一个独立文件夹"],
+  [/^(.+) is in or around the folder of (.+), so (.+) cannot be private there\. Give it a folder of its own$/, "$1 与「$2」的文件夹重叠，$3 不能在这里设为隐私 Bot。请给它一个独立文件夹"],
+  [/^(.+) is in or around the folder of (.+), a private Bot, so (.+) cannot work there$/, "$1 在隐私 Bot「$2」的文件夹内或外层，$3 不能在这里工作"],
+  [/^(.+) is in or around the folder of (.+), a private Bot, so a group cannot work there$/, "$1 在隐私 Bot「$2」的文件夹内或外层，群聊不能在这里工作"],
+  [/^(.+) is in or around the folder of (.+), a private Bot, so it cannot be the team workspace$/, "$1 在隐私 Bot「$2」的文件夹内或外层，不能作为总工作区"],
   // Memory changes the memory panel asked for; the whole message is matched.
   [/^This looks like a key, token, or password[\s\S]*$/, "看起来像密钥、令牌或密码，记忆不会保存这类内容"],
   [/^An entry holds at most (\d+) characters; this one has (\d+)\.[\s\S]*$/, "一条记忆最多 $1 个字符，这条有 $2 个"],
@@ -12163,6 +12179,17 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
     ),
     (0, import_react25.createElement)(
       Card,
+      { title: t("Privacy") },
+      (0, import_react25.createElement)(SwitchRow, {
+        label: t("Private"),
+        hint: isMainBot ? t("A Main Bot cannot be private.") : t("Other Bots cannot read its folder, memory or chats, and you approve what it shares with them."),
+        on: bot.private === true,
+        disabled: isMainBot,
+        onChange: (value) => save({ private: value })
+      })
+    ),
+    (0, import_react25.createElement)(
+      Card,
       { title: t("Instructions") },
       (0, import_react25.createElement)(
         Row,
@@ -12186,7 +12213,13 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
           (0, import_react25.createElement)("span", { className: "bt-set-hint" }, t("The only Main Bot. To hand the role to another Bot, use Main Bot on the Bots page."))
         ),
         (0, import_react25.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.openSettings("bots") }, t("Change"))
-      ) : (0, import_react25.createElement)(SwitchRow, { label: t("Main Bot"), hint: t("Can create and change Bots, and runs every group chat."), on: isMainBot, onChange: (on) => run2(actions.setMain(bot.id, on)) })
+      ) : (0, import_react25.createElement)(SwitchRow, {
+        label: t("Main Bot"),
+        hint: bot.private === true ? t("A private Bot cannot be a Main Bot.") : t("Can create and change Bots, and runs every group chat."),
+        on: isMainBot,
+        disabled: bot.private === true,
+        onChange: (on) => run2(actions.setMain(bot.id, on))
+      })
     ),
     // The Main Bot tile is always first and always shown, like in the context menu.
     isTile ? null : (0, import_react25.createElement)(
@@ -12198,7 +12231,7 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
     (0, import_react25.createElement)(
       Card,
       { title: t("Manage") },
-      (0, import_react25.createElement)(
+      bot.private === true ? null : (0, import_react25.createElement)(
         "button",
         { type: "button", className: "bt-set-row bt-bs-row", onClick: duplicate },
         (0, import_react25.createElement)("span", { className: "bt-set-copy" }, (0, import_react25.createElement)("span", { className: "bt-bs-label" }, t("Duplicate")), (0, import_react25.createElement)("span", { className: "bt-set-hint" }, t("A copy with the same job and model, and fresh memory."))),
