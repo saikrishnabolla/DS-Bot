@@ -309,6 +309,7 @@ var ZH = {
   "Verification needed": "需要验证",
   "Help needed in the browser": "需要你在浏览器里帮忙",
   Skipped: "已跳过",
+  Returned: "已交还",
   "I'm done": "我完成了",
   "{name} is running": "{name} 正在运行",
   "It must close for a moment so its cookies can be copied. It will reopen with your tabs.": "需要先把它关掉一下才能复制 cookie，之后会自动重新打开并恢复你的标签页。",
@@ -4194,6 +4195,7 @@ function HandoffDock({ sessionId, useRoster, useCards, useHeldCards, useBrowserH
 }
 function SettledHandoff({ handoff }) {
   const skipped = handoff.outcome === "skipped";
+  const returned = handoff.outcome === "returned";
   const title = titleOf(handoff.reason);
   return (0, import_react6.createElement)(
     "div",
@@ -4205,7 +4207,7 @@ function SettledHandoff({ handoff }) {
         "div",
         { className: "bt-q-head" },
         (0, import_react6.createElement)("div", { className: "bt-q-text" }, (0, import_react6.createElement)("p", { className: "bt-q-title" }, title)),
-        skipped ? (0, import_react6.createElement)("span", { className: "bt-q-badge" }, t("Skipped")) : (0, import_react6.createElement)("span", { className: "bt-q-check", title: t("Done") }, (0, import_react6.createElement)(CheckIcon))
+        skipped || returned ? (0, import_react6.createElement)("span", { className: "bt-q-badge" }, t(skipped ? "Skipped" : "Returned")) : (0, import_react6.createElement)("span", { className: "bt-q-check", title: t("Done") }, (0, import_react6.createElement)(CheckIcon))
       )
     )
   );
@@ -6228,7 +6230,7 @@ function AnsweredView({ node }) {
 function AnsweredReply({ node }) {
   const data = node?.data ?? {};
   if (Array.isArray(data.views) && data.views.length > 0) return (0, import_react9.createElement)(AnsweredView, { node });
-  if (data.handoff !== null && typeof data.handoff === "object") return (0, import_react9.createElement)(SettledHandoff, { handoff: data.handoff });
+  if (typeof data.handoff?.reason === "string") return (0, import_react9.createElement)(SettledHandoff, { handoff: data.handoff });
   if (!Array.isArray(data.questions) || data.questions.length === 0) {
     let parsed = null;
     try {
