@@ -124,6 +124,18 @@ export function install(rt) {
     },
   }
 
+  // Removes one task and says whether it is gone. The service refuses a task it
+  // does not own instead of failing, so a refusal is a removal that did not happen.
+  async function remove(sessionId, id) {
+    try {
+      const result = await service.delete({ sessionId, id })
+      if (result?.deleted === true) return { removed: true }
+      return { removed: false, reason: result?.code ?? 'the service refused the removal' }
+    } catch (error) {
+      return { removed: false, reason: error?.message ?? error }
+    }
+  }
+
   // A fresh part takes over the earlier part's active tasks: each is created again on
   // the fresh Session before the old one goes, so a failure leaves it where it was.
   async function moveSchedules(fromId, toId) {
@@ -138,12 +150,20 @@ export function install(rt) {
     for (const record of records) {
       const request = requestOf(record)
       if (request === null || (request.at !== undefined && Date.parse(request.at) <= Date.now())) continue
+      let created
       try {
-        await service.create(toId, request)
-        await service.delete({ sessionId: fromId, id: record.id })
+        created = await service.create(toId, request)
       } catch (error) {
         rt.warn('ds-bot: task %s stayed with the earlier part: %s', record.title, error?.message ?? error)
+        continue
       }
+      const old = await remove(fromId, record.id)
+      if (old.removed) continue
+      // The earlier part still holds the task, so the fresh copy has to go: two armed
+      // copies of one task would fire twice.
+      const fresh = await remove(toId, created.id)
+      if (fresh.removed) rt.warn('ds-bot: task %s stayed with the earlier part: %s', record.title, old.reason)
+      else rt.warn('ds-bot: task %s left in two parts: %s', record.title, fresh.reason)
     }
   }
 
