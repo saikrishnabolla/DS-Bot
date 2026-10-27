@@ -1512,8 +1512,9 @@ function countCards(state, sessionId, callIds, delta) {
 // src/client/team-actions.js
 function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
+  const yieldTo = (view) => panelFolded?.(view) === true;
   const openSideChat = (sessionId, chatId) => {
-    ui2.set((state) => ({ ...state, details: sessionId, view: "side", side: chatId ?? null, renaming: false, tab: null }));
+    ui2.set((state) => ({ ...state, details: sessionId, view: "side", side: chatId ?? null, renaming: false, tab: null, panelYield: yieldTo("side") }));
   };
   return {
     openNewChat: (mode) => {
@@ -1538,7 +1539,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     toggleDetails: (id, force) => {
       ui2.set((state) => {
         const details = force || state.details !== id || state.view !== "details" ? id : null;
-        if (details === null && panelFolded?.() === true) return { ...state, renaming: false, tab: null, details: id, view: "details", panelYield: true };
+        if (details === null && yieldTo("details")) return { ...state, renaming: false, tab: null, details: id, view: "details", panelYield: true };
         return { ...state, renaming: false, tab: null, details, view: "details" };
       });
     },
@@ -1554,11 +1555,11 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
       });
     },
     showDetails: (id, tab = null) => {
-      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab }));
+      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab, panelYield: yieldTo("details") }));
     },
     // Opening the conversation would move focus to its composer and blur the name field.
     renameBot: (id) => {
-      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: true, tab: null }));
+      ui2.set((state) => ({ ...state, details: id, view: "details", renaming: true, tab: null, panelYield: yieldTo("details") }));
     },
     // `id` opens one Bot (page 'bots') or one group chat (page 'groups').
     openSettings: (page = "general", id = null) => {
@@ -1578,7 +1579,7 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui2, live, cards
     },
     setPanelView: (view) => {
       if (view !== "details" && view !== "browser" && view !== "side") return;
-      ui2.set((state) => state.details && state.view !== view ? { ...state, view } : state);
+      ui2.set((state) => state.details && state.view !== view ? { ...state, view, panelYield: yieldTo(view) } : state);
     },
     // A side chat on the panel's own view, opened from the strip, the `···`
     // menus or `/side`. Closing the panel keeps the chats; only a tab's × deletes.
@@ -8582,7 +8583,9 @@ function installFrameWatch(frame) {
   const watched = /* @__PURE__ */ new Set();
   const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => schedule()) : null;
   const read = () => {
-    const width = sidebarTrackWidth();
+    const column = document.querySelector('[class*="_sidebarCol"]');
+    const animating = column?.closest("[data-animating]") != null;
+    const width = animating ? null : sidebarTrackWidth();
     const collapsed = dshCollapsed();
     if (width !== null) {
       if (collapsed === true) collapsedWidth = width;
@@ -8612,7 +8615,7 @@ function installFrameWatch(frame) {
   };
   measure();
   const mutations = new MutationObserver(schedule);
-  mutations.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-sidebar-collapsed"] });
+  mutations.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-sidebar-collapsed", "data-animating"] });
   window.addEventListener("resize", schedule);
   return () => {
     cancelAnimationFrame(raf);
@@ -19433,11 +19436,11 @@ function apply(ctx) {
     expected2 = target;
     ctx.uiWorkspace.openSession(target);
   }, current: mainView });
-  const panelFolded = () => {
+  const panelFolded = (view) => {
     const state = ui2.getSnapshot();
     if (state.details === null) return false;
     const f = frame.getSnapshot();
-    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: state.view, yielded: false } }).panel === "folded";
+    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: view ?? state.view, yielded: false } }).panel === "folded";
   };
   const actions = {
     ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
@@ -19589,7 +19592,7 @@ function apply(ctx) {
         if (!bot) return;
         browsers.ensureTabs(bot.id);
         if (browsers.tabs.getSnapshot()[bot.id]?.active == null) browsers.openTab(bot.id);
-        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: panelFolded("browser") }));
       },
       // '+' on the strip or the drawer's new-tab card: a blank tab in the browser view.
       browserNewTab: (id) => {
@@ -19597,7 +19600,7 @@ function apply(ctx) {
         if (!bot) return null;
         browsers.ensureTabs(bot.id);
         const tabId = browsers.openTab(bot.id);
-        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", renaming: false, tab: null, panelYield: panelFolded("browser") }));
         return tabId;
       },
       // A drawer card: its tab active, the panel on the browser view.
@@ -19605,7 +19608,7 @@ function apply(ctx) {
         const bot = roster.getSnapshot().byId[id];
         if (!bot) return;
         browsers.activate(bot.id, tabId);
-        ui2.set((state) => ({ ...state, details: id, view: "browser" }));
+        ui2.set((state) => ({ ...state, details: id, view: "browser", panelYield: panelFolded("browser") }));
       },
       browserEnsure: (botId) => browsers.ensureTabs(botId),
       browserCloseTab: (botId, tabId) => browsers.closeTab(botId, tabId),
@@ -19831,12 +19834,12 @@ function apply(ctx) {
     controller.toggleSource(CHATS_SOURCE, { trigger: "@", query: "", quoted: false, position: "inline", span });
   };
   const installFrameSync = () => {
-    let last = { details: ui2.getSnapshot().details, view: ui2.getSnapshot().view };
+    let lastDetails = ui2.getSnapshot().details;
     const sync = () => {
       const s = ui2.getSnapshot();
       const f = frame.getSnapshot();
-      const opened = s.details !== null && (s.details !== last.details || s.view !== last.view);
-      last = { details: s.details, view: s.view };
+      const opened = s.details !== null && lastDetails === null;
+      lastDetails = s.details;
       const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, collapsedWidth: f.collapsedWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } });
       if (s.details === null) {
         if (s.panelYield) actions.setPanelYield(false);
