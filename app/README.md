@@ -120,6 +120,7 @@ The script serves a releases list with one release of that version that has this
 | `src/host-process.mjs` | Starts the Host in Electron's Node mode and owns its exit |
 | `src/host.mjs` | The Host: boots the profile with `runProfile()` and reports the launch URL and the page injections; for the first-run check (`DS_BOT_CHECK`), the chats it cannot read |
 | `src/profile.mjs` | The profiles: the app's own and the first-run check's, their bundles, and their creation and update |
+| `src/app-patch.mjs` | The app's own profile overlay (`profiles/app-onboarding.patch.yml`, passed through `patchFiles`): it turns off DSH Web's automatic credential step (`credentialOnboarding: false`), since models are set up in DS Bot's Models page and the Main Bot's key card |
 | `src/session-check.mjs` | Which chats the pinned DSH refuses because a newer DSH wrote them |
 | `src/first-run.mjs` | The first start's dialogs (the two folders and the offer to import) and the texts of the data move |
 | `src/import.mjs` | The import of a Bot team from the user's DSH |
@@ -132,6 +133,7 @@ The script serves a releases list with one release of that version that has this
 | `electron-builder.yml`, `build/` | The package and the installers: app identity, files, icons, the Windows installer, the macOS zip and the Linux AppImage and deb |
 | `scripts/check-packed.mjs` | `npm run check-packed`: the check of a packaged app |
 | `scripts/check-update.mjs` | The check of a packaged app's update from a feed folder (Windows, AppImage) or a mocked release (macOS, deb) |
+| `scripts/release-notes.mjs` | The release's `Download / 下载` table, `SHA256SUMS.txt` and the version-less package copies, run by the release workflow after every package is attached |
 
 The Host installs plugins with the app's own pnpm (`node_modules/pnpm`).
 

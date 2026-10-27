@@ -519,7 +519,7 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = undefined })
   browserGuests.bind(mainWindow)
   const contents = mainWindow.webContents
-  contents.session.on('will-download', downloadSaver({ window: mainWindow, dialog, downloads: app.getPath('downloads') }))
+  contents.session.on('will-download', downloadSaver({ window: mainWindow, dialog, getPath: name => app.getPath(name) }))
   if (win32) {
     // Fullscreen hides the caption buttons, and the page drops its band meanwhile. A reload
     // registers the page's listener again, so the state goes out after every load too.
@@ -566,8 +566,9 @@ function setMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'fileMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]))
 }
 
+// Also after a failed start: a second launch is how the user finds the window again.
 function focusWindow() {
-  if (mainWindow === undefined || failed) return
+  if (mainWindow === undefined) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
