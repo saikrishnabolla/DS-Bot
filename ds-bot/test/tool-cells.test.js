@@ -176,6 +176,15 @@ test('a paused group shows the wait, and Continue releases it while calls are pa
   assert.deepEqual(clicked, ['room'])
 })
 
+// The admin was alone with the user's message and passed: the round shows the
+// notice, so the user sees why nothing was answered.
+test('a group whose admin passed alone shows the notice', () => {
+  const replies = [{ kind: 'admin-passed', botId: 'chief', name: 'Chief', time: at(0, 14, 5) }]
+  const out = show(call('group_relay', 'direct', { content: { replies } }), { sessionId: 'room' })
+  const events = findAll(out, node => node.props?.className === 'bt-event').map(text)
+  assert.deepEqual(events, ['Chief did not answer or call anyone; call a member with @Name'])
+})
+
 // The trigger of a post in a group chat carries the event's time, not the post's.
 test('a group post drawn from its trigger shows the time it came in', () => {
   const time = at(0, 16, 42)
@@ -589,6 +598,35 @@ test('a secret in a hidden turn shows in the dock instead of nowhere', () => {
   assert.equal(text(out), '')
   assert.match(docks(store, roster), /Chief needs a key/)
   unmount()
+})
+
+// 公开#557: compaction prunes the middle of a long relay result, leaving invalid
+// JSON — draw the replies that survived, or a marker row, never a blank turn.
+test('a pruned group relay still draws the replies that survived', () => {
+  const pruned = '{"replies":[{"botId":"writer","text":"Still here."},{"botId":"chief","text":"[... tool result middle pruned ...'
+  const out = show(call('group_relay', 'direct', { content: pruned }), { sessionId: 'room' })
+  assert.match(text(out), /Writer.*Still here\./)
+  const gone = show(call('group_relay', 'direct', { content: '{"replies":[{"botId":"writer","text":"cut' }), { sessionId: 'room' })
+  assert.match(text(gone), /The group replies could not be shown/)
+})
+
+// The prune marker's "]" must not end the scan, and a cut inside a string must
+// not hide the replies after it either.
+test('a group relay recovers replies after the prune marker', () => {
+  const between = '{"replies":[{"botId":"writer","text":"First."}[... tool result middle pruned ...],{"botId":"chief","text":"Last."}]}'
+  const out = show(call('group_relay', 'direct', { content: between }), { sessionId: 'room' })
+  assert.match(text(out), /Writer.*First\..*Chief.*Last\./)
+  const inside = '{"replies":[{"botId":"writer","text":"First."},{"botId":"chief","text":"cut[... tool result middle pruned ...]{"botId":"writer","text":"Last."}]}'
+  const out2 = show(call('group_relay', 'direct', { content: inside }), { sessionId: 'room' })
+  assert.match(text(out2), /Writer.*First\..*Last\./)
+})
+
+// Only the compactor's own marker splits the text: a reply that quotes a
+// bracketed ellipsis stays whole.
+test('a reply quoting a bracketed ellipsis is not mistaken for a prune marker', () => {
+  const quoted = '{"replies":[{"botId":"writer","text":"Step [... details ...] done."}[... tool result middle pruned ...]{"botId":"chief","text":"Last."}]}'
+  const out = show(call('group_relay', 'direct', { content: quoted }), { sessionId: 'room' })
+  assert.match(text(out), /Step \[... details ...] done\..*Chief.*Last\./)
 })
 
 // #38: a PTC group round's replies vanished once the round ended.
