@@ -55,6 +55,7 @@ var ZH = {
   "New…": "新建",
   "Collapse sidebar": "收起侧边栏",
   "Expand sidebar": "展开侧边栏",
+  "Resize sidebar": "调整侧边栏宽度",
   "Animation": "动画",
   "Bot animation": "Bot 动画",
   "Quiet": "安静",
@@ -2505,6 +2506,13 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
    and the floating drawer keeps the opaque fill over the conversation. */
 .bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,var(--dsh-windows-titlebar-height,0px));background:var(--bt-leftcol-fill,var(--bt-sidebar));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
 html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
+.bt-leftcol-grip{position:absolute;right:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
+.bt-leftcol-grip:hover,.bt-leftcol-grip:active{background:linear-gradient(to right,transparent 3px,var(--bt-line-2) 3px,var(--bt-line-2) 5px,transparent 5px)}
+/* The shell's collapsed sidebar keeps no track in the Bot view, so a hidden
+   column leaves nothing behind (the shell's right column, when open, keeps its
+   own geometry). Our own collapse of it lands without the shell's slide. */
+[class*="_frame"][data-sidebar-collapsed][data-rightbar-collapsed]:has(>[class*="_sidebarCol"]){grid-template-columns:0px minmax(0,1fr) 0px!important}
+html[data-bt-collapsing] [class*="_frame"]:has(>[class*="_sidebarCol"]){transition:none!important}
 .bt-leftcol[data-left=drawer]{background:var(--bt-sidebar);box-shadow:8px 0 24px rgba(0,0,0,.14)}
 .bt-leftcol>.bt-side{width:100%}
 .bt-leftcol-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
@@ -2731,7 +2739,9 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-panel[data-leaving]{transform:translateX(100%);transition:transform .3s cubic-bezier(.2,0,0,1);pointer-events:none}
 .bt-panel[data-instant]{transition:none}
 @keyframes bt-pane-in{from{transform:translateX(100%)}}
-[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+/* The right margin glides with the Bot panel's slide; the left one lands at once,
+   as our left column appears, folds and hides without a slide of its own. */
+[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-panel-grip{position:absolute;left:-5px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
 .bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 4px,var(--bt-line-2) 4px,var(--bt-line-2) 6px,transparent 6px)}
 .bt-drag-shield{position:fixed;inset:0;z-index:45;cursor:col-resize}
@@ -2921,14 +2931,16 @@ button.bt-set-row:hover{background:var(--bt-hover)}
    the sidebar is open. Elsewhere an open sidebar uses the team's own top row. */
 html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
 html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
-html[data-windows-titlebar] :is(.bt-side-collapse,.bt-rail-expand),html[data-platform=darwin] :is(.bt-side-collapse,.bt-rail-expand){display:none}
+html[data-windows-titlebar] .bt-side-collapse{display:none}
 /* Under a Windows title bar our own switch replaces the shell's: the shell's
    toggle expands the shell sidebar first, and pulling it back afterwards is a
    visible flash of the shell's column. */
 html[data-windows-titlebar] [class*="_logoRow"]>[class*="_toggle"]{display:none!important}
-.bt-title-toggle{display:none;position:fixed;left:12px;top:calc((var(--dsh-windows-titlebar-height,0px) - 28px) / 2);width:28px;height:28px;z-index:30;-webkit-app-region:no-drag;align-items:center;justify-content:center;border:0;border-radius:6px;padding:0;background:transparent;color:var(--bt-ink);cursor:pointer;font-family:var(--bt-font)}
-html[data-windows-titlebar] .bt-title-toggle{display:inline-flex}
-.bt-title-toggle:hover{background:var(--bt-hover)}
+html[data-windows-titlebar] .bt-title-toggle{position:fixed;left:12px;top:calc((var(--dsh-windows-titlebar-height,0px) - 28px) / 2);width:28px;height:28px;z-index:30;-webkit-app-region:no-drag;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;padding:0;background:transparent;color:var(--bt-ink);cursor:pointer;font-family:var(--bt-font)}
+html[data-windows-titlebar] .bt-title-toggle:hover{background:var(--bt-hover)}
+/* Elsewhere the switch shows only while the column is hidden, where the column's
+   own top row had it. */
+html:not([data-windows-titlebar]) .bt-title-toggle{position:fixed;left:12px;top:calc(var(--dsh-frame-top-clearance,0px) + 6px);z-index:30}
 /* The footer ends in the Bot row: the whale's settings seat, then the account menu
    when no plugin holds that seat. Every other plugin's entry takes a whole row above
    it, in the shell's order, so none of them squeezes the Bot row. */
@@ -8636,36 +8648,52 @@ var MIN_CHAT = 420;
 var RAIL_WIDTH = 88;
 var PANEL_MIN = { details: 320, browser: 360, side: 320 };
 var DSH_NARROW = 1024;
+var SIDEBAR_MIN = 264;
+var SIDEBAR_MAX = 420;
 var FALLBACK_SIDEBAR_WIDTH = 280;
+var RAIL_SNAP = (RAIL_WIDTH + SIDEBAR_MIN) / 2;
 function frameLayout({ viewport, sidebarWidth, pref, drawer = false, panel = null }) {
   const fits = pref === "open" && viewport >= sidebarWidth + MIN_CHAT;
-  let left = fits ? "open" : drawer && pref === "open" ? "drawer" : "rail";
-  let occupied = left === "open" ? sidebarWidth : RAIL_WIDTH;
+  let left = pref === "hidden" ? "hidden" : fits ? "open" : drawer && pref === "open" ? "drawer" : "rail";
+  let occupied = left === "open" ? sidebarWidth : left === "hidden" ? 0 : RAIL_WIDTH;
   let panelState = "none";
   if (panel !== null) {
     const need = (PANEL_MIN[panel.view] ?? PANEL_MIN.details) + MIN_CHAT;
     if (occupied + need <= viewport) panelState = "shown";
     else if (panel.yielded === true) {
-      left = "rail";
-      occupied = RAIL_WIDTH;
-      panelState = RAIL_WIDTH + need <= viewport ? "shown" : "overlay";
+      if (left !== "hidden") {
+        left = "rail";
+        occupied = RAIL_WIDTH;
+      }
+      panelState = occupied + need <= viewport ? "shown" : "overlay";
     } else panelState = "folded";
   }
   return { left, panel: panelState, room: Math.max(0, viewport - occupied) };
 }
-var dshExpandedFor = (viewport, left) => viewport >= DSH_NARROW && left === "open";
+function dragColumn(x, viewport) {
+  if (x < RAIL_SNAP) return { left: "rail", width: RAIL_WIDTH };
+  const docks = viewport >= SIDEBAR_MIN + MIN_CHAT;
+  const high = docks ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, viewport - MIN_CHAT)) : SIDEBAR_MAX;
+  return { left: docks ? "open" : "drawer", width: Math.round(Math.max(SIDEBAR_MIN, Math.min(x, high))) };
+}
+var toggledPref = (pref, shown) => pref === "hidden" ? shown : "hidden";
 var RESIZE_SETTLE_MS = 500;
 var userSidebarToggle = ({ before, after, requested = false, sinceResize = Infinity }) => before.collapsed !== after.collapsed && !requested && sinceResize >= RESIZE_SETTLE_MS && before.viewport < DSH_NARROW === after.viewport < DSH_NARROW;
-function readSidebarPref(storage = globalThis.localStorage) {
+var PREFS = ["open", "rail", "hidden"];
+function readSidebar(storage = globalThis.localStorage) {
   try {
-    return storage.getItem(STORAGE.sidebar) === "rail" ? "rail" : "open";
+    const saved = JSON.parse(storage.getItem(STORAGE.sidebar) ?? "null");
+    const pref = PREFS.includes(saved?.pref) ? saved.pref : "open";
+    const shown = saved?.shown === "rail" ? "rail" : "open";
+    const width = Number.isFinite(saved?.width) ? Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, saved.width)) : FALLBACK_SIDEBAR_WIDTH;
+    return { pref, shown, width };
   } catch {
-    return "open";
+    return { pref: "open", shown: "open", width: FALLBACK_SIDEBAR_WIDTH };
   }
 }
-function writeSidebarPref(pref, storage = globalThis.localStorage) {
+function writeSidebar(value, storage = globalThis.localStorage) {
   try {
-    storage.setItem(STORAGE.sidebar, pref === "rail" ? "rail" : "open");
+    storage.setItem(STORAGE.sidebar, JSON.stringify(value));
   } catch {
   }
 }
@@ -8724,7 +8752,6 @@ var chatRoom = {
   }
 };
 function installFrameWatch(frame) {
-  let sidebarWidth = FALLBACK_SIDEBAR_WIDTH;
   let collapsedWidth = collapsedTrackWidth();
   let raf = 0;
   const watched = /* @__PURE__ */ new Set();
@@ -8734,13 +8761,10 @@ function installFrameWatch(frame) {
     const animating = column?.closest("[data-animating]") != null;
     const width = animating ? null : sidebarTrackWidth();
     const collapsed = dshCollapsed();
-    if (width !== null) {
-      if (collapsed === true) collapsedWidth = width;
-      else if (collapsed === false) sidebarWidth = width;
-    }
+    if (width !== null && collapsed === true) collapsedWidth = width;
     frame.set((state) => {
-      const next = { viewport: window.innerWidth, sidebarWidth, collapsedWidth, collapsed: collapsed === true };
-      return state.viewport === next.viewport && state.sidebarWidth === next.sidebarWidth && state.collapsedWidth === next.collapsedWidth && state.collapsed === next.collapsed ? state : next;
+      const next = { ...state, viewport: window.innerWidth, collapsedWidth, collapsed: collapsed === true };
+      return state.viewport === next.viewport && state.collapsedWidth === next.collapsedWidth && state.collapsed === next.collapsed ? state : next;
     });
   };
   const measure = () => {
@@ -9060,17 +9084,24 @@ function useListGlide(listRef, layout, key) {
     tops.current = { layout, map: next };
   }, [layout, key]);
 }
-function LeftColumn({ mode, width, children }) {
-  return (0, import_react_dom3.createPortal)((0, import_react15.createElement)("div", { className: "bt-leftcol", "data-left": mode, style: { width: `${width}px` } }, children), document.body);
+function LeftColumn({ mode, width, onGrip, children }) {
+  return (0, import_react_dom3.createPortal)((0, import_react15.createElement)(
+    "div",
+    { className: "bt-leftcol", "data-left": mode, style: { width: `${width}px` } },
+    children,
+    (0, import_react15.createElement)("div", { className: "bt-leftcol-grip", role: "separator", "aria-orientation": "vertical", "aria-label": t("Resize sidebar"), title: t("Resize sidebar"), onPointerDown: onGrip })
+  ), document.body);
 }
-function TitleToggle({ left, onToggle }) {
-  if (typeof document === "undefined" || !document.documentElement.hasAttribute("data-windows-titlebar")) return null;
-  const collapse = left === "open" || left === "drawer";
+function TitleToggle({ hidden, onToggle }) {
+  if (typeof document === "undefined") return null;
+  const titlebar = document.documentElement.hasAttribute("data-windows-titlebar");
+  if (!titlebar && !hidden) return null;
+  const label = t(hidden ? "Expand sidebar" : "Collapse sidebar");
   return (0, import_react_dom3.createPortal)((0, import_react15.createElement)("button", {
     type: "button",
-    className: "bt-title-toggle",
-    "aria-label": t(collapse ? "Collapse sidebar" : "Expand sidebar"),
-    title: t(collapse ? "Collapse sidebar" : "Expand sidebar"),
+    className: titlebar ? "bt-title-toggle" : "bt-round bt-title-toggle",
+    "aria-label": label,
+    title: label,
     onClick: onToggle
   }, (0, import_react15.createElement)(SidebarIcon)), document.body);
 }
@@ -9090,7 +9121,8 @@ function TeamSidebar(props) {
     drawer: uiNow.leftDrawer === true,
     panel: uiNow.details ? { view: uiNow.view, yielded: uiNow.panelYield === true } : null
   });
-  const mode = wide ? "inline" : layout.left;
+  const [drag, setDrag] = (0, import_react15.useState)(null);
+  const mode = drag?.left ?? layout.left;
   const wideContent = mode !== "rail";
   const updated = useSessions((list) => {
     const stamps = {};
@@ -9110,15 +9142,51 @@ function TeamSidebar(props) {
   const main = roster.byId[roster.mainBotId];
   useListGlide(listRef, wideContent, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
-  const ourWidth = layout.left === "rail" ? RAIL_WIDTH : frameSnap.sidebarWidth;
-  const pushed = layout.left === "open" ? frameSnap.sidebarWidth : RAIL_WIDTH;
+  const openWidth = drag?.width ?? frameSnap.sidebarWidth;
+  const ourWidth = mode === "rail" ? RAIL_WIDTH : openWidth;
+  const pushed = mode === "open" ? openWidth : mode === "hidden" ? 0 : RAIL_WIDTH;
   (0, import_react15.useLayoutEffect)(() => {
     if (typeof document === "undefined") return;
-    chatRoom.setLeft(mode === "inline" ? null : Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)));
-  }, [mode, pushed, frameSnap.collapsedWidth]);
+    chatRoom.setLeft(Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)));
+  }, [pushed, frameSnap.collapsedWidth]);
   (0, import_react15.useEffect)(() => () => {
     if (typeof document !== "undefined") chatRoom.setLeft(null);
   }, []);
+  const startDrag = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const grip = event.currentTarget;
+    grip.setPointerCapture?.(event.pointerId);
+    chatRoom.hold(true);
+    let last = null;
+    let done = false;
+    const onMove = (move) => {
+      last = dragColumn(move.clientX, window.innerWidth);
+      setDrag(last);
+    };
+    const ends = ["pointerup", "pointercancel", "lostpointercapture"];
+    const onEnd = (end) => {
+      if (done) return;
+      done = true;
+      if (end.type === "pointerup") last = dragColumn(end.clientX, window.innerWidth);
+      grip.removeEventListener("pointermove", onMove);
+      for (const name of ends) grip.removeEventListener(name, onEnd);
+      setDrag(null);
+      chatRoom.hold(false);
+      if (last === null) return;
+      actions.setPanelYield?.(false);
+      if (last.left === "rail") {
+        actions.setLeftDrawer?.(false);
+        actions.setSidebarPref?.("rail");
+        return;
+      }
+      actions.setSidebarWidth?.(last.width);
+      actions.setSidebarPref?.("open");
+      actions.setLeftDrawer?.(last.left === "drawer");
+    };
+    grip.addEventListener("pointermove", onMove);
+    for (const name of ends) grip.addEventListener(name, onEnd);
+  };
   const dsh = (0, import_react15.useRef)(null);
   const requested = (0, import_react15.useRef)(false);
   const requestLapse = (0, import_react15.useRef)(0);
@@ -9132,39 +9200,40 @@ function TeamSidebar(props) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  const quiet = (on) => {
+    if (on) document.documentElement.setAttribute("data-bt-collapsing", "");
+    else document.documentElement.removeAttribute("data-bt-collapsing");
+  };
+  (0, import_react15.useEffect)(() => () => quiet(false), []);
   (0, import_react15.useLayoutEffect)(() => {
     if (typeof document === "undefined" || typeof actions.toggleSidebar !== "function") return void 0;
     const collapsed = dshCollapsed() ?? !wide;
     const prev = dsh.current;
     const viewport = window.innerWidth;
-    dsh.current = { collapsed, viewport, left: layout.left };
+    dsh.current = { collapsed, viewport };
     if (prev !== null && collapsed !== prev.collapsed) {
       if (requested.current) requested.current = false;
-      else if (userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
-        if (prev.left === "open") actions.setSidebarPref?.("rail");
-        else {
-          actions.setSidebarPref?.("open");
-          if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true);
-        }
-        actions.setPanelYield?.(false);
-        return void 0;
+      else if (!collapsed && userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
+        toggleRef.current();
       }
     }
-    const wantOpen = dshExpandedFor(frameSnap.viewport, layout.left);
-    if (collapsed === !wantOpen) {
+    if (collapsed) {
       requested.current = false;
+      quiet(false);
       return void 0;
     }
     if (requested.current) return void 0;
     requested.current = true;
+    quiet(true);
     actions.toggleSidebar();
     clearTimeout(requestLapse.current);
     requestLapse.current = setTimeout(() => {
       requested.current = false;
+      quiet(false);
       setLapsed((value) => value + 1);
     }, 300);
     return void 0;
-  }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left, lapsed]);
+  }, [wide, frameSnap.viewport, lapsed]);
   (0, import_react15.useEffect)(() => {
     if (mode !== "drawer") return void 0;
     const onDown = (event) => {
@@ -9202,20 +9271,9 @@ function TeamSidebar(props) {
     event.preventDefault();
     actions.openPalette(event.key);
   };
-  const expandLeft = () => {
-    actions.setPanelYield?.(false);
-    actions.setSidebarPref?.("open");
-    if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true);
-  };
-  const onTitleToggle = () => {
-    if (layout.left === "open") {
-      actions.setLeftDrawer?.(false);
-      actions.setSidebarPref?.("rail");
-    } else if (layout.left === "drawer") actions.setLeftDrawer?.(false);
-    else expandLeft();
-  };
-  const toggleRef = (0, import_react15.useRef)(onTitleToggle);
-  toggleRef.current = onTitleToggle;
+  const onToggle = () => actions.toggleLeftHidden?.();
+  const toggleRef = (0, import_react15.useRef)(onToggle);
+  toggleRef.current = onToggle;
   (0, import_react15.useEffect)(() => {
     const onKey = (event) => {
       if (event.defaultPrevented || event.isComposing || !pressesShellShortcut(event, "sidebar.left.toggle")) return;
@@ -9235,19 +9293,16 @@ function TeamSidebar(props) {
     (0, import_react15.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
     (0, import_react15.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Search"), title: t("Search"), onClick: () => actions.openPalette() }, (0, import_react15.createElement)(SearchIcon)),
     (0, import_react15.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react15.createElement)(PlusIcon)),
-    (0, import_react15.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: () => {
-      actions.setLeftDrawer?.(false);
-      actions.setSidebarPref?.("rail");
-    } }, (0, import_react15.createElement)(SidebarIcon))
+    (0, import_react15.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: onToggle }, (0, import_react15.createElement)(SidebarIcon))
   ) : (0, import_react15.createElement)(
     "div",
     { className: "bt-rail-top" },
     (0, import_react15.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
-    (0, import_react15.createElement)("button", { type: "button", className: "bt-round bt-rail-expand", "aria-label": t("Expand sidebar"), title: t("Expand sidebar"), onClick: expandLeft }, (0, import_react15.createElement)(SidebarIcon)),
+    (0, import_react15.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: onToggle }, (0, import_react15.createElement)(SidebarIcon)),
     main ? (0, import_react15.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : (0, import_react15.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
     (0, import_react15.createElement)("span", { className: "bt-rail-sep", "aria-hidden": true })
   );
-  const foot = mode === "inline" ? null : wideContent ? (0, import_react15.createElement)("div", { className: "bt-leftcol-foot" }, (0, import_react15.createElement)(AccountLauncher, { seat: false, actions })) : (0, import_react15.createElement)(
+  const foot = wideContent ? (0, import_react15.createElement)("div", { className: "bt-leftcol-foot" }, (0, import_react15.createElement)(AccountLauncher, { seat: false, actions })) : (0, import_react15.createElement)(
     "div",
     { className: "bt-leftcol-foot bt-leftcol-foot-rail" },
     (0, import_react15.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react15.createElement)(PlusIcon)),
@@ -9269,8 +9324,8 @@ function TeamSidebar(props) {
   return (0, import_react15.createElement)(
     import_react15.Fragment,
     null,
-    (0, import_react15.createElement)(TitleToggle, { left: layout.left, onToggle: onTitleToggle }),
-    mode === "inline" ? content : (0, import_react15.createElement)(LeftColumn, { mode, width: ourWidth }, content)
+    (0, import_react15.createElement)(TitleToggle, { hidden: mode === "hidden", onToggle }),
+    mode === "hidden" ? null : (0, import_react15.createElement)(LeftColumn, { mode, width: ourWidth, onGrip: startDrag }, content)
   );
 }
 function UpdateButton({ useUpdate, actions }) {
@@ -19466,8 +19521,9 @@ function apply(ctx) {
   const seenStore = sharedMap(STORAGE.seen);
   let seenAt = seenStore.read();
   const ui2 = createSource({ details: null, view: "details", renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false });
-  const sidebarPref = createSource(readSidebarPref());
-  const frame = createSource({ viewport: typeof window === "undefined" ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0, collapsed: false });
+  let sidebarSaved = readSidebar();
+  const sidebarPref = createSource(sidebarSaved.pref);
+  const frame = createSource({ viewport: typeof window === "undefined" ? 0 : window.innerWidth, sidebarWidth: sidebarSaved.width, collapsedWidth: 0, collapsed: false });
   const surface = createSource({ mode: readMode(), plain: false });
   let agentSessionCache = /* @__PURE__ */ new Set();
   try {
@@ -19915,12 +19971,22 @@ function apply(ctx) {
     toggleSidebar: () => {
       ctx.layout.toggleSidebar();
     },
-    // The left column's own preference; the sidebar sync pulls the shell's
-    // collapsed flag after it (TeamSidebar's frame effect).
+    // The left column's own preference: 'open', 'rail' or 'hidden'. The switch
+    // remembers the shown one it hid; a drag sets the open column's width.
     setSidebarPref: (pref) => {
-      const next = pref === "rail" ? "rail" : "open";
-      writeSidebarPref(next);
+      const next = pref === "rail" || pref === "hidden" ? pref : "open";
+      sidebarSaved = { ...sidebarSaved, pref: next, ...next === "hidden" ? {} : { shown: next } };
+      writeSidebar(sidebarSaved);
       sidebarPref.set(next);
+    },
+    toggleLeftHidden: () => {
+      ui2.set((state) => state.leftDrawer || state.panelYield ? { ...state, leftDrawer: false, panelYield: false } : state);
+      actions.setSidebarPref(toggledPref(sidebarPref.getSnapshot(), sidebarSaved.shown));
+    },
+    setSidebarWidth: (width) => {
+      sidebarSaved = { ...sidebarSaved, width };
+      writeSidebar(sidebarSaved);
+      frame.set((state) => state.sidebarWidth === width ? state : { ...state, sidebarWidth: width });
     },
     setLeftDrawer: (on) => ui2.set((state) => state.leftDrawer === on ? state : { ...state, leftDrawer: on }),
     setPanelYield: (on) => ui2.set((state) => state.panelYield === on ? state : { ...state, panelYield: on }),
@@ -19937,6 +20003,7 @@ function apply(ctx) {
       }
       writeMode(mode);
       surface.set((state) => ({ ...state, mode }));
+      if (mode === "agent" && window.innerWidth >= DSH_NARROW && frame.getSnapshot().collapsed) ctx.layout.toggleSidebar();
       if (mode !== "bot") return;
       ensureBotHome();
     },

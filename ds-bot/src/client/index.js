@@ -8,7 +8,7 @@ import { MENTION_ORIGIN, currentPart } from './text.js'
 import { SHELL_CSS, CONVERSATION_CSS, installStyles, installCompiledStyles } from './styles.js'
 import { lookOf } from './mark.js'
 import { TeamSidebar, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts, openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
-import { frameLayout, readSidebarPref, writeSidebarPref, FALLBACK_SIDEBAR_WIDTH } from './frame-layout.js'
+import { frameLayout, readSidebar, writeSidebar, toggledPref, DSH_NARROW } from './frame-layout.js'
 import { installFrameWatch } from './frame-watch.js'
 import { HeaderPill } from './header.js'
 import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
@@ -60,10 +60,12 @@ export function apply(ctx) {
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
   const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false })
-  // The left column's kept preference, and the measured frame geometry the
-  // layout rules in frame-layout.js read (installFrameWatch feeds it).
-  const sidebarPref = createSource(readSidebarPref())
-  const frame = createSource({ viewport: typeof window === 'undefined' ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0, collapsed: false })
+  // The left column's kept preference, and the frame geometry the layout rules
+  // in frame-layout.js read: the window and the shell's collapsed track come from
+  // installFrameWatch, the open column's width is the user's own.
+  let sidebarSaved = readSidebar()
+  const sidebarPref = createSource(sidebarSaved.pref)
+  const frame = createSource({ viewport: typeof window === 'undefined' ? 0 : window.innerWidth, sidebarWidth: sidebarSaved.width, collapsedWidth: 0, collapsed: false })
   // Bot mode paints the whole team surface; Agent mode withdraws every slot and
   // style so the shell's own interface returns. `plain` stays false until a Bot-mode
   // view hosts a plain session, which drops only the conversation replacements.
@@ -494,12 +496,22 @@ export function apply(ctx) {
     },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
-    // The left column's own preference; the sidebar sync pulls the shell's
-    // collapsed flag after it (TeamSidebar's frame effect).
+    // The left column's own preference: 'open', 'rail' or 'hidden'. The switch
+    // remembers the shown one it hid; a drag sets the open column's width.
     setSidebarPref: (pref) => {
-      const next = pref === 'rail' ? 'rail' : 'open'
-      writeSidebarPref(next)
+      const next = pref === 'rail' || pref === 'hidden' ? pref : 'open'
+      sidebarSaved = { ...sidebarSaved, pref: next, ...(next === 'hidden' ? {} : { shown: next }) }
+      writeSidebar(sidebarSaved)
       sidebarPref.set(next)
+    },
+    toggleLeftHidden: () => {
+      ui.set(state => (state.leftDrawer || state.panelYield ? { ...state, leftDrawer: false, panelYield: false } : state))
+      actions.setSidebarPref(toggledPref(sidebarPref.getSnapshot(), sidebarSaved.shown))
+    },
+    setSidebarWidth: (width) => {
+      sidebarSaved = { ...sidebarSaved, width }
+      writeSidebar(sidebarSaved)
+      frame.set(state => (state.sidebarWidth === width ? state : { ...state, sidebarWidth: width }))
     },
     setLeftDrawer: (on) => ui.set(state => (state.leftDrawer === on ? state : { ...state, leftDrawer: on })),
     setPanelYield: (on) => ui.set(state => (state.panelYield === on ? state : { ...state, panelYield: on })),
@@ -518,6 +530,9 @@ export function apply(ctx) {
       }
       writeMode(mode)
       surface.set(state => ({ ...state, mode }))
+      // The Bot view kept the shell's sidebar collapsed under its own column; the
+      // shell's own view gets it back (below DSH_NARROW the shell decides itself).
+      if (mode === 'agent' && window.innerWidth >= DSH_NARROW && frame.getSnapshot().collapsed) ctx.layout.toggleSidebar()
       if (mode !== 'bot') return
       ensureBotHome()
     },

@@ -11,7 +11,7 @@ import { Shimmer, workPhrase } from './cells.js'
 import { springEasing, SPRING_SHAPE, useViewport, viewBottom } from './motion.js'
 import { hostText, t } from './i18n.js'
 import { showsDshRow } from './dsh-offer.js'
-import { frameLayout, MIN_CHAT, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, dshExpandedFor, userSidebarToggle } from './frame-layout.js'
+import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
 
 // -------------------------------------------------------------------------
@@ -253,23 +253,27 @@ function useListGlide(listRef, layout, key) {
   }, [layout, key])
 }
 
-// While the shell's sidebar is collapsed we draw the left column ourselves on
-// <body>: the open column or the avatar rail push the conversation over, the
-// drawer floats above it.
-function LeftColumn({ mode, width, children }) {
-  return createPortal(h('div', { className: 'bt-leftcol', 'data-left': mode, style: { width: `${width}px` } }, children), document.body)
+// In the Bot view the left column is ours, drawn on <body> over the shell's
+// collapsed sidebar: the open column or the avatar rail push the conversation
+// over, the drawer floats above it. Its right edge drags the open width, and
+// down to the rail.
+function LeftColumn({ mode, width, onGrip, children }) {
+  return createPortal(h('div', { className: 'bt-leftcol', 'data-left': mode, style: { width: `${width}px` } },
+    children,
+    h('div', { className: 'bt-leftcol-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize sidebar'), title: t('Resize sidebar'), onPointerDown: onGrip })), document.body)
 }
 
-// The shell's title-bar switch on Windows asks the shell to expand before our
-// sync pulls it back, a visible flash. Under a Windows title bar our own switch
-// replaces it and goes straight to the next state.
-function TitleToggle({ left, onToggle }) {
-  if (typeof document === 'undefined' || !document.documentElement.hasAttribute('data-windows-titlebar')) return null
-  const collapse = left === 'open' || left === 'drawer'
+// The top-left switch hides the whole column and brings it back. Under a
+// Windows title bar it takes the shell's own place in the title band; elsewhere
+// it shows only while the column is hidden, since the column's own top row
+// carries it otherwise.
+function TitleToggle({ hidden, onToggle }) {
+  if (typeof document === 'undefined') return null
+  const titlebar = document.documentElement.hasAttribute('data-windows-titlebar')
+  if (!titlebar && !hidden) return null
+  const label = t(hidden ? 'Expand sidebar' : 'Collapse sidebar')
   return createPortal(h('button', {
-    type: 'button', className: 'bt-title-toggle',
-    'aria-label': t(collapse ? 'Collapse sidebar' : 'Expand sidebar'),
-    title: t(collapse ? 'Collapse sidebar' : 'Expand sidebar'), onClick: onToggle,
+    type: 'button', className: titlebar ? 'bt-title-toggle' : 'bt-round bt-title-toggle', 'aria-label': label, title: label, onClick: onToggle,
   }, h(SidebarIcon)), document.body)
 }
 
@@ -287,8 +291,9 @@ export function TeamSidebar(props) {
     pref, drawer: uiNow.leftDrawer === true,
     panel: uiNow.details ? { view: uiNow.view, yielded: uiNow.panelYield === true } : null,
   })
-  // 'inline' is the shell's own expanded sidebar; the rest are our portalled column.
-  const mode = wide ? 'inline' : layout.left
+  // A drag of the column's edge shows where it would land, live.
+  const [drag, setDrag] = useState(null)
+  const mode = drag?.left ?? layout.left
   const wideContent = mode !== 'rail'
   const updated = useSessions(list => {
     const stamps = {}
@@ -312,17 +317,50 @@ export function TeamSidebar(props) {
   // Our column pushes the conversation over by what it takes beyond the shell's
   // collapsed track; a drawer floats over the rail's place, so it pushes as much
   // as the rail and the chat stays put when it opens or closes.
-  const ourWidth = layout.left === 'rail' ? RAIL_WIDTH : frameSnap.sidebarWidth
-  const pushed = layout.left === 'open' ? frameSnap.sidebarWidth : RAIL_WIDTH
+  const openWidth = drag?.width ?? frameSnap.sidebarWidth
+  const ourWidth = mode === 'rail' ? RAIL_WIDTH : openWidth
+  const pushed = mode === 'open' ? openWidth : mode === 'hidden' ? 0 : RAIL_WIDTH
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return
-    chatRoom.setLeft(mode === 'inline' ? null : Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)))
-  }, [mode, pushed, frameSnap.collapsedWidth])
+    chatRoom.setLeft(Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)))
+  }, [pushed, frameSnap.collapsedWidth])
   useEffect(() => () => { if (typeof document !== 'undefined') chatRoom.setLeft(null) }, [])
 
-  // The shell sidebar's collapsed flag follows what our column needs. A flip we
-  // did not ask for is the user's own switch gesture (the shell's title-bar
-  // button or shortcut), unless the width just crossed the auto-collapse line.
+  // The edge drag: live while the pointer moves, the column's new state on release.
+  const startDrag = (event) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    const grip = event.currentTarget
+    grip.setPointerCapture?.(event.pointerId)
+    chatRoom.hold(true)
+    let last = null
+    let done = false
+    const onMove = (move) => { last = dragColumn(move.clientX, window.innerWidth); setDrag(last) }
+    const ends = ['pointerup', 'pointercancel', 'lostpointercapture']
+    const onEnd = (end) => {
+      if (done) return
+      done = true
+      if (end.type === 'pointerup') last = dragColumn(end.clientX, window.innerWidth)
+      grip.removeEventListener('pointermove', onMove)
+      for (const name of ends) grip.removeEventListener(name, onEnd)
+      setDrag(null)
+      chatRoom.hold(false)
+      if (last === null) return
+      // The drag is the latest explicit gesture: it takes back a yielded panel's room.
+      actions.setPanelYield?.(false)
+      if (last.left === 'rail') { actions.setLeftDrawer?.(false); actions.setSidebarPref?.('rail'); return }
+      actions.setSidebarWidth?.(last.width)
+      actions.setSidebarPref?.('open')
+      actions.setLeftDrawer?.(last.left === 'drawer')
+    }
+    grip.addEventListener('pointermove', onMove)
+    for (const name of ends) grip.addEventListener(name, onEnd)
+  }
+
+  // In the Bot view the shell's own sidebar stays collapsed under our column. A
+  // flip we did not ask for is the user's own switch gesture (the shell's button
+  // or shortcut where it still reaches), unless the width just crossed the
+  // shell's auto-collapse line, which re-applies the shell's own rule.
   const dsh = useRef(null)
   const requested = useRef(false)
   // The request mark always lapses on its own: a re-render before the shell's
@@ -340,35 +378,34 @@ export function TeamSidebar(props) {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+  const quiet = (on) => {
+    // Our own collapse of the shell's sidebar lands at once: its slide would drag
+    // the conversation across under our column.
+    if (on) document.documentElement.setAttribute('data-bt-collapsing', '')
+    else document.documentElement.removeAttribute('data-bt-collapsing')
+  }
+  useEffect(() => () => quiet(false), [])
   useLayoutEffect(() => {
     if (typeof document === 'undefined' || typeof actions.toggleSidebar !== 'function') return undefined
     const collapsed = dshCollapsed() ?? !wide
     const prev = dsh.current
     const viewport = window.innerWidth
-    dsh.current = { collapsed, viewport, left: layout.left }
+    dsh.current = { collapsed, viewport }
     if (prev !== null && collapsed !== prev.collapsed) {
       if (requested.current) requested.current = false
-      else if (userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
-        // The last explicit gesture wins: fold to the rail, or open the column —
-        // as a drawer when it no longer fits docked.
-        if (prev.left === 'open') actions.setSidebarPref?.('rail')
-        else {
-          actions.setSidebarPref?.('open')
-          if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true)
-        }
-        actions.setPanelYield?.(false)
-        return undefined
+      else if (!collapsed && userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
+        toggleRef.current()
       }
     }
-    const wantOpen = dshExpandedFor(frameSnap.viewport, layout.left)
-    if (collapsed === !wantOpen) { requested.current = false; return undefined }
+    if (collapsed) { requested.current = false; quiet(false); return undefined }
     if (requested.current) return undefined
     requested.current = true
+    quiet(true)
     actions.toggleSidebar()
     clearTimeout(requestLapse.current)
-    requestLapse.current = setTimeout(() => { requested.current = false; setLapsed(value => value + 1) }, 300)
+    requestLapse.current = setTimeout(() => { requested.current = false; quiet(false); setLapsed(value => value + 1) }, 300)
     return undefined
-  }, [wide, frameSnap.viewport, frameSnap.sidebarWidth, layout.left, lapsed])
+  }, [wide, frameSnap.viewport, lapsed])
 
   // The drawer closes on a row pick, on Escape and on a press outside it.
   useEffect(() => {
@@ -407,23 +444,14 @@ export function TeamSidebar(props) {
     event.preventDefault()
     actions.openPalette(event.key)
   }
-  // Opening the column is the latest explicit gesture: it takes back the room a
-  // yielded panel had, and opens as a drawer when it cannot dock.
-  const expandLeft = () => {
-    actions.setPanelYield?.(false)
-    actions.setSidebarPref?.('open')
-    if (frameSnap.viewport < frameSnap.sidebarWidth + MIN_CHAT) actions.setLeftDrawer?.(true)
-  }
-  const onTitleToggle = () => {
-    if (layout.left === 'open') { actions.setLeftDrawer?.(false); actions.setSidebarPref?.('rail') }
-    else if (layout.left === 'drawer') actions.setLeftDrawer?.(false)
-    else expandLeft()
-  }
+  // The switch (top-left button, the shortcut) hides the whole column or brings
+  // back the one it hid.
+  const onToggle = () => actions.toggleLeftHidden?.()
   // The shell's sidebar shortcut is caught on its way down, before the shell's
   // own listener on window sees it: left to the shell, it would expand the shell's
   // sidebar first and our sync would pull it back, a visible flash.
-  const toggleRef = useRef(onTitleToggle)
-  toggleRef.current = onTitleToggle
+  const toggleRef = useRef(onToggle)
+  toggleRef.current = onToggle
   useEffect(() => {
     const onKey = (event) => {
       if (event.defaultPrevented || event.isComposing || !pressesShellShortcut(event, 'sidebar.left.toggle')) return
@@ -442,15 +470,15 @@ export function TeamSidebar(props) {
         h(UpdateButton, { useUpdate: props.useUpdate, actions }),
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('Search'), title: t('Search'), onClick: () => actions.openPalette() }, h(SearchIcon)),
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
-        h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: () => { actions.setLeftDrawer?.(false); actions.setSidebarPref?.('rail') } }, h(SidebarIcon)))
+        h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)))
     : h('div', { className: 'bt-rail-top' },
         h(UpdateButton, { useUpdate: props.useUpdate, actions }),
-        h('button', { type: 'button', className: 'bt-round bt-rail-expand', 'aria-label': t('Expand sidebar'), title: t('Expand sidebar'), onClick: expandLeft }, h(SidebarIcon)),
+        h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)),
         main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, t('Setting up your Main Bot…')),
         h('span', { className: 'bt-rail-sep', 'aria-hidden': true }))
   // The foot stands in for the shell's hidden footer: the account avatar, and on
   // the rail the new-chat button above it.
-  const foot = mode === 'inline' ? null : wideContent
+  const foot = wideContent
     ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions }))
     : h('div', { className: 'bt-leftcol-foot bt-leftcol-foot-rail' },
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
@@ -467,8 +495,8 @@ export function TeamSidebar(props) {
           : h(AgentRow, { key: entry.item.id, ...rowProps, agent: entry.item, marked: markedUnread[entry.item.id] === true })))),
     foot)
   return h(Fragment, null,
-    h(TitleToggle, { left: layout.left, onToggle: onTitleToggle }),
-    mode === 'inline' ? content : h(LeftColumn, { mode, width: ourWidth }, content))
+    h(TitleToggle, { hidden: mode === 'hidden', onToggle }),
+    mode === 'hidden' ? null : h(LeftColumn, { mode, width: ourWidth, onGrip: startDrag }, content))
 }
 
 // The update button at the sidebar's top right: a cloud while a newer DS Bot —
