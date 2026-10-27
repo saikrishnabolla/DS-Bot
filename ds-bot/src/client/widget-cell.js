@@ -4,6 +4,7 @@ import { CheckIcon, CloseIcon, CopyIcon, DotsIcon, DownloadIcon, InfoIcon } from
 import { t } from './i18n.js'
 import { AnsweredCell, keyLetter, useOptionKeys } from './questions.js'
 import { useDockHold } from './card-hold.js'
+import { SettledHandoff } from './handoff-card.js'
 import { heldCardKey } from './sources.js'
 import { Segmented } from './motion.js'
 import { CHART_CSS, TableIcon, WidgetChart } from './widget-chart.js'
@@ -479,22 +480,27 @@ export function AnsweredView({ node }) {
   return h('div', { className: 'bt-q-inline' }, h(WidgetCard, { title: view.title ?? '', view: view.view, settled: true, answer }))
 }
 
-// A question reply node carries either questions (data.questions) or a view answer
-// (JSON text discriminated by kind); each shape gets its own renderer.
+// A question reply node carries either questions (data.questions), a view answer or
+// a browser handoff answer (JSON text discriminated by kind); each shape gets its
+// own renderer. A history page has already read the handoff answer into data.handoff.
 export function AnsweredReply({ node }) {
   const data = node?.data ?? {}
   if (Array.isArray(data.views) && data.views.length > 0) return h(AnsweredView, { node })
+  if (typeof data.handoff?.reason === 'string') return h(SettledHandoff, { handoff: data.handoff })
   if (!Array.isArray(data.questions) || data.questions.length === 0) {
     let parsed = null
     try { parsed = typeof data.text === 'string' ? JSON.parse(data.text) : null } catch { parsed = null }
     if (parsed?.kind === 'answer_to_pending_view') return h(AnsweredView, { node })
+    if (parsed?.kind === 'answer_to_pending_handoff' && typeof parsed.reason === 'string') {
+      return h(SettledHandoff, { handoff: { reason: parsed.reason, note: parsed.note ?? '', outcome: parsed.outcome } })
+    }
   }
   return h(AnsweredCell, { node })
 }
 
 export const WIDGET_CSS = `
 .bt-view{min-width:0}
-.bt-view-bare{display:flex;flex-direction:column;gap:8px;width:100%;color:var(--bt-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;animation:bt-veil-in .2s ease-out backwards}
+.bt-view-bare{display:flex;flex-direction:column;gap:8px;width:100%;color:var(--bt-ink);font-family:var(--bt-font);animation:bt-veil-in .2s ease-out backwards}
 .bt-view-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .bt-view-title{flex:1 1 0;min-width:0;margin:0;font-size:13px;line-height:18px;font-weight:500;color:var(--bt-ink);overflow-wrap:anywhere}
 .bt-q-settled .bt-view-title{color:var(--bt-ink-2)}
