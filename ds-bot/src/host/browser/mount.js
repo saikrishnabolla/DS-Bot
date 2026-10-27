@@ -43,25 +43,11 @@ export const browserOutput = {
   },
 }
 
-function attachmentsOf(ctx) {
-  try {
-    const service = ctx.get?.('attachments')
-    if (service !== undefined) return service
-  } catch {
-    // Not a cordis context, or the service was never provided.
-  }
-  try {
-    return ctx.attachments
-  } catch {
-    return undefined
-  }
-}
-
 // Tool bodies return screenshot bytes; the model-facing result must carry the
 // stored attachment instead, since content blocks cannot inline image data.
 async function saveShot(ctx, value) {
   if (!value || typeof value !== 'object' || typeof value.image !== 'string') return value
-  const attachments = attachmentsOf(ctx)
+  const attachments = ctx.get('attachments')
   if (typeof attachments?.saveImage === 'function') {
     try {
       const attachment = await attachments.saveImage({
@@ -83,6 +69,36 @@ async function saveShot(ctx, value) {
  */
 export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRoot, downloadRoot, downloadRoots, uploadRoots, headless, playwrightUrl, executablePath, actionTimeout, authorize, completeFor, connect, getHold, onHold, subscribeHolds, openSession = openBotBrowser, api }) {
   const sessions = new Map()
+  const names = new Set(toolDefs.map(tool => tool.name))
+  // Tool results persist their rendered blocks, so changing render() cannot fix
+  // old screenshots. Replace only this plugin's malformed image blocks through
+  // DSH's public surface API, keeping the original log for the transcript.
+  ctx.on('agent/pre-step', async ({ agent }, next) => {
+    const session = agent.session
+    let changed = false
+    for (const seq of session.surface?.nodes ?? []) {
+      const event = session.eventAt(seq)
+      if (event.type !== 'tool/result') continue
+      if (!event.sourceEventSeqs?.some(source => names.has(session.eventAt(source)?.data?.name))) continue
+      const message = session.deriveEventMessage(event)
+      if (!message.content.some(block => block.type === 'image' && !block.attachment && typeof block.data === 'string')) continue
+      if (!await keyOf({ agent })) continue
+      const content = []
+      for (const block of message.content) {
+        if (block.type !== 'image' || block.attachment || typeof block.data !== 'string') { content.push(block); continue }
+        const saved = await saveShot(ctx, { text: '', image: block.data })
+        content.push(saved.attachment
+          ? { type: 'image', attachment: saved.attachment, ...(block.offloaded ? { offloaded: true } : {}) }
+          : { type: 'text', text: saved.text.trim() })
+      }
+      session.append('tool/result', { ...event.data, message: { ...message, content } }, {
+        surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }, sourceEventSeqs: [seq],
+      })
+      changed = true
+    }
+    if (changed) await ctx.sessions.flush(session)
+    return next()
+  }, { prepend: true })
   const unsubscribeHolds = subscribeHolds?.((botId, hold) => {
     if (hold?.by !== 'user') return
     const session = sessions.get(botId)
