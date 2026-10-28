@@ -630,11 +630,14 @@ export function install(rt) {
     const current = rt.chatOf(id)
     // Questions and exchange turns are kept per Session, so every part of the chat is cleared.
     const parts = new Set([id, current, ...(bot.segments ?? []).map(segment => segment.sessionId)])
+    // `archiving` stands until the archive's path is known: the memory may already be
+    // there, and no region of its own closes it yet.
     const closedArchive = bot.private === true ? {
       id: bot.id,
       name: bot.name,
       ...(bot.workDir === undefined ? {} : { workDir: bot.workDir }),
       sessionIds: [...parts, ...rt.groupSessionsOf(id)],
+      archiving: true,
     } : undefined
     await rt.releaseBot(id, [...parts, ...rt.groupSessionsOf(id)])
     if (closedArchive !== undefined) state.privateArchives = [...(state.privateArchives ?? []).filter(entry => entry.id !== id), closedArchive]
@@ -656,7 +659,11 @@ export function install(rt) {
     await followMemberNames(touched)
     await rt.forgetBotSecrets(id)
     const archivePath = await archived
-    if (closedArchive !== undefined && archivePath !== undefined) closedArchive.archivePath = archivePath
+    if (closedArchive !== undefined) {
+      // No path means nothing was moved: a memory that stayed in place is a region already.
+      if (archivePath !== undefined) closedArchive.archivePath = archivePath
+      delete closedArchive.archiving
+    }
     const failed = await saveForDelete()
     // Same as deleteRoom: stopActivity removes the Session's armed scheduled tasks.
     // Past parts are archived too: a part move can leave tasks on the old Session,
