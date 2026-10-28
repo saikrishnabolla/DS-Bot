@@ -20,6 +20,11 @@ export { reducedMotion }
 export const rowVisible = ({ running, streaming, tools, relaying, bot, room }) =>
   running && (!streaming || tools.length > 0) && !relaying && (bot !== undefined || room !== undefined)
 
+// A queued message waits for the next turn, so only a transcript or steering
+// send counts as fresh input; a steer the host saw counts from when it landed.
+export const freshInputAt = (submissions, steeredAt) => Math.max(0, steeredAt ?? 0,
+  ...(submissions ?? []).filter(sub => sub.placement !== 'queued').map(sub => sub.time))
+
 // The shell's running slot can sit under wrappers it adds around the flow, so the
 // search is a descendant one; without the slot the row mounts at the flow's tail.
 // No flow at all is a mount failure, noted once per page — the observer keeps
@@ -108,18 +113,22 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   if (!running) runAt.current = 0
   else if (runAt.current === 0) runAt.current = Date.now()
   const liveKey = useLive(state => JSON.stringify(state[sessionId] ?? {}))
-  // A queued message waits for the next turn, so only a transcript or steering
-  // send counts as fresh input.
-  const pendingInput = useSession(snapshot => Math.max(0, ...(snapshot?.pendingSubmissions ?? [])
-    .filter(sub => sub.placement !== 'queued').map(sub => sub.time)))
+  const steeredAt = useWork?.(work => work.steered?.[sessionId])
+  const pendingInput = useSession(snapshot => freshInputAt(snapshot?.pendingSubmissions, steeredAt))
   const bot = roster.byId[sessionId]
   const room = roster.roomsById[sessionId]
+  // The one switch the row names: a working-folder move jumps the chat to a fresh
+  // part while a turn is not running, so without it the conversation just empties.
+  const moveAt = useWork?.((work) => {
+    const entry = bot === undefined ? undefined : work.bots?.[bot.id]
+    return entry?.switching === true && entry.folder === true && entry.roomId === undefined ? entry.since : 0
+  }) ?? 0
   const entries = useMemo(() => Object.values(JSON.parse(liveKey)), [liveKey])
   const streaming = entries.some(entry => entry.text)
   const tools = entries.filter(entry => !entry.text).sort((a, b) => a.at - b.at)
   // Group chats show who is typing on their own while members speak.
   const relaying = tools.some(entry => entry.relay)
-  const visible = rowVisible({ running, streaming, tools, relaying, bot, room })
+  const visible = moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room })
   const tool = tools.at(-1)
   const inputRef = useRef(0)
   // A steer keeps the run going, so nothing else resets the row: fresh input is
@@ -127,10 +136,11 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   const inputAt = Math.max(inputRef.current, pendingInput)
   inputRef.current = inputAt
   const want = !visible ? null
-    : inputAt > (tool?.at ?? 0)
-      ? { key: `input:${inputAt}`, pool: PHRASES.thinking, state: 'thinking' }
-      : tool ? { key: tool.label ? `tool:${tool.label}` : 'working', label: tool.label, pool: PHRASES.working, state: tool.state ?? 'working' }
-        : { key: 'thinking', pool: PHRASES.thinking, state: 'thinking' }
+    : moveAt !== 0 ? { key: 'move', label: t('Switching working folder'), state: 'thinking' }
+      : inputAt > (tool?.at ?? 0)
+        ? { key: `input:${inputAt}`, pool: PHRASES.thinking, state: 'thinking' }
+        : tool ? { key: tool.label ? `tool:${tool.label}` : 'working', label: tool.label, pool: PHRASES.working, state: tool.state ?? 'working' }
+          : { key: 'thinking', pool: PHRASES.thinking, state: 'thinking' }
   const [shown, setShown] = useState(null)
   const wantKey = want?.key ?? null
   const markState = useRef('thinking')
@@ -174,11 +184,11 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   useEffect(() => { if (!running) actions.clearLive(sessionId) }, [running, sessionId])
   // Only rows that take the activity row's place grow out of it.
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300)
-  const host = useRunningHost(running)
+  const host = useRunningHost(running || moveAt !== 0)
   if (!host || phase === null || !shown) return null
   return createPortal(h('div', { className: 'bt-typing', 'data-exiting': phase === 'out' ? '' : undefined, 'aria-hidden': true },
     bot ? h(BotMark, { bot, size: 28, state: markState.current, live: true, pokeable: true }) : h(RoomAvatar, { room, roster, size: 28 }),
     h('span', { className: 'bt-typing-text' },
       h('span', { key: `${shown.key}:${shown.at}`, className: 'bt-typing-label' }, h(Shimmer, null, `${shown.text}…`)),
-      h(Elapsed, { at: Math.max(turnAt ?? runAt.current, inputAt), className: 'bt-typing-time' }))), host)
+      h(Elapsed, { at: moveAt !== 0 ? moveAt : Math.max(turnAt ?? runAt.current, inputAt), className: 'bt-typing-time' }))), host)
 }

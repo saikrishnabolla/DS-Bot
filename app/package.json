@@ -1,11 +1,11 @@
 {
   "name": "deepseek-bot",
   "productName": "DeepSeek Bot",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "private": true,
   "description": "DeepSeek Bot desktop app: the ds-bot team on its own pinned DeepSeek Harness.",
   "author": "Fei2411",
-  "homepage": "https://github.com/Fei2411/DeepSeek-Bot",
+  "homepage": "https://github.com/Fei2411/DS-Bot",
   "desktopName": "deepseek-bot.desktop",
   "license": "Apache-2.0",
   "type": "module",
@@ -16,6 +16,7 @@
     "pack": "electron-builder --dir --publish never",
     "dist": "electron-builder --publish never",
     "check-packed": "node scripts/check-packed.mjs",
+    "check-lifecycle": "node scripts/check-lifecycle.mjs",
     "shot": "node scripts/shot.mjs",
     "icon": "node scripts/icon.mjs",
     "test": "node --test \"test/*.test.mjs\""
@@ -56,6 +57,7 @@
     "ds-bot": "file:../ds-bot",
     "electron-updater": "6.8.10",
     "pnpm": "11.7.0",
+    "ws": "8.18.3",
     "yaml": "2.9.1"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { FishLogo } from './dsh-primitives.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, PlugIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignOutIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, SwitchIcon, CloudDownloadIcon, SignOutIcon } from './icons.js'
 import { MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { reducedMotion } from './activity-row.js'
@@ -347,14 +347,16 @@ function UpdateButton({ useUpdate, actions }) {
   const dsh = update?.dsh
   const dshPhase = dsh?.phase ?? 'idle'
   const dshRow = showsDshRow(dsh, update?.app)
-  if (!update?.available && !dshRow && phase === 'idle' && dshPhase === 'idle') return null
-  const cloudPhase = phase === 'installing' || dshPhase === 'installing' ? 'installing' : phase !== 'idle' ? phase : dshPhase
+  // Hooks first: an update that turns visible after the sidebar mounted would
+  // otherwise add hooks on a later render and crash the slot.
   const tick = useViewport()
   useLayoutEffect(() => {
     if (!open) return
     const rect = button.current?.getBoundingClientRect()
     if (rect) setBox({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.bottom + 6 })
   }, [open, tick])
+  if (!update?.available && !dshRow && phase === 'idle' && dshPhase === 'idle') return null
+  const cloudPhase = phase === 'installing' || dshPhase === 'installing' ? 'installing' : phase !== 'idle' ? phase : dshPhase
   const toggle = () => setOpen(value => !value)
   const start = () => {
     setError('')
@@ -367,6 +369,7 @@ function UpdateButton({ useUpdate, actions }) {
   const label = phase === 'installing' ? t('Updating DS Bot…')
     : dshPhase === 'installing' ? t('Updating DSH…')
       : phase === 'installed' ? t('DS Bot {version} is installed. Restart DSH to use it.', { version: update.installed ?? update.latest })
+        : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
           : update?.available ? t('DS Bot {version} is available', { version: update.latest })
             : t('DSH {version} is available', { version: dsh?.verified })
@@ -381,17 +384,18 @@ function UpdateButton({ useUpdate, actions }) {
     h('button', {
       ref: button, type: 'button', className: 'bt-round bt-update', 'data-phase': cloudPhase, 'aria-label': label, title: label,
       'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: toggle,
-    }, h(CloudDownloadIcon, { done: phase === 'installed' }), phase === 'failed' || dshPhase === 'failed' ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null),
+    }, h(CloudDownloadIcon, { done: phase === 'installed' || phase === 'updated' }), phase === 'failed' || dshPhase === 'failed' ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null),
     open && box ? createPortal(h('div', { className: 'bt-update-pop', role: 'dialog', 'aria-label': update?.available || phase !== 'idle' ? t('DS Bot update') : t('DSH update'), style: box },
       update?.available || phase !== 'idle' ? h(Fragment, null,
-        h('div', { className: 'bt-update-title' }, phase === 'installed' ? t('Update installed') : t('DS Bot {version}', { version: update.latest })),
+        h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('DS Bot {version}', { version: update.latest })),
         h('div', { className: 'bt-update-text' }, phase === 'installed'
           ? t('Restart DSH to start using DS Bot {version}.', { version: update.installed ?? update.latest })
-          : t('You have {version}.', { version: update.current })),
+          : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
+            : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
         h('div', { className: 'bt-update-actions' },
           update.notesUrl ? h('a', { className: 'bt-update-notes', href: update.notesUrl, target: '_blank', rel: 'noopener noreferrer' }, t("What's new")) : null,
-          phase === 'installed' ? null : h('button', {
+          phase === 'installed' || phase === 'updated' ? null : h('button', {
             type: 'button', className: 'bt-update-go', disabled: phase === 'installing', onClick: start,
           }, phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : t('Update')))) : null,
       dshRow ? h('div', { className: 'bt-update-dsh' },
@@ -407,17 +411,6 @@ function UpdateButton({ useUpdate, actions }) {
                 : h('button', {
                   type: 'button', className: 'bt-update-go', disabled: dshPhase === 'installing', onClick: startDsh,
                 }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null), document.body) : null)
-}
-
-// The footer entry to the shell's plugin panel.
-export function ConnectPlugins({ wide, actions }) {
-  if (!wide) return null
-  return h('span', { className: 'bt-connect-wrap' },
-    h('button', {
-      type: 'button', className: 'bt-connect bt-connect-foot',
-      onClick: () => actions.selectPanel('plugins'),
-    },
-    h(PlugIcon), t('Connect plugins')))
 }
 
 // Account seat of the Settings trigger: the visible label stays for assistive tech only.
@@ -665,9 +658,9 @@ export function BrandName() {
   return h('span', { style: { fontWeight: 600, fontSize: 14 } }, 'DS Bot')
 }
 
-// With the whale holding the settings seat, the Bot row is just the account menu
-// and Connect plugins; FooterAccount only shows when the seat went to no one. The
-// shell's footer classes are CSS-module names, so they match on their stems.
+// With the whale holding the settings seat, the Bot row is just the account menu;
+// FooterAccount only shows when the seat went to no one. The shell's footer classes
+// are CSS-module names, so they match on their stems.
 export const SIDEBAR_CSS = `
 .bt-confirm{width:260px;max-width:72vw;padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
 .bt-confirm-text{margin:0;font-size:13px;line-height:19px;color:var(--bt-ink-2)}
@@ -686,7 +679,6 @@ export const SIDEBAR_CSS = `
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
 [class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
 [class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
-[class*="_footArea"]:has(.bt-foot-account)>[class*="_footerActions"]>div>.bt-connect-wrap{grid-column:2}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"]{grid-column:3}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
 
@@ -699,7 +691,7 @@ export const SIDEBAR_CSS = `
 .bt-update[data-phase=installing] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes bt-cloud-drop{0%{transform:translateY(-3px);opacity:0}35%{opacity:1}70%{transform:translateY(1px);opacity:1}100%{transform:translateY(2px);opacity:0}}
 .bt-update-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 1.5px var(--bt-sidebar)}
-.bt-update-pop{position:fixed;z-index:60;width:280px;padding:14px 14px 12px;border-radius:14px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-update-pop{position:fixed;z-index:60;width:280px;padding:14px 14px 12px;border-radius:14px;background:var(--bt-main);border:.5px solid var(--bt-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 @keyframes bt-update-pop{from{opacity:0;transform:scale(.96);filter:blur(4px)}}
 .bt-update-title{font-size:14px;line-height:20px;font-weight:600}
 .bt-update-text{margin-top:2px;font-size:12.5px;line-height:18px;color:var(--bt-ink-2)}

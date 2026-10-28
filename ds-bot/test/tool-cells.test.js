@@ -84,9 +84,9 @@ const question = (callId, over = {}) => ({ id: 'question', callId, question: 'Wh
 const request = (callId, over = {}) => ({ id: 'request', callId, sessionId: chief.id, name: 'DEMO_TOKEN', purpose: 'Test card', status: 'pending', kind: 'fill', ...over })
 
 const text$ = value => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }]
-const call = (name, callId, { args = {}, content = '', subCalls = [], running = false, isError = false } = {}) => (running
+const call = (name, callId, { args = {}, content = '', subCalls = [], running = false, isError = false, error } = {}) => (running
   ? { phase: 'start', name, callId, argsRaw: JSON.stringify(args), subCalls, turn: 0 }
-  : { kind: 'tool-result', name, callId, call: { name, argsRaw: JSON.stringify(args) }, content: text$(content), isError, subCalls })
+  : { kind: 'tool-result', name, callId, call: { name, argsRaw: JSON.stringify(args) }, content: text$(content), isError, ...(error === undefined ? {} : { error }), subCalls })
 const program = (subCalls, over = {}) => call('run_code', 'program', { subCalls, ...over })
 
 test('a member\'s messages in a row stack under its name, and an event line starts a new block', () => {
@@ -174,6 +174,15 @@ test('a paused group shows the wait, and Continue releases it while calls are pa
   assert.ok(button, 'the Continue button is drawn while the room parks calls')
   button.props.onClick()
   assert.deepEqual(clicked, ['room'])
+})
+
+// The admin was alone with the user's message and passed: the round shows the
+// notice, so the user sees why nothing was answered.
+test('a group whose admin passed alone shows the notice', () => {
+  const replies = [{ kind: 'admin-passed', botId: 'chief', name: 'Chief', time: at(0, 14, 5) }]
+  const out = show(call('group_relay', 'direct', { content: { replies } }), { sessionId: 'room' })
+  const events = findAll(out, node => node.props?.className === 'bt-event').map(text)
+  assert.deepEqual(events, ['Chief did not answer or call anyone; call a member with @Name'])
 })
 
 // The trigger of a post in a group chat carries the event's time, not the post's.
@@ -290,6 +299,101 @@ test('a hidden Bot-to-Bot turn draws none of its sub-calls', () => {
   const root = program([call('request_secret', 'program:ptc:1', { args: { name: 'DEMO_TOKEN' } }), call('message_bot', 'program:ptc:2', { args: { to: 'Writer' } })])
   assert.equal(shown(root, { roster }), '')
   assert.match(shown(root, { roster, turn: 2 }), /Chief needs a key.*Messaged/)
+})
+
+// The line a memory write that changed nothing draws.
+const memoryLine = (root, options) => find(show(root, options), node => node.props?.className === 'bt-event bt-event-error')
+// The buttons a line draws.
+const lineButtons = node => findAll(node, entry => entry.type === 'button')
+// A write that failed, with the kind of failure the host named.
+const failedWrite = (name, args, code, message) => call(name, `${name}:1`, {
+  args, content: `Error: ${message}`, isError: true, error: { name: 'MemoryWriteError', code },
+})
+
+test('a memory write that failed says so, and opens the memory it meant to change', () => {
+  const opened = []
+  const actions = { openMemory: id => opened.push(id) }
+  const line = memoryLine(failedWrite('remember', { scope: 'Writer' }, 'memory/refused', 'Only Main Bots and group admins write the team memory.'), { actions })
+  assert.match(text(line), /Couldn't save to memory/)
+  // The reason is ours, in our words: what the host said stays in the tool record.
+  assert.match(text(line), /The memory refused this change/)
+  assert.doesNotMatch(text(line), /team memory/)
+  assert.equal(line.props.role, 'status')
+  assert.equal(line.props.title, 'memory/refused')
+  // The way into the panel opens the scope the call named.
+  lineButtons(line)[0].props.onClick()
+  assert.deepEqual(opened, ['writer'])
+})
+
+test('a removal that failed says it could not remove the entry, and why', () => {
+  const line = memoryLine(failedWrite('forget', {}, 'memory/no-match', 'No entry in your memory matches "tea".'), {})
+  assert.match(text(line), /Couldn't remove from memory/)
+  assert.match(text(line), /No saved entry matched/)
+  // The entry the call named is not repeated in the notice.
+  assert.doesNotMatch(text(line), /tea/)
+})
+
+test('the reason follows the kind of failure, not the words of the host', () => {
+  const reason = (code, message = 'Error: Something went wrong.') => text(memoryLine(failedWrite('remember', {}, code, message), {}))
+  assert.match(reason('memory/empty'), /Write something to save/)
+  assert.match(reason('memory/no-match'), /No saved entry matched/)
+  assert.match(reason('memory/refused'), /The memory refused this change/)
+  assert.match(reason('memory/denied'), /The memory refused this change/)
+  assert.match(reason('memory/failed'), /The memory could not be changed/)
+  // A failure this interface does not know still says what happened, in short.
+  assert.match(reason('memory/bot-gone'), /The memory could not be changed/)
+})
+
+test('a write with nothing in it says what is missing', () => {
+  const line = memoryLine(failedWrite('remember', {}, 'memory/empty', 'Write the entry to save.'), {})
+  assert.match(text(line), /Couldn't save to memory · Write something to save/)
+})
+
+test('a memory write for a Bot that is gone says so, with no button to nowhere', () => {
+  const opened = []
+  const line = memoryLine(failedWrite('remember', { scope: 'Ghost' }, 'memory/refused', 'No Bot named Ghost.'), { actions: { openMemory: id => opened.push(id) } })
+  assert.match(text(line), /Couldn't save to memory/)
+  assert.equal(lineButtons(line).length, 0)
+  assert.deepEqual(opened, [])
+})
+
+test('a group write opens the memory of the group, and outside a group it has no button', () => {
+  const opened = []
+  const actions = { openMemory: id => opened.push(id) }
+  const failed = failedWrite('remember', { scope: 'group' }, 'memory/refused', 'Only the members of a group chat write its memory.')
+  const inGroup = memoryLine(failed, { sessionId: 'room', actions })
+  assert.match(text(inGroup), /Couldn't save to memory/)
+  lineButtons(inGroup)[0].props.onClick()
+  assert.deepEqual(opened, ['room'])
+  // Outside a group chat there is no group memory to open.
+  const outside = memoryLine(failed, { actions })
+  assert.equal(lineButtons(outside).length, 0)
+})
+
+test('a memory result that is no saved entry says the memory did not change', () => {
+  const line = memoryLine(call('remember', 'remember:1', { content: 'Only Main Bots and group admins write the team memory.' }), {})
+  assert.match(text(line), /Memory not changed/)
+  assert.doesNotMatch(text(line), /team memory/)
+})
+
+test('an entry that was already saved keeps the quiet line, not a failure and not a change', () => {
+  const opened = []
+  const out = show(call('remember', 'remember:1', { content: 'Already in your memory (MEMORY.md): "Likes tea". Nothing changed.' }), { actions: { openMemory: id => opened.push(id) } })
+  assert.equal(find(out, node => node.props?.className === 'bt-event bt-event-error'), undefined)
+  assert.match(text(out), /Already saved/)
+  assert.doesNotMatch(text(out), /Memory updated/)
+  lineButtons(out)[0].props.onClick()
+  assert.deepEqual(opened, ['chief'])
+})
+
+test('a save that came later does not say the earlier one recovered', () => {
+  const failed = failedWrite('remember', {}, 'memory/refused', 'Only Main Bots and group admins write the team memory.')
+  const saved = call('remember', 'remember:2', { content: 'Saved to your memory, in MEMORY.md (MEMORY.md: 20 of 4000 characters).' })
+  const out = shown(program([failed, saved]))
+  // The failure stands, with its own reason; the later save only says its own.
+  assert.equal(count(out, "Couldn't save to memory"), 1)
+  assert.equal(count(out, 'Only Main Bots and group admins write the team memory'), 0)
+  assert.match(out, /Memory updated/)
 })
 
 test('a message line opens the exchange of the chat\'s Bot, from any part', () => {
@@ -494,6 +598,35 @@ test('a secret in a hidden turn shows in the dock instead of nowhere', () => {
   assert.equal(text(out), '')
   assert.match(docks(store, roster), /Chief needs a key/)
   unmount()
+})
+
+// 公开#557: compaction prunes the middle of a long relay result, leaving invalid
+// JSON — draw the replies that survived, or a marker row, never a blank turn.
+test('a pruned group relay still draws the replies that survived', () => {
+  const pruned = '{"replies":[{"botId":"writer","text":"Still here."},{"botId":"chief","text":"[... tool result middle pruned ...'
+  const out = show(call('group_relay', 'direct', { content: pruned }), { sessionId: 'room' })
+  assert.match(text(out), /Writer.*Still here\./)
+  const gone = show(call('group_relay', 'direct', { content: '{"replies":[{"botId":"writer","text":"cut' }), { sessionId: 'room' })
+  assert.match(text(gone), /The group replies could not be shown/)
+})
+
+// The prune marker's "]" must not end the scan, and a cut inside a string must
+// not hide the replies after it either.
+test('a group relay recovers replies after the prune marker', () => {
+  const between = '{"replies":[{"botId":"writer","text":"First."}[... tool result middle pruned ...],{"botId":"chief","text":"Last."}]}'
+  const out = show(call('group_relay', 'direct', { content: between }), { sessionId: 'room' })
+  assert.match(text(out), /Writer.*First\..*Chief.*Last\./)
+  const inside = '{"replies":[{"botId":"writer","text":"First."},{"botId":"chief","text":"cut[... tool result middle pruned ...]{"botId":"writer","text":"Last."}]}'
+  const out2 = show(call('group_relay', 'direct', { content: inside }), { sessionId: 'room' })
+  assert.match(text(out2), /Writer.*First\..*Last\./)
+})
+
+// Only the compactor's own marker splits the text: a reply that quotes a
+// bracketed ellipsis stays whole.
+test('a reply quoting a bracketed ellipsis is not mistaken for a prune marker', () => {
+  const quoted = '{"replies":[{"botId":"writer","text":"Step [... details ...] done."}[... tool result middle pruned ...]{"botId":"chief","text":"Last."}]}'
+  const out = show(call('group_relay', 'direct', { content: quoted }), { sessionId: 'room' })
+  assert.match(text(out), /Step \[... details ...] done\..*Chief.*Last\./)
 })
 
 // #38: a PTC group round's replies vanished once the round ended.

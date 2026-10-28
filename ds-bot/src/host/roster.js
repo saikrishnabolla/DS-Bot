@@ -5,6 +5,40 @@ import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOT
 import { currentColor, isColor, normalize, unquote } from './text.js'
 import { nameProblem } from '../shared/mentions.js'
 
+const BROWSER_GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete', '*'])
+const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/
+
+function cleanBrowserGrants(input) {
+  if (input === null) return null
+  if (!Array.isArray(input) || input.length > 50) throw new Error('Browser grants must be an array of at most 50 entries')
+  const grants = []
+  const seen = new Set()
+  for (const entry of input) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('Each browser grant must have a site and kinds')
+    }
+    const until = entry.until
+    if (until !== undefined) {
+      if (typeof until !== 'number' || !Number.isFinite(until)) {
+        throw new Error('Browser grant until must be a future epoch-millisecond timestamp')
+      }
+      if (until <= Date.now()) continue
+    }
+    const site = typeof entry.site === 'string' ? entry.site.trim().toLowerCase() : ''
+    if (site !== '*' && !HOSTNAME.test(site)) throw new Error('Browser grant site must be * or a hostname')
+    if (!Array.isArray(entry.kinds) || entry.kinds.length === 0
+      || entry.kinds.some(kind => typeof kind !== 'string' || !BROWSER_GRANT_KINDS.has(kind))) {
+      throw new Error('Browser grant kinds must be a non-empty subset of post, upload, download, delete, *')
+    }
+    const kinds = [...new Set(entry.kinds)].sort()
+    const key = `${site}\0${kinds.join('\0')}\0${until ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    grants.push({ site, kinds, ...(until !== undefined ? { until } : {}) })
+  }
+  return grants
+}
+
 export function install(rt) {
   const { ctx, defaults, state } = rt
 
@@ -109,8 +143,12 @@ export function install(rt) {
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultModel()
     // A thinking level needs a model to resolve against; with none it would be dropped
     // silently, so the create fails before a Session is made.
-    if (effort !== undefined && effort !== '' && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
-    const effortId = modelRef === undefined ? undefined : await rt.resolveEffort(modelRef, effort)
+    if (effort && modelRef === undefined) throw new Error('Pick a model before choosing a thinking level')
+    // An explicit level wins; an explicit Default (null) picks the model's own
+    // level; an untouched pick inherits the profile default's level.
+    const effortId = modelRef === undefined ? undefined
+      : effort === null || effort === '' ? undefined
+      : (await rt.resolveEffort(modelRef, effort)) ?? await rt.defaultEffort(modelRef)
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
     const id = await createSession(cleanName, { dir })
     try {
@@ -199,15 +237,21 @@ export function install(rt) {
       color: bot.color,
       avatar: bot.avatar,
       model: served ? bot.model : undefined,
-      effort: served ? bot.effort : undefined,
+      // A copy of a Bot on the model's own default stays on it (null marks the
+      // explicit Default pick); else the create would inherit the profile level.
+      effort: served ? (bot.effort ?? null) : undefined,
       workDir,
       copyOf: bot.id,
     })
   }
 
-  async function updateBot(id, patch) {
+  async function updateBot(id, patch, actorId, fromSessionId) {
     const bot = rt.botOf(id)
     if (bot === undefined) throw new Error('Unknown Bot')
+    if (patch.browserGrants !== undefined && actorId !== undefined) {
+      throw new Error(`Only the user can set what ${bot.name} may do in the browser`)
+    }
+    const browserGrants = patch.browserGrants === undefined ? undefined : cleanBrowserGrants(patch.browserGrants)
     // Checked first, so a folder, model or level that does not pass leaves the rest
     // unchanged too.
     const moving = patch.workDir !== undefined
@@ -239,6 +283,8 @@ export function install(rt) {
       await ctx.sessionTitle.rename(agent.session, next)
       await followMemberNames(Object.values(state.rooms).filter(room => room.members.includes(id)))
     }
+    const roleBefore = bot.role
+    const instructionsBefore = bot.instructions
     if (patch.role !== undefined) bot.role = String(patch.role).trim().slice(0, 24)
     if (patch.instructions !== undefined) bot.instructions = String(patch.instructions).trim()
     let modelChanged = false
@@ -262,12 +308,33 @@ export function install(rt) {
       modelChanged = true
     }
     if (patch.permission !== undefined) await rt.setPermission(bot, patch.permission)
+    if (browserGrants !== undefined) {
+      if (browserGrants === null) delete bot.browserGrants
+      else bot.browserGrants = browserGrants
+    }
     const moved = moving && workDir !== bot.workDir
     if (moving) {
       if (workDir === undefined) delete bot.workDir
       else bot.workDir = workDir
     }
     await rt.save()
+    // The system prompt reads the live profile every turn, but a Session with
+    // several rounds behind it follows the old kickoff's pull until a message
+    // lands; notify the Bot's chat so the next turn honors the new profile.
+    const notes = []
+    if (bot.role !== roleBefore) notes.push(`Your role is now "${bot.role || '(none)'}"`)
+    if (bot.instructions !== instructionsBefore) notes.push(`Your instructions now read:\n${bot.instructions || '(none)'}`)
+    // A held greeting means the model pick is still open: the kickoff it later sends
+    // already reads the new profile, and a notice would start a turn before that.
+    // A Bot editing itself in its own chat just got the tool result in the turn
+    // that made the edit; a notice there would only buy it a second, unsolicited
+    // reply. The same edit made from a group Session reaches no own-chat turn, so
+    // the notice still goes out.
+    const selfEditInChat = actorId === bot.id && fromSessionId === rt.chatOf(bot.id)
+    if (notes.length > 0 && bot.kickoff === undefined && !selfEditInChat) {
+      void rt.deliver({ toId: bot.id, text: notes.join('\n'), role: 'update' })
+        .catch(error => rt.warn('ds-bot: profile update for %s not delivered: %s', bot.name, error?.message ?? error))
+    }
     if (modelChanged) await rt.applyModel(bot, { force: true })
     if (moved) void rt.followFolder(bot.id)
     if (bot.model && bot.kickoff !== undefined) {

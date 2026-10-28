@@ -35,7 +35,7 @@ Tested with dsh `0.2.1-rc.2` (Web) and `0.2.0-rc.2` (Web and Desktop).
 
 The [project page](../README.md#install) has the full steps for dsh Desktop and dsh Web. In short:
 
-- dsh Desktop: Settings → Plugins → add `ds-bot` (npm), a `.tgz` file, or `github:Fei2411/DeepSeek-Bot#v0.1.7&path:/ds-bot`.
+- dsh Desktop: Settings → Plugins → add `ds-bot` (npm), a `.tgz` file, or `github:Fei2411/DS-Bot#v0.1.7&path:/ds-bot`.
 - Command line: `dsh plugin --profile desktop add ds-bot` (or `--profile web`).
 
 To work on the plugin from a checkout, add it to a dsh profile as a linked dependency and a bundle:
@@ -192,11 +192,13 @@ Files in `bot/`:
 |---|---|
 | `state.json` | The team: Bots, groups, Bot-to-Bot messages, preferences and open questions. A long message keeps only its first 2,000 characters here; all of it is in the Session it went to. |
 | `group-lines/` | Long group lines, up to the 20,000 characters a member reads, one file per line; each is removed when its line leaves the group's latest 60 lines or the group is deleted |
+| `handoff-results/` | The whole result of a piece of work a Bot handed on, when it is longer than the 2,000 characters `state.json` keeps, one file per result; each is removed once the answer it went into has gone up |
 | `state.lock` | The dsh that is using this data (pid and host), its mtime bumped as a heartbeat. It is removed when that dsh exits; a leftover whose heartbeat has stopped is taken over by the next dsh to load. |
 | `chat-index.sqlite` | Full-text index of older chat parts (`read_own_chat`); rebuilt if deleted |
 | `usage.sqlite` | Token counts for the Usage page; rebuilt from the Session logs if deleted, losing only the calls outside the logs and the names of deleted Bots |
 | `memory/` | Memory (see [Memory](#memory)): `bots/<id>/`, `groups/<id>/` and `team/` (`MEMORY.md` and topics), `journal.jsonl` (every change), `snapshots/` (the section each Session froze), `summaries/` (the panel's summary; safe to delete), `reviewed.json` (how far the memory review has read) and `archive/` (deleted Bots and group chats) |
 | `ocr.json` | Cache of image text; safe to delete |
+| `avatars/` | The avatar library: the profile photos you imported once, so several Bots can use the same picture. `index.json` lists them, `files/` holds the images, each named by the hash of its bytes, so the same photo is stored once. The Bots that use a photo keep their own copy. Safe to delete. |
 | `workspace` | The team workspace: the working folder of every Bot without one of its own (`config.workspace` changes it) |
 | `secrets.json` | Saved secrets. Treat backups of it like passwords. |
 | `logs/diagnostics.jsonl` | Recent errors and warnings, with keys, tokens, saved secrets and the home folder removed. It moves to `diagnostics.jsonl.1` past 1 MB. Safe to delete. |

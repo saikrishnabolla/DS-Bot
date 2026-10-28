@@ -4,6 +4,65 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-27
+
+### Added
+
+- The desktop app keeps running in the system tray when you close its window, so Bots go on with their work. Click the tray icon to open the window again, or choose Quit there to end the app. ([#500](https://github.com/Fei2411/DS-Bot/issues/500), [#549](https://github.com/Fei2411/DS-Bot/pull/549))
+- An avatar library in Bot settings and New Bot: import several photos at once and reuse them for any Bot. If some files fail, the others are still imported. ([#484](https://github.com/Fei2411/DS-Bot/issues/484), [#491](https://github.com/Fei2411/DS-Bot/pull/491))
+- When a Bot hands its browser to you for a sign-in, a payment or a check, a card in the chat lets you take over, skip it, or tell the Bot you're done. ([#591](https://github.com/Fei2411/DS-Bot/pull/591))
+- A message you steer into a running turn shows "Not read yet" under it until the Bot reads it. ([#581](https://github.com/Fei2411/DS-Bot/issues/581), [#598](https://github.com/Fei2411/DS-Bot/pull/598))
+- Old `/btw` cards left by 0.2.1 can be deleted from the chat. ([#550](https://github.com/Fei2411/DS-Bot/issues/550), [#555](https://github.com/Fei2411/DS-Bot/pull/555))
+
+### Changed
+
+- Long replies are easier to read: in the desktop app, Chinese text uses the system font, lines are a little looser and stay even around inline code, and list items have room between them. The body font you set in DSH still comes first. ([#601](https://github.com/Fei2411/DS-Bot/issues/601), [#607](https://github.com/Fei2411/DS-Bot/pull/607))
+- Attached images and files sit on their own row above the text in the message box. ([#565](https://github.com/Fei2411/DS-Bot/issues/565), [#566](https://github.com/Fei2411/DS-Bot/pull/566))
+- When you steer a queued message into the running turn, the working indicator starts its clock again. ([#580](https://github.com/Fei2411/DS-Bot/issues/580), [#587](https://github.com/Fei2411/DS-Bot/pull/587))
+- A change to a Bot's role or instructions takes effect on its next reply: the Bot is told about it. ([#535](https://github.com/Fei2411/DS-Bot/issues/535), [#584](https://github.com/Fei2411/DS-Bot/pull/584))
+- A new Bot starts on the thinking level of the default model you set in DSH. ([#525](https://github.com/Fei2411/DS-Bot/issues/525), [#586](https://github.com/Fei2411/DS-Bot/pull/586))
+- A group member that is busy reads your correction at its next step, and the answer to a later call still goes back to the one who asked. ([#534](https://github.com/Fei2411/DS-Bot/issues/534), [#585](https://github.com/Fei2411/DS-Bot/pull/585))
+- In an admin-led group, if the only admin who speaks first passes without an answer, the group tells you to call a member with @Name. ([#512](https://github.com/Fei2411/DS-Bot/issues/512), [#605](https://github.com/Fei2411/DS-Bot/pull/605))
+- The Connect plugins button is no longer in the Bot sidebar. Manage connectors in Settings or the account menu. ([#452](https://github.com/Fei2411/DS-Bot/issues/452), [#570](https://github.com/Fei2411/DS-Bot/pull/570))
+- The Bot tool that lists models is now `list_bot_models`, so DS Bot installs together with plugins that have their own `list_models`. ([#568](https://github.com/Fei2411/DS-Bot/issues/568), [#575](https://github.com/Fei2411/DS-Bot/pull/575))
+- Buttons on question, secret, approval and model key cards show a focus ring when you move to them with the keyboard. ([#614](https://github.com/Fei2411/DS-Bot/pull/614))
+
+### Fixed
+
+- The Linux desktop packages can read images. ([#542](https://github.com/Fei2411/DS-Bot/issues/542), [#544](https://github.com/Fei2411/DS-Bot/pull/544))
+- A browser screenshot no longer breaks the Bot's conversation, and a conversation that an earlier screenshot broke works again. ([#560](https://github.com/Fei2411/DS-Bot/issues/560), [#578](https://github.com/Fei2411/DS-Bot/pull/578))
+- The first-run import copies each group's own conversation, so imported groups open. ([#551](https://github.com/Fei2411/DS-Bot/issues/551), [#567](https://github.com/Fei2411/DS-Bot/pull/567))
+- When a Bot moves to a fresh part, a scheduled task no longer stays in both parts and runs twice. ([#511](https://github.com/Fei2411/DS-Bot/issues/511), [#604](https://github.com/Fei2411/DS-Bot/pull/604))
+- If a message to a group member fails, the member gets the lines it missed on its next turn. ([#510](https://github.com/Fei2411/DS-Bot/issues/510), [#569](https://github.com/Fei2411/DS-Bot/pull/569))
+- Earlier parts of a Bot's conversation are stopped and archived when it moves to a fresh part, so they no longer show as active in DSH's Agent mode. ([#571](https://github.com/Fei2411/DS-Bot/issues/571), [#573](https://github.com/Fei2411/DS-Bot/pull/573))
+- Earlier parts of a Bot's conversation stay readable when their agent is gone. ([#537](https://github.com/Fei2411/DS-Bot/issues/537), [#583](https://github.com/Fei2411/DS-Bot/pull/583))
+- Opening a subagent's Session no longer reports a false error in Feedback. ([#540](https://github.com/Fei2411/DS-Bot/issues/540), [#582](https://github.com/Fei2411/DS-Bot/pull/582))
+- In the bubble layout, the end of a one-line reply can be selected and its links clicked. ([#563](https://github.com/Fei2411/DS-Bot/issues/563), [#572](https://github.com/Fei2411/DS-Bot/pull/572))
+- The Bot list shows in the sidebar when the window opens in Bot mode on a cold start. ([#559](https://github.com/Fei2411/DS-Bot/issues/559), [#574](https://github.com/Fei2411/DS-Bot/pull/574))
+- A group chat no longer shows a blank turn when an old reply was removed by compaction. ([#557](https://github.com/Fei2411/DS-Bot/issues/557), [#576](https://github.com/Fei2411/DS-Bot/pull/576))
+- A long message that starts with a code block folds to a real preview, and Show all shows it. ([#520](https://github.com/Fei2411/DS-Bot/issues/520), [#579](https://github.com/Fei2411/DS-Bot/pull/579))
+- The sidebar scrollbar no longer touches the highlighted row. ([#595](https://github.com/Fei2411/DS-Bot/issues/595), [#596](https://github.com/Fei2411/DS-Bot/pull/596))
+
+## [0.2.2] - 2026-10-25
+
+### Added
+
+- Bots can drive a browser: one Playwright profile per Bot, with sign-ins kept between runs. Posting, uploading, downloading and deleting need your approval first, and payments always go back to you. In the desktop app the Bot's browser shows as a panel you can take over, stop, or give back at any time. ([#417](https://github.com/Fei2411/DeepSeek-Bot/pull/417), [#528](https://github.com/Fei2411/DeepSeek-Bot/pull/528))
+- `/btw` is now Side chat: type `/side` or pick Side chat from the Bot panel's ··· menu and ask follow-ups in the side panel. The panel menu also opens a terminal or the file tree. ([#489](https://github.com/Fei2411/DeepSeek-Bot/issues/489), [#522](https://github.com/Fei2411/DeepSeek-Bot/pull/522))
+- The desktop app's About page shows whether DS Bot is up to date, downloading or ready to restart, with a Check for updates button. ([#499](https://github.com/Fei2411/DeepSeek-Bot/issues/499), [#519](https://github.com/Fei2411/DeepSeek-Bot/pull/519))
+
+### Fixed
+
+- Complete results from delegated Bot work stay available after a restart, including nested handoffs. ([#479](https://github.com/Fei2411/DeepSeek-Bot/issues/479), [#487](https://github.com/Fei2411/DeepSeek-Bot/pull/487))
+- A delegated reply missed while the plugin restarts is delivered or explained, instead of leaving the wait hanging. ([#483](https://github.com/Fei2411/DeepSeek-Bot/issues/483), [#497](https://github.com/Fei2411/DeepSeek-Bot/pull/497))
+- Bots can safely retry a named `message_bot` request without sending the same work twice. ([#480](https://github.com/Fei2411/DeepSeek-Bot/issues/480), [#488](https://github.com/Fei2411/DeepSeek-Bot/pull/488))
+- An interrupted memory save is recovered together with its topic links and change history. ([#481](https://github.com/Fei2411/DeepSeek-Bot/issues/481), [#492](https://github.com/Fei2411/DeepSeek-Bot/pull/492))
+- A failed `remember` or `forget` shows a notice in the chat with a route to memory management. ([#482](https://github.com/Fei2411/DeepSeek-Bot/issues/482), [#495](https://github.com/Fei2411/DeepSeek-Bot/pull/495))
+- In DSH Desktop, Update installs the new version of an already-installed DS Bot instead of failing with "already-installed". ([#423](https://github.com/Fei2411/DeepSeek-Bot/issues/423), [#505](https://github.com/Fei2411/DeepSeek-Bot/pull/505))
+- Cookie imports from Chrome or Edge explain that the browser locks its cookies and suggest a cookie file, instead of silently importing nothing. ([#490](https://github.com/Fei2411/DeepSeek-Bot/issues/490), [#503](https://github.com/Fei2411/DeepSeek-Bot/pull/503))
+- Switching a Bot's working folder shows a short "Switching working folder" status line while the conversation moves to a fresh part. ([#486](https://github.com/Fei2411/DeepSeek-Bot/issues/486), [#493](https://github.com/Fei2411/DeepSeek-Bot/pull/493))
+- The release attaches the Linux packages again; a missing attached file now fails the release instead of shipping without it. ([#496](https://github.com/Fei2411/DeepSeek-Bot/pull/496))
+
 ## [0.2.1] - 2026-10-23
 
 ### Added
