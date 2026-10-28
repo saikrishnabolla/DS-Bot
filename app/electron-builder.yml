@@ -8,11 +8,11 @@ files:
   - package.json
   - src/**
   - assets/**
-# The Host runs pnpm as a separate Node process to install plugins, so it must be a plain file.
-asarUnpack:
-  - node_modules/pnpm/**
-  # Automatic unpacking misses versioned Linux libraries such as libvips-cpp.so.8.18.7.
-  - node_modules/@img/sharp*/**
+# No asar archive: the app stays plain files. Packages start programs that they ship by paths
+# next to their own files: the Host runs pnpm to install plugins, and file previews run the
+# LibreOffice engine. Electron cannot start a program by a path inside an archive, even when
+# the program itself is unpacked (#679).
+asar: false
 # node-pty, sharp and koffi ship prebuilt binaries for each platform. A rebuild would compile
 # node-pty from source and needs a C++ toolchain.
 npmRebuild: false
