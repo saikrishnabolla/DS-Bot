@@ -8605,6 +8605,7 @@ function TeamSidebar(props) {
   const main = roster.byId[roster.mainBotId];
   useListGlide(listRef, wide, order.map((entry) => entry.item.id).join(","));
   useLandOnMainBot(roster, useSessions, actions);
+  useReportReady(roster.ready);
   const navigate = (open, id) => {
     const result = open(id);
     if (wide && window.innerWidth < 1024 && !closing.current) {
@@ -9013,6 +9014,14 @@ function AccountLauncher({ seat = true, settingsOpen, openSettings, openOnboardi
     ), document.body) : null
   );
 }
+var readyReported = false;
+function useReportReady(drawn) {
+  (0, import_react14.useEffect)(() => {
+    if (!drawn || readyReported) return;
+    readyReported = true;
+    void Promise.resolve().then(() => globalThis.dsBotApp?.ready?.()).catch(quietly("app ready"));
+  }, [drawn]);
+}
 function useLandOnMainBot(roster, useSessions, actions) {
   const mainView = useSessions((list) => {
     const row = Object.values(list.byId).find((session) => (session?.retainedBy?.mainView ?? 0) > 0);
@@ -9042,8 +9051,10 @@ function FooterAccount(props) {
   if (seated) return null;
   return (0, import_react14.createElement)("span", { className: "bt-foot-account" }, (0, import_react14.createElement)(AccountLauncher, { ...props, seat: false }));
 }
-function BotReturn({ wide, useSurface, actions }) {
+function BotReturn({ wide, useSurface, useRoster, actions }) {
   const mode = useSurface((value) => value.mode);
+  const ready = useRoster((value) => value.ready);
+  useReportReady(mode === "agent" && ready);
   if (mode !== "agent") return null;
   return (0, import_react14.createElement)(
     "button",

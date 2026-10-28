@@ -11,6 +11,7 @@ import { Shimmer, workPhrase } from './cells.js'
 import { springEasing, SPRING_SHAPE, useViewport, viewBottom } from './motion.js'
 import { hostText, t } from './i18n.js'
 import { showsDshRow } from './dsh-offer.js'
+import { quietly } from './diagnostics.js'
 
 // -------------------------------------------------------------------------
 // Sidebar
@@ -274,6 +275,7 @@ export function TeamSidebar(props) {
   const main = roster.byId[roster.mainBotId]
   useListGlide(listRef, wide, order.map(entry => entry.item.id).join(','))
   useLandOnMainBot(roster, useSessions, actions)
+  useReportReady(roster.ready)
   // The shell keeps wide content during its collapse fade. Normalize through its
   // public expansion action before toggling; coalesce synchronous activations
   // until React commits the result.
@@ -626,6 +628,17 @@ export function AccountLauncher({ seat = true, settingsOpen, openSettings, openO
           }, h(Icon), h('span', { className: 'bt-menu-label' }, label), hint ? h('span', { className: 'bt-menu-hint' }, hint) : null))))), document.body) : null)
 }
 
+// The desktop app keeps its main window hidden until the team interface has drawn
+// the first state, and shows its failure page when that never comes.
+let readyReported = false
+function useReportReady(drawn) {
+  useEffect(() => {
+    if (!drawn || readyReported) return
+    readyReported = true
+    void Promise.resolve().then(() => globalThis.dsBotApp?.ready?.()).catch(quietly('app ready'))
+  }, [drawn])
+}
+
 // Opens the Main Bot whenever the main view holds no Bot conversation, the way
 // The view always lands on a Bot rather than an empty New Session page.
 // When a Bot's chat moves on to a fresh part, the shell clears the view of the part
@@ -664,8 +677,11 @@ export function FooterAccount(props) {
 
 // The only entry registered in every mode: in Agent mode the whole Bot surface is
 // withdrawn, and this button in the shell's own footer is the way back.
-export function BotReturn({ wide, useSurface, actions }) {
+export function BotReturn({ wide, useSurface, useRoster, actions }) {
   const mode = useSurface(value => value.mode)
+  const ready = useRoster(value => value.ready)
+  // Agent mode draws no team sidebar; there this button is the team interface.
+  useReportReady(mode === 'agent' && ready)
   if (mode !== 'agent') return null
   return h('button', { type: 'button', className: 'bt-return', 'aria-label': t('DS Bot'), title: t('DS Bot'), onClick: () => actions.setSurface('bot') },
     h(BotMark, { look: MAIN_LOOK, size: 20 }),
