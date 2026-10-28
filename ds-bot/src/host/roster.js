@@ -185,15 +185,18 @@ export function install(rt) {
       const opener = `${kickoff}\nWhere your instructions say otherwise, follow them.`
       const text = !main && language ? `${opener}\nWrite in ${language}.` : opener
       const bot = state.bots[id]
+      // The Bot is saved by now; a failure here must not archive it in the catch below.
+      const scopeTools = () => rt.resolveAgent(id)
+        .catch(error => rt.warn('ds-bot: scoped tools for %s not applied: %s', cleanName, error))
       if (modelRef === undefined) {
         bot.kickoff = { text, from: createdBy ?? null, ...(main ? { main: true } : {}) }
         await rt.save()
         // The Session was resolved before the Bot existed, so its scoped tools land now.
-        await rt.resolveAgent(id)
+        await scopeTools()
         return bot
       }
       await rt.save()
-      await rt.resolveAgent(id)
+      await scopeTools()
       // The greeting runs on the Bot's own model, once its provider is registered.
       void rt.waitForModel(bot)
         .then(() => rt.applyModel(bot).catch(error => rt.warn('ds-bot: model for %s not applied: %s', cleanName, error)))
