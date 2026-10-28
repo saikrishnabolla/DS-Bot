@@ -188,9 +188,12 @@ export function install(rt) {
       if (modelRef === undefined) {
         bot.kickoff = { text, from: createdBy ?? null, ...(main ? { main: true } : {}) }
         await rt.save()
+        // The Session was resolved before the Bot existed, so its scoped tools land now.
+        await rt.resolveAgent(id)
         return bot
       }
       await rt.save()
+      await rt.resolveAgent(id)
       // The greeting runs on the Bot's own model, once its provider is registered.
       void rt.waitForModel(bot)
         .then(() => rt.applyModel(bot).catch(error => rt.warn('ds-bot: model for %s not applied: %s', cleanName, error)))
