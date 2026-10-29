@@ -298,8 +298,10 @@ export function install(rt) {
     saved.agentsPending ??= {}
     return saved
   }
+  let stopped = false
   let writing = Promise.resolve()
   const persist = () => {
+    if (stopped) return writing
     const text = JSON.stringify(data(), null, 1)
     writing = writing.then(async () => {
       await mkdir(dirname(path), { recursive: true })
@@ -315,6 +317,7 @@ export function install(rt) {
   const noted = new Map()
   let lastActivity = Date.now()
   ctx.on('agent/status', ({ agent, status }) => {
+    if (stopped) return
     const id = agent?.id
     if (id === undefined || !rt.isBotSession(id)) return
     lastActivity = Date.now()
@@ -490,12 +493,14 @@ export function install(rt) {
   // proposal still waiting is skipped: its chat is read again in the next pass.
   let running
   async function run() {
+    if (stopped) return 0
     if (running) return running
     running = (async () => {
       const store = data()
       store.lastRun = Date.now()
       let made = 0
       for (const [botId, pendingSessions] of Object.entries(store.pending)) {
+        if (stopped) break
         const bot = rt.botOf(botId)
         if (bot === undefined) {
           delete store.pending[botId]
@@ -507,8 +512,10 @@ export function install(rt) {
         try {
           const read = []
           for (const sessionId of sessions) read.push({ sessionId, ...await linesSince(sessionId) })
+          if (stopped) return made
           const lines = read.flatMap(entry => entry.lines)
           const proposal = lines.length === 0 ? undefined : await reviewSkill(bot, lines)
+          if (stopped) return made
           if (proposal !== undefined) {
             store.proposals[proposal.id] = proposal
             made += 1
@@ -540,6 +547,7 @@ export function install(rt) {
       }
       if (config.agentsMd !== false) {
         for (const [folder, group] of Object.entries(store.agentsPending)) {
+          if (stopped) break
           let bot = rt.botOf(group.botId)
           if (bot === undefined) {
             const contributor = group.records.find(item => rt.botOf(item.botId) !== undefined)
@@ -555,6 +563,7 @@ export function install(rt) {
             const reviewRecords = [...group.records]
             const reviewedOrders = reviewRecords.map(item => item.order)
             const current = await agentsFile(folder)
+            if (stopped) return made
             if (current === undefined && await exists(join(folder, 'AGENTS.md'))) continue
             const lines = []
             let used = 0
@@ -574,6 +583,7 @@ export function install(rt) {
             }
             if (lines.length === 0) continue
             const proposal = await reviewAgents(bot, folder, current, lines)
+            if (stopped) return made
             if (proposal !== undefined) {
               store.proposals[proposal.id] = proposal
               made += 1
@@ -595,6 +605,7 @@ export function install(rt) {
   }
 
   const due = () => {
+    if (stopped) return false
     const store = data()
     const hasPending = Object.values(store.pending).some(sessions => sessions.length > 0)
       || (config.agentsMd !== false && Object.values(store.agentsPending).some(queue => queue.records?.length > 0))
@@ -607,7 +618,12 @@ export function install(rt) {
       if (due()) void run().catch(error => rt.warn('ds-bot: learning pass failed: %s', error?.message ?? error))
     }, settings.tickMs)
     timer.unref?.()
-    return () => clearInterval(timer)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      // A new host may take over after disposal; finish only writes already queued.
+      return writing
+    }
   }, 'ds-bot: learning')
 
   // The user's answer to a card.

@@ -457,6 +457,32 @@ test('folders without a project marker, DSH data folders, and agentsMd:false are
   }
 })
 
+test('a disposed learning pass cannot overwrite the next host state with a late model reply', async t => {
+  for (const kind of ['skill', 'agents']) await t.test(kind, async t => {
+    let finishModel
+    const reply = new Promise(resolve => { finishModel = resolve })
+    const folder = kind === 'agents' ? projectFolder(t) : undefined
+    const seed = folder ? { ...TEAM, bots: { ...TEAM.bots, b2: { ...TEAM.bots.b2, workDir: folder } } } : TEAM
+    const runtime = await startRuntime({ seed, replies: kind === 'agents' ? [noneReply, reply] : [reply], config: { learningTimes: { tickMs: 100_000 } } })
+    t.after(() => runtime.stop())
+    await finishTurn(runtime.ctx)
+    await until(() => runtime.learningState().pending?.b2?.includes('b2'))
+    const pass = runtime.rt.learningRun()
+    const calls = kind === 'agents' ? 2 : 1
+    await until(() => runtime.requests.length === calls)
+    await runtime.ctx.dispose()
+
+    const next = { pending: { m1: ['m1'] }, proposals: { next: { id: 'next', botId: 'm1', name: 'next-host-skill' } } }
+    writeFileSync(runtime.learningPath, JSON.stringify(next))
+    finishModel(kind === 'agents' ? agentsEdit : createReply)
+    await pass
+    assert.deepEqual(runtime.learningState(), next)
+    assert.deepEqual(runtime.rt.learningView(), {})
+    assert.equal(await runtime.rt.learningRun(), 0)
+    assert.equal(runtime.requests.length, calls)
+  })
+})
+
 test('parseJson accepts fenced and unfenced objects and ignores garbage', () => {
   assert.deepEqual(parseJson('```json\n{"action":"none"}\n```'), { action: 'none' })
   assert.deepEqual(parseJson('Answer: {"action":"none"}'), { action: 'none' })
