@@ -223,6 +223,9 @@ export function install(rt) {
     await rt.applyPermission(member, id, room)
       .catch(error => rt.warn('ds-bot: permission for %s in %s not applied: %s', member.name, room.name, error))
     await rt.save()
+    // The Session was resolved before the group owned it, so its scoped tools land now.
+    await rt.resolveAgent(id)
+      .catch(error => rt.warn('ds-bot: scoped tools for %s in %s not applied: %s', member.name, room.name, error))
     await rt.ensureCapabilities(id)
     return { id, brief: await rt.ownChatBrief(member) }
   }
@@ -756,6 +759,7 @@ export function install(rt) {
       }
       // Thirty whole lines could fill the context, so a long one shows its start.
       const short = (line) => {
+        if (line.text === undefined) return ''
         const length = line.length ?? line.text.length
         return length <= TEXT_KEPT ? line.text : `${headOf(line.text, TEXT_KEPT)}… (cut; ${length} characters in all; read_group_chat with seq ${line.seq} reads it whole)`
       }
@@ -922,6 +926,22 @@ export function install(rt) {
     return true
   }
   rt.stopMemberWork = stopMemberWork
+
+  // The user stops everything at work in this group at once: the round the group's own
+  // Session runs, which takes the member turns it started with it, then each member's
+  // turn here. The round goes first, so it calls no one else meanwhile. Work the same
+  // Bots do in their own chats or other groups goes on.
+  async function stopRoomWork(roomId) {
+    await rt.load()
+    const room = rt.roomOf(roomId)
+    if (room === undefined) return false
+    const round = rt.roomBusy(room.id)
+    if (round) (await rt.resolveAgent(room.id)).cancel({ kind: 'user' })
+    let stopped = false
+    for (const botId of room.members) stopped = (await stopMemberWork(room.id, botId)) || stopped
+    return round || stopped
+  }
+  rt.stopRoomWork = stopRoomWork
 
   // The round said such a member posts when done; a failed model call is how it ended.
   // Nobody answers it.
