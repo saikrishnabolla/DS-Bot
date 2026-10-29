@@ -161,8 +161,10 @@ export function install(rt) {
     saved.learned ??= {}
     return saved
   }
+  let stopped = false
   let writing = Promise.resolve()
   const persist = () => {
+    if (stopped) return writing
     const text = JSON.stringify(data(), null, 1)
     writing = writing.then(async () => {
       await mkdir(dirname(path), { recursive: true })
@@ -178,6 +180,7 @@ export function install(rt) {
   const noted = new Map()
   let lastActivity = Date.now()
   ctx.on('agent/status', ({ agent, status }) => {
+    if (stopped) return
     const id = agent?.id
     if (id === undefined || !rt.isBotSession(id)) return
     lastActivity = Date.now()
@@ -277,12 +280,14 @@ export function install(rt) {
   // proposal still waiting is skipped: its chat is read again in the next pass.
   let running
   async function run() {
+    if (stopped) return 0
     if (running) return running
     running = (async () => {
       const store = data()
       store.lastRun = Date.now()
       let made = 0
       for (const [botId, pendingSessions] of Object.entries(store.pending)) {
+        if (stopped) break
         const bot = rt.botOf(botId)
         if (bot === undefined) {
           delete store.pending[botId]
@@ -294,8 +299,10 @@ export function install(rt) {
         try {
           const read = []
           for (const sessionId of sessions) read.push({ sessionId, ...await linesSince(sessionId) })
+          if (stopped) return made
           const lines = read.flatMap(entry => entry.lines)
           const proposal = lines.length === 0 ? undefined : await reviewSkill(bot, lines)
+          if (stopped) return made
           if (proposal !== undefined) {
             store.proposals[proposal.id] = proposal
             made += 1
@@ -317,6 +324,7 @@ export function install(rt) {
   }
 
   const due = () => {
+    if (stopped) return false
     const store = data()
     if (Object.keys(store.pending).length === 0 || rt.readOnly() !== undefined) return false
     if (Object.keys(rt.workView()).length > 0 || Date.now() - lastActivity < settings.idleMs) return false
@@ -327,7 +335,12 @@ export function install(rt) {
       if (due()) void run().catch(error => rt.warn('ds-bot: learning pass failed: %s', error?.message ?? error))
     }, settings.tickMs)
     timer.unref?.()
-    return () => clearInterval(timer)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      // A new host may take over after disposal; finish only writes already queued.
+      return writing
+    }
   }, 'ds-bot: learning')
 
   // The user's answer to a card.

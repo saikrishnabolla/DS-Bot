@@ -140,6 +140,27 @@ function addNextTurn(history) {
   )
 }
 
+test('a disposed learning pass cannot overwrite the next host state with a late model reply', async t => {
+  let finishModel
+  const reply = new Promise(resolve => { finishModel = resolve })
+  const runtime = await startRuntime({ replies: [reply], config: { learningTimes: { tickMs: 100_000 } } })
+  t.after(() => runtime.stop())
+  await finishTurn(runtime.ctx)
+  await until(() => runtime.learningState().pending?.b2?.includes('b2'))
+  const pass = runtime.rt.learningRun()
+  await until(() => runtime.requests.length === 1)
+  await runtime.ctx.dispose()
+
+  const next = { pending: { m1: ['m1'] }, proposals: { next: { id: 'next', botId: 'm1', name: 'next-host-skill' } } }
+  writeFileSync(runtime.learningPath, JSON.stringify(next))
+  finishModel(createReply)
+  await pass
+  assert.deepEqual(runtime.learningState(), next)
+  assert.deepEqual(runtime.rt.learningView(), {})
+  assert.equal(await runtime.rt.learningRun(), 0)
+  assert.equal(runtime.requests.length, 1)
+})
+
 test('parseJson accepts fenced and unfenced objects and ignores garbage', () => {
   assert.deepEqual(parseJson('```json\n{"action":"none"}\n```'), { action: 'none' })
   assert.deepEqual(parseJson('Answer: {"action":"none"}'), { action: 'none' })
