@@ -8,6 +8,8 @@ import { MENTION_ORIGIN, currentPart } from './text.js'
 import { SHELL_CSS, CONVERSATION_CSS, installStyles, installCompiledStyles } from './styles.js'
 import { lookOf } from './mark.js'
 import { TeamSidebar, YouAvatar, AccountLauncher, FooterAccount, BrandMark, BrandName, BotReturn, SIDEBAR_CSS, RETURN_CSS, holdShellShortcuts, openHarnessOnboarding, openHarnessSettings } from './sidebar.js'
+import { frameLayout, readSidebar, writeSidebar, toggledPref, DSH_NARROW } from './frame-layout.js'
+import { installFrameWatch } from './frame-watch.js'
 import { HeaderPill } from './header.js'
 import { ComposerPlus, ComposerVoice, menuIcons } from './composer.js'
 import { CHATS_SOURCE, atSources } from './at-menu.js'
@@ -58,7 +60,13 @@ export function apply(ctx) {
   let seenAt = seenStore.read()
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
-  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} })
+  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false })
+  // The left column's kept preference, and the frame geometry the layout rules
+  // in frame-layout.js read: the window and the shell's collapsed track come from
+  // installFrameWatch, the open column's width is the user's own.
+  let sidebarSaved = readSidebar()
+  const sidebarPref = createSource(sidebarSaved.pref)
+  const frame = createSource({ viewport: typeof window === 'undefined' ? 0 : window.innerWidth, sidebarWidth: sidebarSaved.width, collapsedWidth: 0, collapsed: false })
   // Bot mode paints the whole team surface; Agent mode withdraws every slot and
   // style so the shell's own interface returns. `plain` stays false until a Bot-mode
   // view hosts a plain session, which drops only the conversation replacements.
@@ -379,6 +387,16 @@ export function apply(ctx) {
   }
   const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id
   const show = listedOpener({ list: ctx.sessions.list, refresh: () => Promise.resolve(ctx.sessions.refresh?.()).catch(quietly('refresh sessions')), open: (target) => { expected = target; ctx.uiWorkspace.openSession(target) }, current: mainView })
+  // Whether the open Bot panel is folded away for lack of room: its opener then
+  // means "show it" (the column yields), not "close it". A panel shown because
+  // the column already yielded is not folded, so its opener closes it.
+  const panelFolded = (view) => {
+    const state = ui.getSnapshot()
+    if (state.details === null) return false
+    const f = frame.getSnapshot()
+    return frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, pref: sidebarPref.getSnapshot(), drawer: state.leftDrawer, panel: { view: view ?? state.view, yielded: state.panelYield === true } }).panel === 'folded'
+  }
+  const yieldBrowser = state => state.panelYield === true || panelFolded('browser')
   // Bot mode's view must hold a team conversation; an outside Session wears the
   // Bot skin without one. Runs whenever the surface is (or stays) Bot mode —
   // including a cold start, where no setSurface call ever fires.
@@ -401,7 +419,7 @@ export function apply(ctx) {
     }
   }
   const actions = {
-    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock }),
+    ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
@@ -481,6 +499,25 @@ export function apply(ctx) {
     },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
+    // The left column's own preference: 'open', 'rail' or 'hidden'. The switch
+    // remembers the shown one it hid; a drag sets the open column's width.
+    setSidebarPref: (pref) => {
+      const next = pref === 'rail' || pref === 'hidden' ? pref : 'open'
+      sidebarSaved = { ...sidebarSaved, pref: next, ...(next === 'hidden' ? {} : { shown: next }) }
+      writeSidebar(sidebarSaved)
+      sidebarPref.set(next)
+    },
+    toggleLeftHidden: () => {
+      ui.set(state => (state.leftDrawer || state.panelYield ? { ...state, leftDrawer: false, panelYield: false } : state))
+      actions.setSidebarPref(toggledPref(sidebarPref.getSnapshot(), sidebarSaved.shown))
+    },
+    setSidebarWidth: (width) => {
+      sidebarSaved = { ...sidebarSaved, width }
+      writeSidebar(sidebarSaved)
+      frame.set(state => (state.sidebarWidth === width ? state : { ...state, sidebarWidth: width }))
+    },
+    setLeftDrawer: (on) => ui.set(state => (state.leftDrawer === on ? state : { ...state, leftDrawer: on })),
+    setPanelYield: (on) => ui.set(state => (state.panelYield === on ? state : { ...state, panelYield: on })),
     // Agent mode hands the surface back to the shell; everything open on the Bot
     // surface closes first so nothing stale reopens on the way back.
     setSurface: (mode) => {
@@ -496,6 +533,9 @@ export function apply(ctx) {
       }
       writeMode(mode)
       surface.set(state => ({ ...state, mode }))
+      // The Bot view kept the shell's sidebar collapsed under its own column; the
+      // shell's own view gets it back (below DSH_NARROW the shell decides itself).
+      if (mode === 'agent' && window.innerWidth >= DSH_NARROW && frame.getSnapshot().collapsed) ctx.layout.toggleSidebar()
       if (mode !== 'bot') return
       ensureBotHome()
     },
@@ -530,7 +570,7 @@ export function apply(ctx) {
         if (!bot) return
         browsers.ensureTabs(bot.id)
         if (browsers.tabs.getSnapshot()[bot.id]?.active == null) browsers.openTab(bot.id)
-        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null }))
+        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null, panelYield: yieldBrowser(state) }))
       },
       // '+' on the strip or the drawer's new-tab card: a blank tab in the browser view.
       browserNewTab: (id) => {
@@ -538,7 +578,7 @@ export function apply(ctx) {
         if (!bot) return null
         browsers.ensureTabs(bot.id)
         const tabId = browsers.openTab(bot.id)
-        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null }))
+        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null, panelYield: yieldBrowser(state) }))
         return tabId
       },
       // A drawer card: its tab active, the panel on the browser view.
@@ -546,7 +586,7 @@ export function apply(ctx) {
         const bot = roster.getSnapshot().byId[id]
         if (!bot) return
         browsers.activate(bot.id, tabId)
-        ui.set(state => ({ ...state, details: id, view: 'browser' }))
+        ui.set(state => ({ ...state, details: id, view: 'browser', panelYield: yieldBrowser(state) }))
       },
       browserEnsure: botId => browsers.ensureTabs(botId),
       browserCloseTab: (botId, tabId) => browsers.closeTab(botId, tabId),
@@ -630,7 +670,7 @@ export function apply(ctx) {
   const browserPages = browsers?.pages ?? createSource({})
   const browserTabs = browsers?.tabs ?? createSource({})
   const browserHolds = browsers?.holds ?? createSource({})
-  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update } })
+  const face = () => ({ actions, hooks: { roster, ui, activity, work, memoryNews, registry, turnClock, live, cards, heldCards, browserPages, browserTabs, browserHolds, surface, update, frame, sidebarPref } })
   ctx.effect(() => noticeApprovals({
     work,
     roster,
@@ -785,6 +825,31 @@ export function apply(ctx) {
     controller.toggleSource(CHATS_SOURCE, { trigger: '@', query: '', quoted: false, position: 'inline', span })
   }
 
+  // The panel's yield flag and the drawer's flag follow the frame: opening (or
+  // re-aiming) a panel that does not fit yields the column to the rail; a panel
+  // that fits again, or is closed, and a drawer that no longer applies drop
+  // their flags.
+  const installFrameSync = () => {
+    let lastDetails = ui.getSnapshot().details
+    const sync = () => {
+      const s = ui.getSnapshot()
+      const f = frame.getSnapshot()
+      // Only a fresh open counts: a folded panel that just follows the chat to
+      // another subject is not the user asking to see it — the openers in
+      // team-actions carry the yield themselves.
+      const opened = s.details !== null && lastDetails === null
+      lastDetails = s.details
+      const layout = frameLayout({ viewport: f.viewport, sidebarWidth: f.sidebarWidth, pref: sidebarPref.getSnapshot(), drawer: s.leftDrawer === true, panel: s.details === null ? null : { view: s.view, yielded: false } })
+      if (s.details === null) {
+        if (s.panelYield) actions.setPanelYield(false)
+      } else if (!s.panelYield && opened && layout.panel === 'folded') actions.setPanelYield(true)
+      else if (s.panelYield && layout.panel === 'shown') actions.setPanelYield(false)
+      if (s.leftDrawer === true && layout.left !== 'drawer') actions.setLeftDrawer(false)
+    }
+    const offs = [ui.subscribe(sync), frame.subscribe(sync), sidebarPref.subscribe(sync)]
+    return () => { for (const off of offs) off() }
+  }
+
   // The shell group paints the team surface around the session; the conversation
   // group re-skins the session itself. Each step returns a disposer from slots.inject,
   // so a surface change withdraws the whole group and the outlets re-render.
@@ -805,6 +870,8 @@ export function apply(ctx) {
     () => installCompiledStyles(SIDE_CSS, 'side'),
     // Strip and panel styles also serve the side-chat tabs, which need no bridge.
     () => installCompiledStyles(BROWSER_CSS, 'browser'),
+    () => installFrameWatch(frame),
+    () => installFrameSync(),
     () => installTheme(),
     () => shadow('sidebar.workspaces', { priority: BOT_PRIORITY, inject: face }, TeamSidebar),
     () => shadow('sidebar.brand.mark', { priority: BOT_PRIORITY }, BrandMark),
