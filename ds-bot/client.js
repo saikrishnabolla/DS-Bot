@@ -9194,6 +9194,12 @@ function useMarkedUnread(id, active, marked, actions) {
   }, [active, marked]);
 }
 var PinMark = () => (0, import_react18.createElement)("span", { className: "bt-pin", "aria-hidden": true }, (0, import_react18.createElement)(PinMarkIcon));
+var nameIfCut = (event) => {
+  const row = event.currentTarget;
+  const name = row.querySelector(".bt-row-title");
+  if (name && name.scrollWidth > name.clientWidth) row.title = name.textContent;
+  else row.removeAttribute("title");
+};
 var useApproval = (useWork, match) => useWork ? useWork((work) => (work.approvals ?? []).some(match)) : false;
 var useGroupWork = (useWork, pick2) => useWork ? useWork((work) => JSON.stringify(pick2(work.rooms ?? {}))) : "[]";
 var workKeys = (text) => JSON.parse(text);
@@ -9258,6 +9264,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
       "aria-current": active ? "page" : void 0,
       "data-bot-id": id,
       title: wide ? void 0 : bot.name,
+      onMouseEnter: wide ? nameIfCut : void 0,
       onClick: () => actions.openSession(id),
       onContextMenu
     },
@@ -9294,6 +9301,8 @@ function RoomRow({ room: room2, roster, actions, useSessions, useSessionStatus, 
       "aria-label": label,
       "aria-current": active ? "page" : void 0,
       "data-room-id": id,
+      title: wide ? void 0 : room2.name,
+      onMouseEnter: wide ? nameIfCut : void 0,
       onClick: () => actions.openSession(id),
       onContextMenu: (event) => {
         event.preventDefault();
