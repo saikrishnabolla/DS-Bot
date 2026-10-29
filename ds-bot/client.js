@@ -118,6 +118,13 @@ var ZH = {
   URL: "URL",
   "Headers (JSON)": "请求头（JSON）",
   "Skill instructions": "技能说明",
+  "New skill": "新技能",
+  "Awaiting approval": "等待批准",
+  Added: "新增",
+  "Show all {count} lines": "展开全部 {count} 行",
+  "Skill update": "技能更新",
+  Approve: "批准",
+  Decline: "拒绝",
   "Save changes": "保存更改",
   Edit: "编辑",
   "Click again to delete.": "再点一次删除。",
@@ -1463,8 +1470,8 @@ function bodyOf(def, paint, flat = false) {
     return "";
   }
 }
-var eyeMarkup = ([cx, cy, w, h46, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><rect class="bt-eye" x="${-w / 2}" y="${-h46 / 2}" width="${w}" height="${h46}" rx="${w / 2}"/></g>`;
-var happyEyeMarkup = ([cx, cy, w, h46, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><path class="bt-eye-happy" opacity="0" d="M${-w * 0.62} ${h46 * 0.14}Q0 ${-h46 * 0.42} ${w * 0.62} ${h46 * 0.14}" fill="none" stroke="#000" stroke-width="${w * 0.5}" stroke-linecap="round"/></g>`;
+var eyeMarkup = ([cx, cy, w, h47, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><rect class="bt-eye" x="${-w / 2}" y="${-h47 / 2}" width="${w}" height="${h47}" rx="${w / 2}"/></g>`;
+var happyEyeMarkup = ([cx, cy, w, h47, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><path class="bt-eye-happy" opacity="0" d="M${-w * 0.62} ${h47 * 0.14}Q0 ${-h47 * 0.42} ${w * 0.62} ${h47 * 0.14}" fill="none" stroke="#000" stroke-width="${w * 0.5}" stroke-linecap="round"/></g>`;
 var maskBox = (size) => `maskUnits="userSpaceOnUse" x="${-size}" y="${-size}" width="${size * 3}" height="${size * 3}"`;
 var holes = (def, eyes) => `<rect x="${-def.size}" y="${-def.size}" width="${def.size * 3}" height="${def.size * 3}" fill="#fff"/>${eyes}`;
 var MASK_ID = "%MASK%";
@@ -1519,7 +1526,7 @@ function createSource(initial) {
     }
   };
 }
-var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, btwCards: {}, sideChats: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
+var EMPTY_ROSTER = { revision: -1, mainBotId: null, mainBotIds: [], bots: [], rooms: [], agents: [], exchangeTurns: {}, questions: {}, btwCards: {}, sideChats: {}, learning: {}, secrets: [], capabilities: [], capabilityStatuses: {}, secretRequests: {}, models: [], defaultModel: null, modelsKey: null, prefs: {}, byId: {}, roomsById: {}, agentsById: {}, agentOf: {}, ready: false };
 var isMainOf = (roster, id) => id !== void 0 && (roster.mainBotIds ?? []).includes(id);
 function indexRoster(value) {
   const byId = {};
@@ -2214,12 +2221,12 @@ function liveSprings(apply2) {
     const dt = Math.min(0.5, Math.max(1e-3, (now - last) / 1e3));
     last = now;
     const steps = Math.ceil(dt * 240);
-    const h46 = dt / steps;
+    const h47 = dt / steps;
     let moving = false;
     for (const value of values.values()) {
       for (let index = 0; index < steps; index += 1) {
-        value.v += (-value.k * (value.x - value.to) - value.c * value.v) * h46;
-        value.x += value.v * h46;
+        value.v += (-value.k * (value.x - value.to) - value.c * value.v) * h47;
+        value.x += value.v * h47;
       }
       if (Math.abs(value.x - value.to) < 0.05 && Math.abs(value.v) < 1) {
         value.x = value.to;
@@ -19357,6 +19364,277 @@ function serveBrowserReads({ browsers, post, clientId = globalThis.crypto.random
   };
 }
 
+// src/client/learning-card-model.js
+function proposalPlacement(proposal, turns) {
+  if (!Number.isFinite(proposal?.at) || typeof turns?.values !== "function") return { kind: "dock" };
+  let latest;
+  let before;
+  for (const location2 of turns.values()) {
+    const end = location2?.end?.time;
+    if (location2?.status !== "closed" || !Number.isFinite(end)) continue;
+    const later = (target) => target === void 0 || end > target.end.time || end === target.end.time && location2.turn > target.turn;
+    if (later(latest)) latest = location2;
+    if (end <= proposal.at && later(before)) before = location2;
+  }
+  const turn = (before ?? latest)?.turn;
+  return turn === void 0 ? { kind: "dock" } : { kind: "turn", turn };
+}
+function fileLines(text) {
+  const body = String(text ?? "").replace(/\n+$/, "");
+  return body === "" ? [] : body.split("\n");
+}
+var DIFF_CELLS = 25e4;
+function lineDiff(before, after) {
+  const a = fileLines(before);
+  const b = fileLines(after);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let tail = 0;
+  while (tail < a.length - start && tail < b.length - start && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  const midA = a.slice(start, a.length - tail);
+  const midB = b.slice(start, b.length - tail);
+  const rows2 = b.slice(0, start).map((line, index) => ({ kind: "same", line, number: index + 1 }));
+  const added = (j) => ({ kind: "added", line: midB[j], number: start + j + 1 });
+  if (midA.length * midB.length > DIFF_CELLS) {
+    rows2.push(...midA.map((line) => ({ kind: "removed", line })), ...midB.map((_, j) => added(j)));
+  } else {
+    const keep = Array.from({ length: midA.length + 1 }, () => new Array(midB.length + 1).fill(0));
+    for (let i2 = midA.length - 1; i2 >= 0; i2--) {
+      for (let j2 = midB.length - 1; j2 >= 0; j2--) {
+        keep[i2][j2] = midA[i2] === midB[j2] ? keep[i2 + 1][j2 + 1] + 1 : Math.max(keep[i2 + 1][j2], keep[i2][j2 + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < midA.length || j < midB.length) {
+      if (i < midA.length && j < midB.length && midA[i] === midB[j]) {
+        rows2.push({ kind: "same", line: midB[j], number: start + j + 1 });
+        i++;
+        j++;
+      } else if (i < midA.length && (j === midB.length || keep[i + 1][j] >= keep[i][j + 1])) {
+        rows2.push({ kind: "removed", line: midA[i] });
+        i++;
+      } else {
+        rows2.push(added(j));
+        j++;
+      }
+    }
+  }
+  const offset = b.length - tail;
+  rows2.push(...b.slice(offset).map((line, index) => ({ kind: "same", line, number: offset + index + 1 })));
+  return rows2;
+}
+
+// src/client/learning-card.js
+var import_react47 = require("react");
+var failedAnswers = /* @__PURE__ */ new Map();
+function ProposalCard({ proposal, initialError = "", onFailure, onResolved, actions }) {
+  const [busy, setBusy] = (0, import_react47.useState)(false);
+  const [error, setError] = (0, import_react47.useState)(initialError);
+  const busyRef = (0, import_react47.useRef)(false);
+  const titleId = (0, import_react47.useId)();
+  const answer = (approve) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    void Promise.resolve().then(() => actions.learningAnswer(proposal.id, approve)).then(() => onResolved(proposal.id), (failure) => {
+      const message = failure?.message ?? String(failure);
+      setError(message);
+      onFailure(proposal, message);
+    }).finally(() => {
+      busyRef.current = false;
+      setBusy(false);
+    });
+  };
+  const update = proposal.action === "update";
+  const rows2 = (0, import_react47.useMemo)(() => lineDiff(update ? proposal.previous?.content : "", proposal.content), [update, proposal.previous?.content, proposal.content]);
+  const oldDetail = update && typeof proposal.previous?.description === "string" && proposal.previous.description !== proposal.description ? proposal.previous.description : void 0;
+  return (0, import_react47.createElement)(
+    "section",
+    { className: "bt-q bt-learning-card", role: "group", "aria-labelledby": titleId, "aria-busy": busy },
+    (0, import_react47.createElement)(ProposalHead, { titleId, title: proposal.name, kind: t(update ? "Skill update" : "New skill"), detail: proposal.description, oldDetail }),
+    (0, import_react47.createElement)(FileBox, { name: "SKILL.md", path: `skills/${proposal.name}`, state: update ? "Updated" : "Added", blocks: [rows2] }),
+    proposal.why ? (0, import_react47.createElement)("p", { className: "bt-learning-why" }, proposal.why) : null,
+    error ? (0, import_react47.createElement)("div", { className: "bt-learning-error", role: "alert" }, error) : null,
+    (0, import_react47.createElement)(ProposalFoot, { busy, answer })
+  );
+}
+function ProposalHead({ titleId, title, kind, detail, oldDetail }) {
+  return (0, import_react47.createElement)(
+    "div",
+    { className: "bt-q-head" },
+    (0, import_react47.createElement)("span", { className: "bt-learning-icon", "aria-hidden": true }, (0, import_react47.createElement)(MemoryIcon)),
+    (0, import_react47.createElement)(
+      "div",
+      { className: "bt-q-text" },
+      (0, import_react47.createElement)("p", { className: "bt-q-title", id: titleId }, title),
+      (0, import_react47.createElement)("div", { className: "bt-q-detail" }, kind),
+      oldDetail ? (0, import_react47.createElement)("p", { className: "bt-learning-description bt-learning-old" }, (0, import_react47.createElement)("del", null, oldDetail)) : null,
+      detail ? (0, import_react47.createElement)("p", { className: "bt-learning-description" }, detail) : null
+    ),
+    (0, import_react47.createElement)("span", { className: "bt-q-badge bt-learning-status" }, (0, import_react47.createElement)("span", { className: "bt-learning-dot", "aria-hidden": true }), t("Awaiting approval"))
+  );
+}
+function ProposalFoot({ busy, answer }) {
+  return (0, import_react47.createElement)(
+    "div",
+    { className: "bt-q-foot bt-learning-foot" },
+    (0, import_react47.createElement)("button", { type: "button", className: "bt-learning-btn bt-learning-decline", disabled: busy, onClick: () => answer(false) }, t("Decline")),
+    (0, import_react47.createElement)(
+      "button",
+      { type: "button", className: "bt-learning-btn bt-learning-approve", disabled: busy, onClick: () => answer(true) },
+      (0, import_react47.createElement)(CheckIcon),
+      t("Approve")
+    )
+  );
+}
+var COLLAPSE_ROWS = 8;
+var SIGNS = { added: "+", removed: "−", same: "" };
+function FileBox({ name, path, state, blocks }) {
+  const [open, setOpen] = (0, import_react47.useState)(false);
+  const all = blocks.flat();
+  const added = all.filter((row) => row.kind === "added").length;
+  const removed = all.filter((row) => row.kind === "removed").length;
+  const folds = all.length > COLLAPSE_ROWS;
+  const shut = folds && !open;
+  return (0, import_react47.createElement)(
+    "div",
+    { className: "bt-learning-file" },
+    (0, import_react47.createElement)(
+      "div",
+      { className: "bt-learning-filehead" },
+      (0, import_react47.createElement)("span", { className: "bt-learning-name" }, name),
+      path ? (0, import_react47.createElement)("span", { className: "bt-learning-path" }, path) : null,
+      (0, import_react47.createElement)("span", { className: "bt-learning-spacer" }),
+      added > 0 ? (0, import_react47.createElement)("span", { className: "bt-learning-plus" }, `+${added}`) : null,
+      removed > 0 ? (0, import_react47.createElement)("span", { className: "bt-learning-minus" }, `−${removed}`) : null,
+      (0, import_react47.createElement)("span", { className: `bt-learning-state bt-learning-state-${state.toLowerCase()}` }, t(state))
+    ),
+    (0, import_react47.createElement)(
+      "div",
+      { className: shut ? "bt-learning-code bt-learning-shut" : "bt-learning-code" },
+      blocks.map((rows2, blockIndex) => [
+        blockIndex > 0 ? (0, import_react47.createElement)("div", { className: "bt-learning-gap", key: `gap-${blockIndex}` }) : null,
+        ...rows2.map((row, rowIndex) => (0, import_react47.createElement)(
+          "div",
+          { className: `bt-learning-row bt-learning-${row.kind}`, key: `${blockIndex}-${rowIndex}` },
+          (0, import_react47.createElement)("span", { className: "bt-learning-num", "aria-hidden": true }, row.number ?? ""),
+          (0, import_react47.createElement)("span", { className: "bt-learning-sign", "aria-hidden": true }, SIGNS[row.kind]),
+          (0, import_react47.createElement)("span", { className: "bt-learning-text" }, row.line)
+        ))
+      ])
+    ),
+    folds ? (0, import_react47.createElement)(
+      "div",
+      { className: shut ? "bt-learning-morebar bt-learning-morebar-shut" : "bt-learning-morebar" },
+      (0, import_react47.createElement)(
+        "button",
+        { type: "button", className: "bt-learning-more", "aria-expanded": open, onClick: () => setOpen(!open) },
+        t(open ? "Show less" : "Show all {count} lines", { count: all.length })
+      )
+    ) : null
+  );
+}
+function LearningProposals({ turn, dock, sessionId, useRoster, actions }) {
+  const roster = useRoster((value) => value);
+  const facts = useTurnFacts(sessionId, actions);
+  const [failed, setFailed] = (0, import_react47.useState)({});
+  const bot = roster.byId?.[sessionId];
+  if (!bot || currentPart(bot) !== sessionId) return null;
+  const proposals = roster.learning?.[bot.id] ?? [];
+  const visible = [...proposals];
+  for (const entry of Object.values(failed)) {
+    if (entry.proposal.botId === bot.id && !proposals.some((proposal) => proposal.id === entry.proposal.id)) visible.push(entry.proposal);
+  }
+  for (const entry of failedAnswers.values()) {
+    if (entry.proposal.botId === bot.id && !proposals.some((proposal) => proposal.id === entry.proposal.id) && !visible.some((proposal) => proposal.id === entry.proposal.id)) visible.push(entry.proposal);
+  }
+  const cards = visible.filter((proposal) => {
+    const placement = proposalPlacement(proposal, facts?.turns);
+    return dock ? placement.kind === "dock" : placement.kind === "turn" && placement.turn === turn?.turn;
+  });
+  if (cards.length === 0) return null;
+  const onFailure = (proposal, error) => {
+    failedAnswers.set(proposal.id, { proposal, error });
+    setFailed((current) => ({ ...current, [proposal.id]: { proposal, error } }));
+  };
+  const onResolved = (id) => setFailed((current) => {
+    failedAnswers.delete(id);
+    if (!(id in current)) return current;
+    const next = { ...current };
+    delete next[id];
+    return next;
+  });
+  return (0, import_react47.createElement)("div", { className: dock ? "bt-learning-stack bt-learning-dock" : "bt-learning-stack" }, cards.map((proposal) => (0, import_react47.createElement)(
+    "div",
+    { className: "bt-q-inline", key: proposal.id },
+    (0, import_react47.createElement)(ProposalCard, {
+      proposal,
+      initialError: failed[proposal.id]?.error ?? failedAnswers.get(proposal.id)?.error,
+      onFailure,
+      onResolved,
+      actions
+    })
+  )));
+}
+function LearningTurnTail(props) {
+  return (0, import_react47.createElement)(LearningProposals, { ...props, dock: false });
+}
+function LearningDock(props) {
+  return (0, import_react47.createElement)(LearningProposals, { ...props, dock: true });
+}
+var LEARNING_CSS = `
+.bt-learning-stack{display:flex;flex-direction:column;gap:4px}
+.bt-learning-dock{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto;box-sizing:border-box}
+.bt-learning-card .bt-q-head{gap:12px}
+.bt-learning-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--bt-hover);color:var(--bt-ink-2)}
+.bt-learning-icon svg{width:18px;height:18px}
+.bt-learning-description{margin:6px 0 0;font-size:13px;line-height:19px;color:var(--bt-ink)}
+.bt-learning-old{color:var(--bt-ink-3)}
+.bt-learning-status{display:inline-flex;align-items:center;gap:6px;border-style:solid;border-color:color-mix(in srgb,var(--bt-star) 35%,transparent);color:color-mix(in srgb,var(--bt-star) 80%,var(--bt-ink))}
+.bt-learning-dot{width:6px;height:6px;border-radius:50%;background:var(--bt-star)}
+.bt-learning-file{border-radius:12px;overflow:hidden;background:color-mix(in srgb,var(--bt-ink) 2.5%,var(--bt-card));box-shadow:inset 0 0 0 1px var(--bt-q-rule)}
+.bt-learning-filehead{display:flex;align-items:center;gap:8px;min-width:0;padding:8px 12px;box-shadow:inset 0 -1px 0 var(--bt-q-rule-2);font-size:12px;line-height:18px}
+.bt-learning-name{flex:none;font-weight:600;color:var(--bt-ink)}
+.bt-learning-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bt-ink-3)}
+.bt-learning-spacer{flex:1}
+.bt-learning-plus,.bt-learning-minus{flex:none;font-weight:600;font-variant-numeric:tabular-nums}
+.bt-learning-plus{color:var(--bt-green)}
+.bt-learning-minus{color:var(--bt-danger)}
+.bt-learning-state{flex:none;height:20px;padding:0 8px;border-radius:999px;font-size:11px;line-height:20px;font-weight:500;background:var(--bt-hover);color:var(--bt-ink-2)}
+.bt-learning-state-added{background:color-mix(in srgb,var(--bt-green) 13%,transparent);color:color-mix(in srgb,var(--bt-green) 70%,var(--bt-ink))}
+.bt-learning-code{padding:6px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:20px;color:var(--bt-ink)}
+.bt-learning-shut{max-height:172px;overflow:hidden}
+.bt-learning-row{display:grid;grid-template-columns:36px 16px 1fr}
+.bt-learning-num{padding-right:6px;text-align:right;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;user-select:none}
+.bt-learning-sign{text-align:center;user-select:none}
+.bt-learning-text{min-width:0;padding-right:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.bt-learning-added{background:color-mix(in srgb,var(--bt-green) 9%,transparent)}
+.bt-learning-added .bt-learning-sign{color:var(--bt-green)}
+.bt-learning-removed{background:color-mix(in srgb,var(--bt-danger) 7%,transparent)}
+.bt-learning-removed .bt-learning-sign{color:var(--bt-danger)}
+.bt-learning-removed .bt-learning-text{color:var(--bt-ink-2)}
+.bt-learning-gap{height:1px;margin:6px 12px;background:var(--bt-q-rule)}
+.bt-learning-morebar{display:flex;justify-content:center;padding:4px 0 8px}
+.bt-learning-morebar-shut{position:relative;margin-top:-36px;padding-top:28px;background:linear-gradient(transparent,color-mix(in srgb,var(--bt-ink) 2.5%,var(--bt-card)) 60%)}
+.bt-learning-more{height:24px;padding:0 10px;border:0;border-radius:999px;background:var(--bt-card);box-shadow:inset 0 0 0 1px var(--bt-q-edge);font:inherit;font-size:12px;color:var(--bt-ink-2);cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.bt-learning-more:hover{background:var(--bt-hover);color:var(--bt-ink)}
+.bt-learning-more:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
+.bt-learning-why{margin:0;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
+.bt-learning-btn{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border:0;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .12s ease,opacity .12s ease,${spring(SPRING_TAP, "scale")}}
+.bt-learning-btn svg{width:15px;height:15px}
+.bt-learning-decline{background:transparent;box-shadow:inset 0 0 0 1px var(--bt-line-2);color:var(--bt-ink)}
+.bt-learning-decline:hover:not(:disabled){background:var(--bt-hover)}
+.bt-learning-approve{padding-left:13px;background:var(--bt-accent);color:var(--bt-accent-ink)}
+.bt-learning-approve:hover:not(:disabled){opacity:.86}
+.bt-learning-btn:disabled{opacity:.45;cursor:default}
+.bt-learning-btn:active:not(:disabled){scale:.96}
+.bt-learning-btn:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.bt-learning-btn{transition:background-color .12s ease,opacity .12s ease}.bt-learning-btn:active:not(:disabled){scale:none}}
+.bt-learning-error{font-size:12px;line-height:16px;color:var(--bt-danger)}
+`;
+
 // src/client/right-panel.js
 var RIGHTBAR_ATTRIBUTES = ["data-rightbar-collapsed", "data-rightbar-fullscreen"];
 function rightColumnOpen(doc) {
@@ -19387,7 +19665,7 @@ function createSwitchWindow(settle) {
 }
 
 // src/client/user-message.js
-var import_react47 = require("react");
+var import_react48 = require("react");
 var ui = __toESM(require("@deepseek-ai/dsh-client-ui-primitives"), 1);
 var canDrawUserMessages = () => typeof ui.projectUserText === "function";
 function contentParts(content) {
@@ -19419,38 +19697,38 @@ function userTextParts(text, bots, referenceLabels = []) {
   return parts;
 }
 function UserText({ text, bots, referenceLabels, skillNames, references, actions }) {
-  return userTextParts(text, bots, referenceLabels).map((part, index) => part.bot ? (0, import_react47.createElement)(
+  return userTextParts(text, bots, referenceLabels).map((part, index) => part.bot ? (0, import_react48.createElement)(
     "button",
     { key: index, type: "button", className: "bt-umention", title: `@${part.bot.name}`, onClick: () => actions.openSession(part.bot.id) },
-    (0, import_react47.createElement)(BotMark, { bot: part.bot, size: 16 }),
+    (0, import_react48.createElement)(BotMark, { bot: part.bot, size: 16 }),
     part.label
-  ) : (0, import_react47.createElement)(import_react47.Fragment, { key: index }, ui.projectUserText(part.text, referenceLabels, skillNames, "skill", references)));
+  ) : (0, import_react48.createElement)(import_react48.Fragment, { key: index }, ui.projectUserText(part.text, referenceLabels, skillNames, "skill", references)));
 }
 function Attachments({ attachments, renderMessageImages }) {
   const compact2 = attachments.length > 1;
-  return (0, import_react47.createElement)("div", { className: "bt-uattach" }, attachments.map((block, index) => {
+  return (0, import_react48.createElement)("div", { className: "bt-uattach" }, attachments.map((block, index) => {
     if (block.type === "image") {
-      return renderMessageImages ? (0, import_react47.createElement)(import_react47.Fragment, { key: index }, renderMessageImages({ images: [{ attachment: block.attachment }], align: "end", compact: compact2 })) : null;
+      return renderMessageImages ? (0, import_react48.createElement)(import_react48.Fragment, { key: index }, renderMessageImages({ images: [{ attachment: block.attachment }], align: "end", compact: compact2 })) : null;
     }
     const file = block.attachment;
     const meta = [ui.fileExtension?.(file.name)?.toUpperCase().slice(0, 8), ui.fileSizeText?.(file.bytes)].filter(Boolean).join(" · ");
-    return (0, import_react47.createElement)(
+    return (0, import_react48.createElement)(
       "span",
       { key: index, className: "bt-ufile", title: file.name },
-      ui.FileTypeIcon ? (0, import_react47.createElement)(ui.FileTypeIcon, { path: file.name, className: "bt-ufile-icon" }) : null,
-      (0, import_react47.createElement)("span", { className: "bt-ufile-text" }, (0, import_react47.createElement)("span", { className: "bt-ufile-name" }, file.name), meta ? (0, import_react47.createElement)("span", { className: "bt-ufile-meta" }, meta) : null)
+      ui.FileTypeIcon ? (0, import_react48.createElement)(ui.FileTypeIcon, { path: file.name, className: "bt-ufile-icon" }) : null,
+      (0, import_react48.createElement)("span", { className: "bt-ufile-text" }, (0, import_react48.createElement)("span", { className: "bt-ufile-name" }, file.name), meta ? (0, import_react48.createElement)("span", { className: "bt-ufile-meta" }, meta) : null)
     );
   }));
 }
 function CopyButton({ text }) {
-  const [copied, setCopied] = (0, import_react47.useState)(false);
+  const [copied, setCopied] = (0, import_react48.useState)(false);
   const copy2 = () => {
     void navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1e3);
     });
   };
-  return (0, import_react47.createElement)("button", { type: "button", className: "bt-tool", "aria-label": copied ? t("Copied") : t("Copy"), title: copied ? t("Copied") : t("Copy"), onClick: copy2 }, copied ? (0, import_react47.createElement)(CheckIcon) : (0, import_react47.createElement)(CopyIcon));
+  return (0, import_react48.createElement)("button", { type: "button", className: "bt-tool", "aria-label": copied ? t("Copied") : t("Copy"), title: copied ? t("Copied") : t("Copy"), onClick: copy2 }, copied ? (0, import_react48.createElement)(CheckIcon) : (0, import_react48.createElement)(CopyIcon));
 }
 var clock3 = (time) => typeof time === "number" ? new Date(time).toLocaleTimeString(dateLocale(), { hour: "numeric", minute: "2-digit" }) : void 0;
 function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageImages, openFile, openSkill }) {
@@ -19462,10 +19740,10 @@ function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageIma
   const steering = node.kind === "steering";
   const groupTime = roster.roomsById?.[sessionId] && Number.isFinite(data.time) ? messageClock(data.time) : void 0;
   const { shown, folded, control } = useFold(text, { markdown: false });
-  const body = (0, import_react47.createElement)(UserText, { text: shown, bots: mentionableBots(roster, sessionId), referenceLabels, skillNames: data.skillNames ?? [], references, actions });
-  const row = (0, import_react47.useRef)(null);
-  const [toolsOpen, setToolsOpen] = (0, import_react47.useState)(false);
-  (0, import_react47.useEffect)(() => {
+  const body = (0, import_react48.createElement)(UserText, { text: shown, bots: mentionableBots(roster, sessionId), referenceLabels, skillNames: data.skillNames ?? [], references, actions });
+  const row = (0, import_react48.useRef)(null);
+  const [toolsOpen, setToolsOpen] = (0, import_react48.useState)(false);
+  (0, import_react48.useEffect)(() => {
     if (!toolsOpen) return void 0;
     const onDown = (event) => {
       if (!row.current?.contains(event.target)) setToolsOpen(false);
@@ -19481,24 +19759,24 @@ function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageIma
     if (!noHover() || event.target instanceof Element && event.target.closest("a,button,input,textarea,select,pre,code,[role=button],[role=link]")) return;
     setToolsOpen((value) => !value);
   };
-  return (0, import_react47.createElement)(
+  return (0, import_react48.createElement)(
     "div",
     { ref: row, className: "bt-umsg", "data-steering": steering || void 0 },
-    (0, import_react47.createElement)(
+    (0, import_react48.createElement)(
       "div",
       { className: "bt-ustack" },
-      attachments.length > 0 ? (0, import_react47.createElement)(Attachments, { attachments, renderMessageImages }) : null,
-      text !== "" || rest.length > 0 ? (0, import_react47.createElement)(
+      attachments.length > 0 ? (0, import_react48.createElement)(Attachments, { attachments, renderMessageImages }) : null,
+      text !== "" || rest.length > 0 ? (0, import_react48.createElement)(
         "div",
         { className: "bt-ubody", title: clock3(data.time), "data-folded": folded || void 0, onClick: tapTools },
-        control ? (0, import_react47.createElement)("div", { className: "bt-fold-body" }, body) : body,
+        control ? (0, import_react48.createElement)("div", { className: "bt-fold-body" }, body) : body,
         control,
-        rest.map((block, index) => ui.JsonBlock ? (0, import_react47.createElement)(ui.JsonBlock, { key: index, label: t("Content"), payload: block }) : null)
+        rest.map((block, index) => ui.JsonBlock ? (0, import_react48.createElement)(ui.JsonBlock, { key: index, label: t("Content"), payload: block }) : null)
       ) : null,
-      referenceLabels.length > 0 ? (0, import_react47.createElement)("div", { className: "bt-urefs" }, t("Referenced {labels}", { labels: referenceLabels.join(t(", ")) })) : null,
-      groupTime ? (0, import_react47.createElement)("div", { className: "bt-utime", title: clockLabel(data.time) }, groupTime) : null
+      referenceLabels.length > 0 ? (0, import_react48.createElement)("div", { className: "bt-urefs" }, t("Referenced {labels}", { labels: referenceLabels.join(t(", ")) })) : null,
+      groupTime ? (0, import_react48.createElement)("div", { className: "bt-utime", title: clockLabel(data.time) }, groupTime) : null
     ),
-    text === "" ? null : (0, import_react47.createElement)("div", { className: "bt-utools", "data-open": toolsOpen || void 0 }, (0, import_react47.createElement)(CopyButton, { text }))
+    text === "" ? null : (0, import_react48.createElement)("div", { className: "bt-utools", "data-open": toolsOpen || void 0 }, (0, import_react48.createElement)(CopyButton, { text }))
   );
 }
 var USER_MESSAGE_CSS = `
@@ -19690,6 +19968,7 @@ function apply(ctx) {
     const live2 = {};
     if (value.connectors !== void 0 && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live2.connectors = value.connectors;
     if (value.capabilityStatuses !== void 0 && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) live2.capabilityStatuses = value.capabilityStatuses;
+    if (value.learning !== void 0 && JSON.stringify(value.learning) !== JSON.stringify(current.learning ?? {})) live2.learning = value.learning;
     if (value.btwCards !== void 0 && JSON.stringify(value.btwCards) !== JSON.stringify(current.btwCards ?? {})) live2.btwCards = value.btwCards;
     if (value.sideChats !== void 0 && JSON.stringify(value.sideChats) !== JSON.stringify(current.sideChats ?? {})) live2.sideChats = value.sideChats;
     if (Object.keys(live2).length > 0 && current.ready) roster.set({ ...current, ...live2 });
@@ -19964,6 +20243,7 @@ function apply(ctx) {
   };
   const actions = {
     ...teamActions({ call, after, partFor, roster, ui: ui2, live, cards, heldCards, turnClock, panelFolded }),
+    learningAnswer: (id, approve) => after(call("learning-answer", { id, approve })),
     // The full-pane overlays sit above the conversation, so opening one must dismiss them
     // or the click appears to do nothing.
     isAgentSession: (id) => isAgentSessionId(id),
@@ -20374,6 +20654,7 @@ function apply(ctx) {
     () => installCompiledStyles(SHELL_CSS, "shell"),
     () => installCompiledStyles(SIDEBAR_CSS, "sidebar"),
     () => installCompiledStyles(SECRET_CSS, "secrets"),
+    () => installCompiledStyles(LEARNING_CSS, "learning"),
     () => installCompiledStyles(MODEL_CSS + FOLDER_CSS + BOT_SETTINGS_CSS + GROUP_SETTINGS_CSS + AVATAR_LIBRARY_CSS, "models"),
     () => installCompiledStyles(USAGE_CSS, "usage"),
     () => installCompiledStyles(SCHEDULE_CSS, "schedules"),
@@ -20416,6 +20697,7 @@ function apply(ctx) {
     // A side question is not a transcript row. After its snapshot turn closes it
     // sits on that turn's tail, ahead of the time separator.
     () => shadow("conversation.chat.turnTail", { id: "bot-btw", order: 800, priority: BOT_PRIORITY, inject: face }, BtwTurnTail),
+    () => shadow("conversation.chat.turnTail", { id: "bot-learning", order: 850, priority: BOT_PRIORITY, inject: face }, LearningTurnTail),
     // A Bot condenses its conversation without telling anyone; the chat keeps showing
     // every message.
     () => shadow("conversation.chat.node", { key: "question-reply", priority: BOT_PRIORITY, locale: "chat" }, AnsweredReply),
@@ -20443,7 +20725,8 @@ function apply(ctx) {
     () => shadow("conversation.input.dock", { id: "bot-question", order: -100, inject: face }, QuestionDock),
     () => shadow("conversation.input.dock", { id: "bot-view", order: -95, inject: face }, WidgetDock),
     () => shadow("conversation.input.dock", { id: "bot-secret", order: -90, inject: face }, SecretDock),
-    () => shadow("conversation.input.dock", { id: "bot-handoff", order: -85, inject: face }, HandoffDock)
+    () => shadow("conversation.input.dock", { id: "bot-handoff", order: -85, inject: face }, HandoffDock),
+    () => shadow("conversation.input.dock", { id: "bot-learning", order: 850, priority: BOT_PRIORITY, inject: face }, LearningDock)
   ];
   ctx.effect(() => installCompiledStyles(RETURN_CSS, "return"), "ds-bot: return styles");
   shadow("sidebar.footer.action", { id: "bot-return", order: -300, inject: face }, BotReturn);
