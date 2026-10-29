@@ -113,6 +113,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     deleteBtw: (sessionId, cardId) => after(call('btw-delete', { sessionId, cardId })),
     answerApproval: (id, choice) => after(call('approval-answer', { id, choice })),
     stopMemberWork: (roomId, botId) => after(call('stop-member-work', { roomId, botId })),
+    stopRoomWork: roomId => after(call('stop-room-work', { roomId })),
     // Values go out in these requests and never come back in a response.
     secretSet: payload => after(call('secret-set', payload)),
     secretAllow: requestId => after(call('secret-allow', { requestId })),
