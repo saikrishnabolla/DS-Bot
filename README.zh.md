@@ -9,7 +9,7 @@
 
 [English](README.md) | 中文
 
-![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
+![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.4-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
 DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 dsh）的 bot 插件，插件将 dsh 改造为 bot 形式。你可以与自己创建的 bot 交流、工作。
 
@@ -50,8 +50,8 @@ DS Bot 0.2.1 及更早的版本在 DSH Desktop 0.2.1-rc.2 及以后的版本里�
 需要 Node.js `22.19` 以上和 pnpm。
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.2 plugin --profile web add ds-bot
-npx @deepseek-ai/dsh@0.2.1-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-rc.4 plugin --profile web add ds-bot
+npx @deepseek-ai/dsh@0.2.1-rc.4 web
 ```
 
 **Docker（NAS、Linux 服务器）**
