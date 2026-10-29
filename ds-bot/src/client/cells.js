@@ -477,6 +477,10 @@ function EarlierParts({ sessionId, roster, actions }) {
     observer.observe(node)
     return () => observer.disconnect()
   }, [view.cursor, view.loading, view.failed])
+  const removeBtw = cardId => setView(current => ({
+    ...current,
+    pages: current.pages.map(page => ({ ...page, btw: page.btw.filter(card => card?.id !== cardId) })),
+  }))
   const items = []
   for (const page of view.pages) items.push(...withBtwRows(page.items, page.btw))
   return h('div', { className: 'bt-earlier', role: 'feed', 'aria-label': t('Earlier messages'), 'aria-busy': view.loading },
@@ -484,14 +488,14 @@ function EarlierParts({ sessionId, roster, actions }) {
       view.loading ? h(Shimmer, null, t('Loading earlier messages…'))
         : view.failed ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor) }, t('Couldn’t load earlier messages · Retry'))
           : view.cursor ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor) }, t('Load earlier')) : null),
-    h(ChatRows, { items, sessionId, roster, actions }),
+    h(ChatRows, { items, sessionId, roster, actions, onBtwDelete: removeBtw }),
     h(PartLine, { time: view.startedAt }))
 }
 
 // A Bot chat's entries as the host lists them (the `earlier` and `chat` endpoints): the
 // Bot's messages in a row are one block, and a thin line marks where a part begins.
 // `clock` adds the time separators: one above the first entry, and one after each pause.
-export function ChatRows({ items, sessionId, roster, actions, useUi, clock = false }) {
+export function ChatRows({ items, sessionId, roster, actions, useUi, clock = false, onBtwDelete }) {
   const selfId = roster.byId[sessionId]?.id
   const rows = []
   for (const item of items) {
@@ -505,7 +509,7 @@ export function ChatRows({ items, sessionId, roster, actions, useUi, clock = fal
   return rows.flatMap((row, index) => {
     // Pages are prepended, so a row keeps its distance from the end.
     const key = rows.length - index
-    const shown = chatRow(row, key, { sessionId, selfId, roster, actions, useUi })
+    const shown = chatRow(row, key, { sessionId, selfId, roster, actions, useUi, onBtwDelete })
     // A part's first entry shows its time under the part's line, as a chat's first one does.
     if (row.kind === 'divider') {
       before = undefined
@@ -518,7 +522,7 @@ export function ChatRows({ items, sessionId, roster, actions, useUi, clock = fal
 }
 
 // `useUi` gives a block its reactions and its Reply tool.
-function chatRow(row, key, { sessionId, selfId, roster, actions, useUi }) {
+function chatRow(row, key, { sessionId, selfId, roster, actions, useUi, onBtwDelete }) {
   switch (row.kind) {
     case 'divider': return h(PartLine, { key, time: row.time })
     case 'user': return h(EarlierUser, { key, row })
@@ -530,7 +534,7 @@ function chatRow(row, key, { sessionId, selfId, roster, actions, useUi }) {
       const speaker = layoutOf(roster.prefs) === 'flat' ? roster.byId[selfId] : undefined
       return speaker ? h(Fragment, { key }, h(SpeakerHead, { bot: speaker, time: row.time }), bubbles) : bubbles
     }
-    case 'btw': return h(BtwCardView, { key, card: row.card, actions })
+    case 'btw': return h(BtwCardView, { key, card: row.card, sessionId, actions, onDeleted: onBtwDelete })
     case 'event': {
       if (row.role === 'report') return h(GroupEvent, { key, prefix: t('Replies from'), room: roster.roomsById[row.roomId], name: t('a group chat'), roster, actions })
       const other = roster.byId[row.botId] ?? { id: row.botId, name: row.name ?? t('a Bot'), color: 'gray' }
@@ -587,6 +591,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       if (source.role === 'kickoff' || source.role === 'room') return null
       // The secret card itself shows what the user did; the note to the Bot stays out.
       if (source.role === 'secret' || deferred) return null
+      // A profile notice is the user's edit landing in the Bot's chat, not a peer
+      // message: show it as an event, with no exchange to open.
+      if (source.role === 'update') return h('div', { className: 'bt-event' }, t('Profile updated'))
       if (source.role === 'post') {
         // A post logged into a running round already shows there, not again as a trigger.
         if (source.logged !== undefined) return null
@@ -812,6 +819,56 @@ function useLiveNote(actions, sessionId, id, entry) {
   }, [sessionId, id, key])
 }
 
+// Reads the replies of a settled group_relay result. Compaction can prune the
+// middle of a long tool result, which leaves invalid JSON: then every complete
+// reply object that survived is recovered so the turn still draws what it can.
+const RELAY_LIST = /"replies"\s*:\s*\[/
+// Compaction marks a pruned span with a literal bracketed note like
+// "[... tool result middle pruned ...]". Its "]" looks like the end of the
+// replies array to a naive scan, so the text is split on the marker first.
+const PRUNE_MARKER = /\[\.\.\. tool result middle pruned \.\.\.\]/
+function parseReplies(text) {
+  try { return { replies: JSON.parse(text).replies ?? [], broken: false } } catch { /* fall through */ }
+  const replies = []
+  const head = RELAY_LIST.exec(text)
+  if (head) {
+    for (const piece of text.slice(head.index + head[0].length).split(PRUNE_MARKER)) {
+      // The cut can start inside a string, leaving a fragment that keeps the
+      // scanner inside quotes: restart at the first complete reply instead.
+      const first = piece.indexOf('{"')
+      if (first !== -1) scanReplies(piece, first, replies)
+    }
+  }
+  return { replies, broken: true }
+}
+
+function scanReplies(text, start, replies) {
+  let depth = 0
+  let from = -1
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; continue }
+    if (ch === '{') {
+      if (depth === 0) from = i
+      depth += 1
+    } else if (ch === '}') {
+      depth -= 1
+      if (depth === 0 && from >= 0) {
+        try { replies.push(JSON.parse(text.slice(from, i + 1))) } catch { /* partial object */ }
+        from = -1
+      }
+    } else if (ch === ']' && depth === 0) break
+  }
+}
+
 function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi, useWork }) {
   const [live, setLive] = useState({ replies: [], speaking: null })
   useEffect(() => {
@@ -831,14 +888,21 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
     return () => { stop = true; clearTimeout(timer) }
   }, [done, sessionId, callId])
   let replies = live.replies
+  let broken = false
   if (done) {
-    try { replies = JSON.parse(contentText(content)).replies ?? [] } catch { replies = [] }
+    const parsed = parseReplies(contentText(content))
+    replies = parsed.replies.length ? parsed.replies : live.replies
+    broken = parsed.broken
   }
   // Members speak one at a time, so only the current speaker is typing.
   const pending = done || !live.speaking ? [] : [live.speaking]
   const speakerTool = useWork?.(work => work.bots?.[live.speaking]?.tool) ?? undefined
   const speakerDoing = useWork?.(work => (work.bots?.[live.speaking]?.tool ? workPhrase(work.bots[live.speaking]) : undefined)) ?? undefined
-  if (replies.length === 0 && pending.length === 0) return null
+  if (replies.length === 0 && pending.length === 0) {
+    // A pruned tool result left nothing to draw; keep a marker row instead of an
+    // empty turn, which reads as a blank gap on a narrow first paint.
+    return broken ? h('div', { className: 'bt-group-replies' }, h('div', { className: 'bt-event' }, t('The group replies could not be shown'))) : null
+  }
   const room = roster.roomsById[sessionId]
   return h('div', { className: 'bt-group-replies' },
     stackReplies(replies).map(({ reply, index, texts, time, duration }) => {
@@ -858,6 +922,10 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
       }
       if (reply.kind === 'missed') {
         return h('div', { key: `${reply.botId}-${index}`, className: 'bt-event' }, t("{name} didn't answer in time", { name: bot.name }))
+      }
+      if (reply.kind === 'admin-passed') {
+        return h('div', { key: `${reply.botId}-${index}`, className: 'bt-event' },
+          t('{name} did not answer or call anyone; call a member with @Name', { name: bot.name }))
       }
       if (reply.kind === 'paused') {
         return h('div', { key: `paused-${index}`, className: 'bt-event' },

@@ -736,6 +736,38 @@ test('an earlier part keeps the request its Bot answered', async () => {
   assert.equal(items[0].botId, 'a')
 })
 
+// #537: an archived earlier part may have no live agent to resolve; the page
+// still loads from the stored events.
+test('an earlier part loads when its agent is gone', async () => {
+  const rt = earlierParts([
+    { type: 'user/message', seq: 1, time: 10, data: { content: [{ type: 'text', text: 'still here' }], source: { kind: 'user' } } },
+  ])
+  rt.resolveAgent = async () => { throw Object.assign(new Error('Session unavailable'), { code: 'session/gone' }) }
+  const { items } = await rt.earlierPage('b2')
+  assert.deepEqual(items.map(item => [item.kind, item.text]), [['user', 'still here']])
+})
+
+// #537: a turn that spans a page boundary keeps its number on the newer page
+// even when the part's agent is gone (no live projection to seed it).
+test('an agentless part keeps the turn that opened on an older page', async () => {
+  const events = [{ seq: 1, type: 'turn/start', time: 1, data: { turn: 6 } }]
+  for (let seq = 2; seq <= 430; seq += 1) {
+    events.push({ seq, type: 'user/message', time: seq, data: { content: [{ type: 'text', text: `m${seq}` }], source: { kind: 'user' } } })
+  }
+  const rt = earlierParts([])
+  rt.ctx.sessionController.page = async ({ beforeSeq, maxMessages }) => {
+    let list = events.filter(event => !Number.isInteger(beforeSeq) || event.seq < beforeSeq)
+    const hasMore = list.length > maxMessages
+    if (hasMore) list = list.slice(-maxMessages)
+    return { records: list.map(event => ({ event })), hasMore }
+  }
+  rt.resolveAgent = async () => { throw Object.assign(new Error('Session unavailable'), { code: 'session/gone' }) }
+  const { items } = await rt.earlierPage('b2')
+  const first = items.find(item => item.kind !== 'divider')
+  assert.equal(first?.kind, 'user')
+  assert.equal(first?.turn, 6)
+})
+
 test('each text block of a Bot message is an entry of its own, as each is a bubble of its own', async () => {
   const rt = earlierParts([
     { type: 'assistant/message', seq: 1, time: 11, data: { turn: 1, message: { content: [{ type: 'text', text: 'First.' }, { type: 'tool-call', id: 'c1' }, { type: 'text', text: '  ' }, { type: 'text', text: 'Second.' }] } } },
