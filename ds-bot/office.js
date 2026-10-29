@@ -7548,11 +7548,18 @@ function docxEdit(pkg, ops) {
     if (!docs.has(name)) docs.set(name, pkg.xml(name));
     return docs.get(name);
   };
+  const body = firstOf(getDoc("word/document.xml").documentElement, "w:body");
+  const blocks = blockIndex(getDoc("word/document.xml"));
+  const blockOf = (id) => {
+    const block = blocks.get(id);
+    if (!block || block.parentNode !== body) throw new Error(`no block ${id}`);
+    return block;
+  };
   const changed = /* @__PURE__ */ new Set();
   let count = 0;
   ops.forEach((op, index) => {
     try {
-      applyOp(pkg, getDoc, changed, op);
+      applyOp(pkg, getDoc, blockOf, changed, op);
       count++;
     } catch (error) {
       const e = new Error(`op ${index} (${opKind(op)}): ${error.message}`);
@@ -7564,7 +7571,7 @@ function docxEdit(pkg, ops) {
   return { changed: [...changed], count };
 }
 var opKind = (op) => Object.keys(op).find((k) => !["o", "inPlace"].includes(k)) ?? "?";
-function applyOp(pkg, getDoc, changed, op) {
+function applyOp(pkg, getDoc, blockOf, changed, op) {
   const mainDoc = () => getDoc("word/document.xml");
   if (op.replace) {
     const { find, with: withText, regex = false, bodyOnly = false } = op.replace;
@@ -7578,8 +7585,7 @@ function applyOp(pkg, getDoc, changed, op) {
   }
   if (op.set_cell) {
     const { table, row, col, text } = op.set_cell;
-    const tbl = blockIndex(mainDoc()).get(`t${table}`);
-    if (!tbl) throw new Error(`no table t${table}`);
+    const tbl = blockOf(`t${table}`);
     const tr = childrenOf(tbl, "w:tr")[row - 1];
     const tc = tr && childrenOf(tr, "w:tc")[col - 1];
     if (!tc) throw new Error(`no cell r${row}c${col} in t${table}`);
@@ -7612,14 +7618,12 @@ function applyOp(pkg, getDoc, changed, op) {
   if (op.insert) {
     const { after, before, text, style, like } = op.insert;
     const doc = mainDoc();
-    const index = blockIndex(doc);
-    const anchor = index.get(after ?? before);
-    if (!anchor) throw new Error(`no paragraph ${after ?? before}`);
+    const anchor = blockOf(after ?? before);
     const p = doc.createElement("w:p");
     if (style || like) {
       const pPr = doc.createElement("w:pPr");
       const pStyle = doc.createElement("w:pStyle");
-      pStyle.setAttribute("w:val", style ?? paraStyle(index.get(like)) ?? "Normal");
+      pStyle.setAttribute("w:val", style ?? paraStyle(blockOf(like)) ?? "Normal");
       pPr.appendChild(pStyle);
       p.appendChild(pPr);
     }
@@ -7634,18 +7638,15 @@ function applyOp(pkg, getDoc, changed, op) {
     return;
   }
   if (op.delete) {
-    const doc = mainDoc();
-    const index = blockIndex(doc);
     for (const id of op.delete.paragraphs) {
-      const el = index.get(id);
-      if (!el) throw new Error(`no block ${id}`);
+      const el = blockOf(id);
       el.parentNode.removeChild(el);
     }
     changed.add("word/document.xml");
     return;
   }
   if (op.comment) {
-    addComment(pkg, getDoc, changed, op.comment);
+    addComment(pkg, getDoc, blockOf, changed, op.comment);
     return;
   }
   if (op.accept_changes || op.reject_changes) {
@@ -7686,6 +7687,13 @@ function replaceInDoc(doc, re, withText) {
     const joined = texts.join("");
     const matches = [...joined.matchAll(global)];
     if (matches.length === 0) continue;
+    if (runs.length === 0) {
+      const run = doc.createElement("w:r");
+      run.appendChild(doc.createElement("w:t"));
+      p.appendChild(run);
+      runs.push(run);
+      texts.push("");
+    }
     const bounds = [];
     let cursor = 0;
     for (const t of texts) {
@@ -7694,7 +7702,8 @@ function replaceInDoc(doc, re, withText) {
     }
     for (let i = 0; i < runs.length; i++) {
       const [rs, rend] = bounds[i];
-      const covers = matches.filter((m) => m.index < rend && (m.index + m[0].length > rs || m.index >= rs && m.index < rend));
+      const startsHere = (m) => m.index >= rs && (m.index < rend || i === runs.length - 1 && m.index === rend);
+      const covers = matches.filter((m) => startsHere(m) || m.index < rend && m.index + m[0].length > rs);
       if (covers.length === 0) continue;
       const pieces = [];
       let pos = 0;
@@ -7702,7 +7711,7 @@ function replaceInDoc(doc, re, withText) {
         const cs = Math.max(0, m.index - rs);
         const ce = Math.min(texts[i].length, m.index + m[0].length - rs);
         if (cs > pos) pieces.push({ text: texts[i].slice(pos, cs) });
-        if (m.index >= rs && m.index < rend) pieces.push({ repl: expand(m, withText) });
+        if (startsHere(m)) pieces.push({ repl: expand(m, withText) });
         pos = ce;
       }
       if (pos < texts[i].length || pieces.length === 0) pieces.push({ text: texts[i].slice(pos) });
@@ -7717,7 +7726,7 @@ function replaceInDoc(doc, re, withText) {
         anchor.parentNode.insertBefore(clone, anchor.nextSibling);
         anchor = clone;
       }
-      total += covers.filter((m) => m.index >= rs && m.index < rend).length;
+      total += covers.filter(startsHere).length;
     }
   }
   return total;
@@ -7832,10 +7841,9 @@ function phraseRuns(doc, p, anchor) {
   }
   return { firstRun, lastRun };
 }
-function addComment(pkg, getDoc, changed, { paragraph, text, anchor, author = "Bot", initials = "B" }) {
+function addComment(pkg, getDoc, blockOf, changed, { paragraph, text, anchor, author = "Bot", initials = "B" }) {
   const doc = getDoc("word/document.xml");
-  const p = blockIndex(doc).get(paragraph);
-  if (!p) throw new Error(`no paragraph ${paragraph}`);
+  const p = blockOf(paragraph);
   let commentsDoc;
   if (!pkg.parts.has("word/comments.xml")) {
     commentsDoc = parseXml('<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>');
