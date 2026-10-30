@@ -40,6 +40,7 @@ test('apply registers listeners, tools, and effects in a fixed order', (t) => {
     'on credentials/reference-updated',
     'on settings/document-updated',
     'on session/event',
+    'on tools/execute',
     'effect ds-bot: agent tool restrict retry',
     'on agent/created',
     'effect ds-bot: identity section',
@@ -57,7 +58,8 @@ test('apply registers listeners, tools, and effects in a fixed order', (t) => {
     'tool delete_group',
     'tool post_to_group',
     'tool ask_user',
-    'tool show_view',
+    // show_view is scoped per Bot agent, not a global registration.
+
     'tools guard',
     'on agent/created',
     'on session/event',
@@ -103,6 +105,8 @@ test('apply registers listeners, tools, and effects in a fixed order', (t) => {
     'effect ds-bot: connectors',
     'on agent/created',
     'effect ds-bot: capabilities',
+    'on agent/status',
+    'effect ds-bot: learning',
     'effect ds-bot: usage ledger',
     'on llm/stream',
     'effect ds-bot: update check',

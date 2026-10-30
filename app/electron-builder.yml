@@ -11,8 +11,16 @@ files:
 # No asar archive: the app stays plain files. Packages start programs that they ship by paths
 # next to their own files: the Host runs pnpm to install plugins, and file previews run the
 # LibreOffice engine. Electron cannot start a program by a path inside an archive, even when
-# the program itself is unpacked (#679).
+# the program itself is unpacked (#679). The Office payload's plain Node also reads the
+# LibreOffice Kit CLI and ds-bot's office.js from here, which it could not do through an archive.
 asar: false
+# The Office payload that scripts/prepare-runtime.mjs writes in beforePack (see package.json's
+# `runtime` script). build/ is not in `files`, so none of it lands in the app's own folder.
+extraResources:
+  - from: build/runtime/primary-runtime
+    to: primary-runtime
+  - from: build/runtime/office-skills
+    to: office-skills
 # node-pty, sharp and koffi ship prebuilt binaries for each platform. A rebuild would compile
 # node-pty from source and needs a C++ toolchain.
 npmRebuild: false

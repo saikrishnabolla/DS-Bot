@@ -1,6 +1,6 @@
 # DS Bot desktop app
 
-The Electron app for Windows, macOS and Linux. It installs a pinned DeepSeek Harness (DSH 0.2.1-rc.2) and the `ds-bot` plugin of this repository, boots its own DSH profile `ds-bot` through `@deepseek-ai/dsh/profile-boot`, and keeps its data in its own `DSH_HOME`. It never writes to `~/.dsh`. Its window shows DSH's Web front end with the plugin, as DSH Desktop does. The design is in [docs/plans/2026-10-16-desktop-app.md](../docs/plans/2026-10-16-desktop-app.md).
+The Electron app for Windows, macOS and Linux. It installs a pinned DeepSeek Harness (DSH 0.2.1-rc.4) and the `ds-bot` plugin of this repository, boots its own DSH profile `ds-bot` through `@deepseek-ai/dsh/profile-boot`, and keeps its data in its own `DSH_HOME`. It never writes to `~/.dsh`. Its window shows DSH's Web front end with the plugin, as DSH Desktop does. The design is in [docs/plans/2026-10-16-desktop-app.md](../docs/plans/2026-10-16-desktop-app.md).
 
 ## Run
 
@@ -11,6 +11,8 @@ npm start                               # starts the app
 ```
 
 When GitHub downloads are slow, set `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` before the Electron download. Unset `ELECTRON_RUN_AS_NODE` before `npm start` if your terminal has it (terminals inside some Electron-based editors do): with it, Electron runs as plain Node and the app does not start.
+
+`npm run runtime` downloads the Office payload (Python with the document libraries, a standalone Node, the Office skill assets) into `build/runtime`, so the unpackaged app mounts the Office skills the same way a package does. `beforePack` builds it again for the package; without it the app still runs, only without the Office skills.
 
 npm installs `ds-bot` from `../ds-bot` as a copy of its package files (`install-links` in `.npmrc`), so the app runs the plugin of this checkout. Run `npm ci` again after you change `ds-bot` or merge a branch that changes it: while the version stays the same, `npm install` keeps the old copy. `overrides` in `package.json` pins the four peer dependencies of `ds-bot` to the DSH version: they are declared as `*`, and npm does not choose a pre-release to satisfy `*`.
 

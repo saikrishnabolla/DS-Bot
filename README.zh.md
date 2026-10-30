@@ -9,7 +9,7 @@
 
 [English](README.md) | 中文
 
-![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
+![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.4-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
 DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 dsh）的 bot 插件，插件将 dsh 改造为 bot 形式。你可以与自己创建的 bot 交流、工作。
 
@@ -50,8 +50,8 @@ DS Bot 0.2.1 及更早的版本在 DSH Desktop 0.2.1-rc.2 及以后的版本里�
 需要 Node.js `22.19` 以上和 pnpm。
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.2 plugin --profile web add ds-bot
-npx @deepseek-ai/dsh@0.2.1-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-rc.4 plugin --profile web add ds-bot
+npx @deepseek-ai/dsh@0.2.1-rc.4 web
 ```
 
 **Docker（NAS、Linux 服务器）**
@@ -101,6 +101,10 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 在 设置 → 用量 里，可以按时间、按 bot、按模型查看 Token 用量。
 
 ![用量页](docs/images/usage.zh.png)
+
+### Office 文件
+
+Bot 可以处理 Office 文档：创建和编辑 .docx、.pptx、.xlsx；按稳定 id 读文档结构；检查会让 Office 拒开的包缺陷；定点编辑（批注、修订、域、表格单元格）；幻灯片重排与复制；列出工作簿错误；渲染成图片并按拼图检查。桌面应用已全部带上；在 DSH Desktop 里用 DSH 自己的 Office 运行时加 DS Bot 的命令；在 DSH Web 里检查、校验、编辑类命令可用，从头建文件和渲染页面需要桌面应用或 DSH Desktop。
 
 ## 数据
 
