@@ -4,7 +4,7 @@
 
 English | [中文](README.zh.md)
 
-![version](https://img.shields.io/badge/version-v0.2_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
+![version](https://img.shields.io/badge/version-v0.2_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.4-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
 
 **[Download DeepSeek Bot for Windows 10/11 (64-bit) / 下载 Windows 10/11（64 位）版](https://github.com/Fei2411/DS-Bot/releases/latest)**, about 212 MB / 约 212 MB. A community project, not an official DeepSeek product. / 社区开源项目，不是 DeepSeek 官方产品。
 
@@ -56,6 +56,10 @@ At the first start the app keeps its data and the Bots' files in your home folde
 
 If the app does not download, install or start, [report an install problem](https://github.com/Fei2411/DS-Bot/issues/new?template=install.yml); it needs no diagnostics.
 
+**Desktop app from source (Windows)**
+
+With Node.js 22.19 or later and npm installed, run `.\start.ps1` in PowerShell from this checkout. It prepares and launches the current source, keeping your Bots, chats and model settings in `.ds-bot-local/` between runs. See [source startup](app/README.md#run-from-source-windows).
+
 **As a plugin in DSH**
 
 First install DSH and set up at least one model in it. DS Bot uses the models from DSH.
@@ -75,8 +79,8 @@ DS Bot 0.2.1 and earlier cannot update themselves in DSH Desktop 0.2.1-rc.2 or l
 Needs Node.js `22.19` or later, and pnpm.
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.2 plugin --profile web add ds-bot
-npx @deepseek-ai/dsh@0.2.1-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-rc.4 plugin --profile web add ds-bot
+npx @deepseek-ai/dsh@0.2.1-rc.4 web
 ```
 
 **Docker (NAS, Linux server)**
@@ -126,6 +130,10 @@ Settings → **Capabilities** is a shared library of MCP servers, skills and pac
 In **Settings** → **Usage**, you can see token usage by time, by bot and by model.
 
 ![Usage page](docs/images/usage.png)
+
+### Office files
+
+Bots work with Office documents. They can create and edit .docx, .pptx and .xlsx, read a document's structure with stable ids, check a package for the defects Office would refuse, make targeted edits (comments, tracked changes, fields, table cells), reorder or duplicate slides, list workbook errors, and review rendered pages on a contact sheet. The desktop app includes everything needed; in DSH Desktop Bots use DSH's Office runtime plus DS Bot's commands; in DSH Web the inspect, check and edit commands work, while creating files from scratch and rendering pages need the desktop app or DSH Desktop.
 
 ## Data
 

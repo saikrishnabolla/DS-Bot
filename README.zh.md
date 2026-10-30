@@ -4,7 +4,7 @@
 
 [English](README.md) | 中文
 
-![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
+![版本](https://img.shields.io/badge/版本-v0.2_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.4-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
 **[Download DeepSeek Bot for Windows 10/11 (64-bit) / 下载 Windows 10/11（64 位）版](https://github.com/Fei2411/DS-Bot/releases/latest)**, about 212 MB / 约 212 MB. A community project, not an official DeepSeek product. / 社区开源项目，不是 DeepSeek 官方产品。
 
@@ -56,6 +56,10 @@ DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 
 下载不了、装不上或打不开时，[报告安装问题](https://github.com/Fei2411/DS-Bot/issues/new?template=install.yml)，不需要诊断信息。
 
+**从源码启动桌面应用（Windows）**
+
+安装 Node.js 22.19 或以上版本及 npm 后，在仓库目录用 PowerShell 运行 `.\start.ps1`。脚本自动准备并启动当前源码，Bot、聊天记录和模型配置持久保存在 `.ds-bot-local/`，重启后继续使用。见[源码启动说明](app/README.md#run-from-source-windows)。
+
 **作为 dsh 插件**
 
 先装好 dsh，并在 dsh 里配好至少一个模型。ds bot 直接使用 dsh 里的模型。
@@ -75,8 +79,8 @@ DS Bot 0.2.1 及更早的版本在 DSH Desktop 0.2.1-rc.2 及以后的版本里�
 需要 Node.js `22.19` 以上和 pnpm。
 
 ```sh
-npx @deepseek-ai/dsh@0.2.1-rc.2 plugin --profile web add ds-bot
-npx @deepseek-ai/dsh@0.2.1-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-rc.4 plugin --profile web add ds-bot
+npx @deepseek-ai/dsh@0.2.1-rc.4 web
 ```
 
 **Docker（NAS、Linux 服务器）**
@@ -126,6 +130,10 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 在 设置 → 用量 里，可以按时间、按 bot、按模型查看 Token 用量。
 
 ![用量页](docs/images/usage.zh.png)
+
+### Office 文件
+
+Bot 可以处理 Office 文档：创建和编辑 .docx、.pptx、.xlsx；按稳定 id 读文档结构；检查会让 Office 拒开的包缺陷；定点编辑（批注、修订、域、表格单元格）；幻灯片重排与复制；列出工作簿错误；渲染成图片并按拼图检查。桌面应用已全部带上；在 DSH Desktop 里用 DSH 自己的 Office 运行时加 DS Bot 的命令；在 DSH Web 里检查、校验、编辑类命令可用，从头建文件和渲染页面需要桌面应用或 DSH Desktop。
 
 ## 数据
 

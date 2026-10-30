@@ -24,6 +24,8 @@ const react = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: Symbol('Fragment'),
   useRef: initial => hooks.ref(initial), useEffect: (run, deps) => hooks.effect(run, deps), useLayoutEffect() {},
   useMemo: make => make(), useState: initial => [initial, () => {}], useId: () => 'id',
+  // The bundled Deep View widgets make a React context when their module loads.
+  createContext: value => ({ Provider: 'Provider', value }), useContext: context => context.value,
 }
 
 function mount(component) {
@@ -53,7 +55,8 @@ function page(dsBotApp) {
   runInNewContext(outputFiles[0].text, {
     module, exports: module.exports,
     require: name => (name === 'react' ? react : {}),
-    window: { innerWidth: 1280 },
+    window: { innerWidth: 1280, addEventListener() {}, removeEventListener() {} },
+    document: { addEventListener() {}, removeEventListener() {}, querySelector: () => null, documentElement: { setAttribute() {}, removeAttribute() {} } },
     setTimeout: () => 0, clearTimeout() {},
     ...(dsBotApp === undefined ? {} : { dsBotApp }),
   })
@@ -70,6 +73,10 @@ const sidebarProps = roster => ({
   useSessions: pick => pick({ ids: [], byId: {} }), useUpdate: () => ({}),
 })
 const returnProps = (mode, roster) => ({ wide: true, actions: {}, useSurface: pick => pick({ mode }), useRoster: pick => pick(roster) })
+
+// The team column's content sits inside the frame's column, under a Fragment.
+const drawsSide = node => node !== null && typeof node === 'object'
+  && (node.props?.className === 'bt-side' || (node.props?.children ?? []).flat().some(drawsSide))
 
 function readyCalls() {
   const calls = []
@@ -111,7 +118,7 @@ test('without the app bridge or its ready() the sidebar draws as before', async 
     const { TeamSidebar, clientErrors } = page(app)
     const tree = mount(TeamSidebar)(sidebarProps(TEAM))
     await setImmediate()
-    assert.equal(tree.props.className, 'bt-side')
+    assert.ok(drawsSide(tree))
     assert.equal(clientErrors().length, 0)
   }
 })
@@ -120,6 +127,6 @@ test('a ready() that throws is noted and the sidebar stays', async () => {
   const { TeamSidebar, clientErrors } = page({ ready: () => { throw new Error('bridge gone') } })
   const tree = mount(TeamSidebar)(sidebarProps(TEAM))
   await setImmediate()
-  assert.equal(tree.props.className, 'bt-side')
+  assert.ok(drawsSide(tree))
   assert.deepEqual(Array.from(clientErrors(), entry => entry.text), ['app ready: bridge gone'])
 })

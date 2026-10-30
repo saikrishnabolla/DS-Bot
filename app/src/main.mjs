@@ -1,10 +1,11 @@
 // Electron main process: a small start window while the app's own DSH Host boots, then one window
 // for the Bot team. The team window loads the Host's loopback address as DSH Web does: DSH's
 // sign-in sends the page's origin as the address the browser comes back to, and accepts only a
-// loopback one. It loads hidden and shows once the team view is ready (start-window.mjs). Only
-// what the start window needs is imported up front; the rest loads once it is up
-// (docs/plans/2026-10-26-start-window.md §11).
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, systemPreferences, WebContentsView } from 'electron'
+// loopback one. It loads hidden and shows once the team view is ready (start-window.mjs). Closing
+// the team window hides it; the tray brings it back and its Quit ends the app (shell.mjs). Only
+// what the start window and the tray need is imported up front; the rest loads once the start
+// window is up (docs/plans/2026-10-26-start-window.md §11).
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell as electronShell, systemPreferences, Tray, WebContentsView } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { release } from 'node:os'
@@ -15,9 +16,11 @@ import { canonicalExecPath } from './canonical-path.mjs'
 import { hostPort } from './host-port.mjs'
 import { captureStdio, LogFile } from './logs.mjs'
 import { currentRootOf, driveOf, formatBytes, freeSpace, isEmptyTree, pickFrom, placeOf, rootOf } from './place.mjs'
+import { createShell, SHELL_TEXT } from './shell.mjs'
 import { readStartFrame, writeStartFrame } from './start-frame.mjs'
 import { explainOf, StartWindow } from './start-window.mjs'
 import { langOf } from './start/text.mjs'
+import { createDeferredPrompt } from './update-prompt.mjs'
 import { CAPTION_HEIGHT, cssColor, micaAvailable, nativeThemeSource } from './window-frame.mjs'
 
 const IPC = {
@@ -46,8 +49,12 @@ const UPDATE_DOWNLOAD_WAIT_MS = 15 * 60_000
 const SHORT_DRIVE_BYTES = 5e9
 
 const here = dirname(fileURLToPath(import.meta.url))
+const assets = join(here, '..', 'assets')
 // Drawn by scripts/icon.mjs. Windows takes the .ico for its several sizes.
-const iconFile = join(here, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+const iconFile = join(assets, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+// The tray icon of this platform: Windows takes the .ico, macOS the template and its @2x,
+// Linux the plain png.
+const trayIconFile = () => join(assets, process.platform === 'win32' ? 'tray.ico' : process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png')
 // Windows 11 draws Mica behind the page; mica.css lets it through the sidebar.
 const mica = micaAvailable(process.platform, release())
 if (process.env.DS_BOT_SHELL_DATA) app.setPath('userData', process.env.DS_BOT_SHELL_DATA)
@@ -88,6 +95,18 @@ let restarting = false
 let pendingImport
 // Each boot of the engine; a retry starts a new one, and what an old one still reports is dropped.
 let attempt = 0
+// The Host answered and the window may talk to it without the launch URL.
+let hostReady = false
+// The Host's launch URL: the first window trades it for the Host's cookie.
+let launchUrl
+// The first load of the Host, which mints that cookie. It ends when the first load came
+// through (true) or when it never did (false).
+let bootstrap
+// The launch URL is good for one use only: once a browser has carried it, no browser
+// carries it again.
+let tokenSpent = false
+// The download handler of the app's session is bound once, not once per window.
+let downloadsBound = false
 // Quitting while a first-run dialog is open stops the first run, and during the copy (of the
 // first run or of a data move) it waits for the copy to stop at a safe point, so that it leaves
 // no half team and no temporary copy.
@@ -97,7 +116,35 @@ const copyAbort = new AbortController()
 let browserGuests
 let botViews
 let cookieImports
-app.once('will-quit', () => { botViews?.dispose() })
+
+// The team window and the tray: closing the window hides it, the tray is the way back to it and
+// the tray's Quit is the one ordinary way out. Until the hand-off the start window is the one
+// showing, and the way back leads there.
+const shell = createShell({
+  electron: { app, Menu, Tray, powerMonitor },
+  platform: process.platform,
+  messages: () => shellText(),
+  trayImage: () => trayImage(),
+  window: () => mainWindow,
+  build: () => rebuildWindow(),
+  reveal: (target) => {
+    if (startWindow?.focus() || failed) return
+    // macOS: the application menu's Hide hides the app itself, so it comes back first.
+    if (process.platform === 'darwin') app.show()
+    target.show()
+    target.focus()
+  },
+  quit: () => { app.quit() },
+  busy: () => choosing !== undefined || copying !== undefined,
+  // Before the first run has chosen its places there is no window to show, and before the
+  // first load of the Host there is no address to load.
+  ready: () => places !== undefined && origin !== undefined && bootstrap !== undefined,
+  notice: { marker: () => join(app.getPath('userData'), 'tray-close-acknowledged'), show: (options) => dialog.showMessageBox(options) },
+  // Without a tray the close asks whether the app should end.
+  fallback: { show: (options) => dialog.showMessageBox(options) },
+})
+// The tray icon goes away with the app, and a late answer to the close notice hides nothing.
+app.once('will-quit', () => { shell.dispose(); botViews?.dispose(); updates?.stop() })
 
 // A packaged app started through an 8.3 short path or a junction restarts once on the
 // canonical path: the lock below and every path the Host sees then agree with the long
@@ -114,39 +161,48 @@ if (canonical !== undefined) {
   app.once('will-quit', () => { logs.flush() })
   console.log(`DeepSeek Bot ${app.getVersion()} (${process.platform} ${process.arch}), Electron ${process.versions.electron}`)
   startWindow = new StartWindow({
-    electron: { BrowserWindow, ipcMain, screen, shell, clipboard, nativeTheme, systemPreferences },
+    electron: { BrowserWindow, ipcMain, screen, shell: electronShell, clipboard, nativeTheme, systemPreferences },
     page: join(here, 'start', 'start.html'), preload: join(here, 'preload.cjs'), icon: iconFile, mica, devTools: !app.isPackaged,
     // On Windows the locale is known only once the app is ready.
     lang: () => langOf(app.getLocale()), motion: readStartFrame(frameFile).motion,
     version: app.getVersion(), program: [dirname(process.execPath), process.resourcesPath, app.getAppPath()], log: logs, mainWindow: () => mainWindow,
     onRetry: () => { retry().catch(fail) },
     onReload: () => { mainWindow?.webContents.reload() },
-    // Closing the start window before the hand-off quits, as closing the team window does.
+    // Closing the start window before the hand-off quits: there is no team window yet to stay in
+    // the tray with.
     onClose: () => { app.quit() },
     onPick: () => { changePlace().catch(fail) },
     onAnswer: (value) => { placeAnswer(value).catch(fail) },
   })
-  app.on('second-instance', focusWindow)
-  app.on('window-all-closed', () => { app.quit() })
+  // A second launch shows the window that is showing: the start window until the hand-off
+  // (also after a failed start), then the team window, built anew when it is gone.
+  app.on('second-instance', () => { if (!startWindow.focus()) shell.open() })
   app.on('before-quit', (event) => {
     if (choosing !== undefined) {
+      // A first-run dialog is open: the quit waits for it, and the app goes on meanwhile.
       event.preventDefault()
+      shell.cancelQuit()
       choosing.abort()
       return
     }
     if (copying !== undefined) {
+      // A copy is under way: it stops at a safe point, and the app goes on meanwhile.
       event.preventDefault()
+      shell.cancelQuit()
       if (copyAbort.signal.aborted) return
       copyAbort.abort()
       void copying.finally(() => { copying = undefined; app.quit() })
       return
     }
+    // The app is on its way out: the window may close for good.
+    shell.beginQuit()
     if (stopped || host === undefined) return
     event.preventDefault()
-    if (stopping) return
+    // The Host is already stopping: the quit follows it.
+    if (stopping) { void (hostStop ?? Promise.resolve()).then(() => { app.quit() }); return }
     void stopHost().then(() => { app.quit() })
   })
-  app.whenReady().then(start).catch(fail)
+  app.whenReady().then(async () => { shell.install(); await start() }).catch(fail)
 }
 
 function stopHost() {
@@ -179,8 +235,10 @@ async function prepare() {
     await loadModules()
     handleIpc()
   }
-  // The team window is made once the start window has painted, already on its final rect.
-  mainCreated ??= startWindow.painted.then(createWindow)
+  // The team window is made once the start window has painted, already on its final rect, and
+  // made again when it is gone for good (a cancelled shutdown kept the app without one), so
+  // that the next engine has a window to load into.
+  if (mainCreated === undefined || (await mainCreated, mainWindow === undefined)) mainCreated = startWindow.painted.then(createWindow)
 }
 
 async function loadModules() {
@@ -222,6 +280,7 @@ function run() {
 // copy goes on to its end first: an engine started beside it would run on a half-copied team.
 async function retry() {
   const mine = (attempt += 1)
+  forgetHost()
   failed = false
   proposed = undefined
   restarting = true
@@ -235,6 +294,13 @@ async function retry() {
     restarting = false
   }
   if (!stopping && mine === attempt) run()
+}
+
+// The handshake of the Host that goes: a window rebuilt before the next engine answers must not
+// load against a Host that is stopped, nor take its cookie for the new one's.
+function forgetHost() {
+  hostReady = false
+  bootstrap = undefined
 }
 
 // The Host stays known while it stops, so that a quit meanwhile waits for it.
@@ -275,8 +341,17 @@ async function boot(mine) {
   await mainCreated
   if (mine !== attempt || mainWindow === undefined) return
   startWindow.teamLoading()
-  // The launch URL trades its token for the Host's cookie and goes on to the page.
-  void mainWindow.loadURL(engine.url).catch(() => {})
+  // The launch URL trades its token for the Host's cookie and goes on to the page. The cookie
+  // is there once that load came through. The token is good for one browser only: it is spent
+  // as soon as a window carries it. Each engine has a token of its own.
+  const win = mainWindow
+  launchUrl = engine.url
+  tokenSpent = true
+  hostReady = false
+  bootstrap = win.loadURL(engine.url).then(() => {
+    if (mine === attempt) hostReady = true
+    return true
+  }).catch(() => false)
 }
 
 function setPlaces(next) {
@@ -348,6 +423,7 @@ async function placeAnswer(value) {
 // again. The places are saved at once: the import question has been answered by now.
 async function startOver(root) {
   const mine = (attempt += 1)
+  forgetHost()
   failed = false
   proposed = undefined
   restarting = true
@@ -396,7 +472,7 @@ function newHost() {
   return new HostProcess({
     entry: join(here, 'host.mjs'),
     cwd: profileDir(),
-    env: { ...process.env, DSH_HOME: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', DS_BOT_USER_DSH_HOME: userDshHome(), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
+    env: { ...process.env, DSH_HOME: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', DS_BOT_USER_DSH_HOME: userDshHome(), DS_BOT_RUNTIME_DIR: app.isPackaged ? process.resourcesPath : join(here, '..', 'build', 'runtime'), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
     pnpm: pnpmEntry(),
     onFailure: (error) => { if (mine === attempt) void fail(error) },
     output: hostOutput,
@@ -568,7 +644,7 @@ function handleIpc() {
     assertWindow(event)
     const state = updates?.state()
     if (state?.phase === 'available' && typeof state.page === 'string' && state.page.startsWith('https://')) {
-      void shell.openExternal(state.page)
+      void electronShell.openExternal(state.page)
     }
   })
   // The plugin keeps the team workspace; the app remembers it for its own checks.
@@ -739,7 +815,7 @@ function startUpdates() {
   if (!app.isPackaged || (throwaway && feed === undefined)) return undefined
   if (process.platform === 'darwin') {
     return watchReleases({
-      current: app.getVersion(), arch: process.arch, feed, ask: throwaway ? undefined : askDownload, open: url => shell.openExternal(url),
+      current: app.getVersion(), arch: process.arch, feed, ask: throwaway ? undefined : (version) => downloadPrompt.prompt(version), open: url => electronShell.openExternal(url),
     })
   }
   // electron-updater's Linux updater works only from inside an AppImage (APPIMAGE is set there);
@@ -748,38 +824,70 @@ function startUpdates() {
   if (process.platform === 'linux' && process.env.APPIMAGE === undefined) {
     const debArch = { x64: 'amd64', arm64: 'arm64' }[process.arch] ?? process.arch
     return watchReleases({
-      current: app.getVersion(), arch: process.arch, feed, ask: throwaway ? undefined : askDownload, open: url => shell.openExternal(url),
+      current: app.getVersion(), arch: process.arch, feed, ask: throwaway ? undefined : (version) => downloadPrompt.prompt(version), open: url => electronShell.openExternal(url),
       asset: version => `DeepSeek-Bot-${version}-linux-${debArch}.deb`,
     })
   }
   if (process.platform === 'win32' || process.platform === 'linux') {
-    return watchUpdates({ updater: electronUpdater.autoUpdater, feed, ask: throwaway ? undefined : askRestart, beforeInstall: stopHost })
+    // The update ends the app: the window closes for good, and the Host stops before the
+    // installer replaces its files.
+    return watchUpdates({
+      updater: electronUpdater.autoUpdater, feed, ask: throwaway ? undefined : (version) => restartPrompt.prompt(version),
+      beforeInstall: () => { shell.beginQuit(); return stopHost() },
+    })
   }
   return undefined
+}
+
+// A prompt that belongs to a window is not asked while the window is hidden or minimized: it
+// waits for the window to be on the screen again.
+function windowShown() {
+  return mainWindow !== undefined && !mainWindow.isDestroyed() && mainWindow.isVisible() && !mainWindow.isMinimized()
 }
 
 // The update questions wait for the team window: the start window goes at the hand-off, and a
 // question on it would go with it. After a failed start, fail() takes the update over.
 const afterHandoff = async () => { await startWindow.teamShown; return !failed }
 
-async function askRestart(version) {
+async function askRestartNow(version) {
   if (failed || !await afterHandoff()) return false
   const { response } = await dialog.showMessageBox(owner(), { type: 'info', title: 'DeepSeek Bot', message: tx('dialog.update.ready', { version }), detail: tx('dialog.update.readyDetail'), buttons: [tx('btn.restart'), tx('btn.notNowRestart')], defaultId: 0, cancelId: 1, noLink: true })
   return response === 0
 }
 
-async function askDownload(version) {
+async function askDownloadNow(version) {
   if (failed || !await afterHandoff()) return false
   const { response } = await dialog.showMessageBox(owner(), { type: 'info', title: 'DeepSeek Bot', message: tx('dialog.update.available', { version }), detail: tx('dialog.update.availableDetail'), buttons: [tx('btn.download'), tx('btn.notNowDownload')], defaultId: 0, cancelId: 1, noLink: true })
   return response === 0
+}
+
+// What the updater does when the user says yes. The answer may come later, when the window
+// is shown again; then the work is done here.
+async function installUpdate() { await updates?.install() }
+
+async function openUpdatePage() {
+  const state = updates?.state()
+  if (state?.phase === 'available' && typeof state.page === 'string' && state.page.startsWith('https://')) {
+    await electronShell.openExternal(state.page)
+  }
+}
+
+const restartPrompt = createDeferredPrompt({ ask: askRestartNow, shown: windowShown, onYes: installUpdate })
+const downloadPrompt = createDeferredPrompt({ ask: askDownloadNow, shown: windowShown, onYes: openUpdatePage })
+
+async function flushDeferredUpdate() {
+  await restartPrompt.flush()
+  await downloadPrompt.flush()
 }
 
 // Hidden, on the rect the start window grows into; the start window shows it at the hand-off.
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors
   const win32 = process.platform === 'win32'
-  mainWindow = new BrowserWindow({
-    ...startWindow.mainBounds(), minWidth: 720, minHeight: 480,
+  const win = new BrowserWindow({
+    // The window never squeezes the chat: RAIL_WIDTH + MIN_CHAT from ds-bot's
+    // src/client/frame-layout.js is the avatar rail plus the smallest chat column.
+    ...startWindow.mainBounds(), minWidth: 508, minHeight: 480,
     title: 'DeepSeek Bot', show: false, icon: iconFile,
     backgroundColor: mica ? '#00000000' : dark ? '#1b1b1c' : '#ffffff',
     // Frameless as in DSH Desktop: the caption buttons overlay the page's band. They keep the
@@ -794,24 +902,42 @@ function createWindow() {
       additionalArguments: [`--ds-bot-origin=${origin}`, ...(win32 ? [`--ds-bot-caption=${String(CAPTION_HEIGHT)}`, ...(mica ? ['--ds-bot-mica'] : [])] : [])],
     },
   })
-  startWindow.placeMain(mainWindow)
-  mainWindow.on('page-title-updated', (event) => { event.preventDefault() })
-  mainWindow.on('closed', () => { mainWindow = undefined })
-  browserGuests.bind(mainWindow)
-  const contents = mainWindow.webContents
-  contents.session.on('will-download', downloadSaver({ window: mainWindow, dialog, getPath: name => app.getPath(name) }))
+  mainWindow = win
+  startWindow.placeMain(win)
+  // No ready-to-show here: the first window shows at the hand-off (start-window.mjs), a window
+  // built anew when the shell opens it.
+  win.on('page-title-updated', (event) => { event.preventDefault() })
+  win.on('closed', () => {
+    if (mainWindow !== win) return
+    mainWindow = undefined
+    // The Bot browsers' tabs belonged to this window; they wait for the next one.
+    botViews.release()
+  })
+  // The window hides instead of closing; the shell decides when it really goes.
+  shell.watch(win)
+  browserGuests.bind(win)
+  // The tabs that outlived the last window join this one.
+  botViews.attach(win)
+  const contents = win.webContents
+  // The session is the same for every window of the app, so the handler is bound once.
+  if (!downloadsBound) {
+    downloadsBound = true
+    contents.session.on('will-download', downloadSaver({ window: () => mainWindow, dialog, getPath: name => app.getPath(name) }))
+  }
   if (win32) {
     // Fullscreen hides the caption buttons, and the page drops its band meanwhile. A reload
     // registers the page's listener again, so the state goes out after every load too.
-    const sendFullscreen = () => { if (mainWindow !== undefined) contents.send(IPC.fullscreen, mainWindow.isFullScreen()) }
-    mainWindow.on('enter-full-screen', sendFullscreen)
-    mainWindow.on('leave-full-screen', sendFullscreen)
+    const sendFullscreen = () => { if (mainWindow !== undefined) contents.send(IPC.fullscreen, win.isFullScreen()) }
+    win.on('enter-full-screen', sendFullscreen)
+    win.on('leave-full-screen', sendFullscreen)
     contents.on('did-finish-load', sendFullscreen)
   }
   if (mica) {
     const css = readFileSync(join(here, 'mica.css'), 'utf8')
     contents.on('dom-ready', () => { void contents.insertCSS(css) })
   }
+  const fonts = readFileSync(join(here, 'fonts.css'), 'utf8')
+  contents.on('dom-ready', () => { void contents.insertCSS(fonts) })
   contents.setWindowOpenHandler(({ url }) => {
     // DSH's sign-in opens a blank window during the click and sends it to the sign-in page later.
     if (url === 'about:blank') return { action: 'allow', overrideBrowserWindowOptions: { show: false, webPreferences: { sandbox: true, webviewTag: false } } }
@@ -838,20 +964,100 @@ function createWindow() {
       if (input.type === 'keyDown' && (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i'))) contents.toggleDevTools()
     })
   }
+  // The window that is shown again asks for the update that waited for it. A window that was
+  // minimized asks for it when it comes back.
+  win.on('show', () => { void flushDeferredUpdate().catch((error) => { console.error(error) }) })
+  win.on('restore', () => { void flushDeferredUpdate().catch((error) => { console.error(error) }) })
+  return win
+}
+
+// The window is gone for good: a new one takes its place and talks to the Host that runs.
+function rebuildWindow() {
+  const win = createWindow()
+  void connectHost(win).catch((error) => { console.error(error) })
+  return win
+}
+
+// The window talks to the Host that runs. The first one trades the launch URL for the Host's
+// cookie; the later ones use the plain address, which that cookie carries. The launch URL is
+// used again only when no browser carried it at all, so that a token is never spent twice.
+async function connectHost(win) {
+  if (hostReady) { await win.loadURL(`${origin}/`); return }
+  // The first load of the Host decides how this window comes in.
+  if (bootstrap !== undefined) await bootstrap
+  if (hostReady) { await win.loadURL(`${origin}/`); return }
+  // The first load never came through. The cookie may be there anyway: it belongs to the
+  // session of the browser, which outlives the window.
+  if (await hostCookie()) {
+    hostReady = true
+    await win.loadURL(`${origin}/`)
+    return
+  }
+  // There is no cookie: the launch URL is the one way in, and only while it was not used.
+  if (launchUrl !== undefined && !tokenSpent) {
+    tokenSpent = true
+    await win.loadURL(launchUrl)
+    hostReady = true
+    return
+  }
+  await win.loadURL(`${origin}/`)
+}
+
+// The Host's cookie: the launch URL trades its token for it. The app does not need to know
+// its name, only whether the browser holds one for the Host's address.
+async function hostCookie() {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ url: `${origin}/` })
+    return cookies.length > 0
+  } catch (error) {
+    console.error(error)
+    return false
+  }
+}
+
+// The mark of the tray: the file of this platform, and on macOS the template that follows the
+// colour of the menu bar.
+function trayImage() {
+  const file = trayIconFile()
+  const image = nativeImage.createFromPath(file)
+  if (image.isEmpty()) throw new Error(`the tray icon ${file} could not be read`)
+  if (process.platform === 'darwin') {
+    const retina = nativeImage.createFromPath(join(assets, 'trayTemplate@2x.png'))
+    const size = retina.getSize()
+    if (!retina.isEmpty() && size.width > image.getSize().width) {
+      image.addRepresentation({ scaleFactor: 2, buffer: retina.toPNG(), width: size.width, height: size.height })
+    }
+    image.setTemplateImage(true)
+  }
+  return image
 }
 
 function setMenu() {
   if (process.platform !== 'darwin') { Menu.setApplicationMenu(null); return }
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'fileMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]))
+  const t = shellText()
+  // The application menu of macOS, without its Quit: the tray's Quit is the one ordinary way
+  // out. Only when the tray is not there does the menu carry one, so that the app can still
+  // be ended.
+  const items = [
+    { role: 'about' },
+    { type: 'separator' },
+    { role: 'services' },
+    { type: 'separator' },
+    { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+  ]
+  if (!shell.hasTray()) {
+    items.push({ type: 'separator' }, { label: t.quit, click: () => { shell.quit() } })
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: app.name, submenu: items },
+    { role: 'fileMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+  ]))
 }
 
-// The window that is showing: the start window until the hand-off (also after a failed start),
-// then the team window. A second launch is how the user finds it again.
-function focusWindow() {
-  if (startWindow.focus() || mainWindow === undefined) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  mainWindow.show()
-  mainWindow.focus()
+// The tray's and the menu's copy, in the app's language. On Windows the locale is known only once
+// the app is ready.
+function shellText() {
+  return SHELL_TEXT[langOf(app.getLocale())]
 }
 
 function assertWindow(event) {
@@ -865,7 +1071,7 @@ function fromWindow(event) {
 }
 
 function openOutside(url) {
-  if (/^https?:\/\//iu.test(url)) void shell.openExternal(url)
+  if (/^https?:\/\//iu.test(url)) void electronShell.openExternal(url)
 }
 
 // The start window shows the failure page and stays. A new version may fix what keeps this one
@@ -882,7 +1088,7 @@ async function fail(error) {
   if (!found || mine !== attempt) return
   await dialog.showMessageBox(owner(), { type: 'info', title: 'DeepSeek Bot', message: tx(found.page ? 'dialog.update.onFailurePage' : 'dialog.update.onFailure', { version: found.version }) })
   if (found.page) {
-    if (!process.env.DS_BOT_HOME) await shell.openExternal(found.page)
+    if (!process.env.DS_BOT_HOME) await electronShell.openExternal(found.page)
     return
   }
   if (await Promise.race([found.downloaded, sleep(UPDATE_DOWNLOAD_WAIT_MS).then(() => false)]) && failed && mine === attempt) await updates.install()
