@@ -177,6 +177,7 @@ export function createTeam() {
     addProvider: body => after(call('provider-add', body)),
     providerModels: body => call('provider-models', body),
     removeProvider: provider => after(call('provider-remove', { provider })),
+    stopBotWork: botId => after(call('stop-bot-work', { botId })),
     openModels: () => actions.openSettings('models'),
     // Nothing else draws in the window: no shell panels, right sidebar, "@" menu or voice plugin.
     hasRightSidebar: () => false,

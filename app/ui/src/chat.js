@@ -7,15 +7,21 @@ import { t } from '../../../ds-bot/src/client/i18n.js'
 import { ArrowUpIcon } from '../../../ds-bot/src/client/icons.js'
 import { ModelChoiceDock } from '../../../ds-bot/src/client/model-menu.js'
 import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
+import { MarkdownText } from '../../../ds-bot/src/client/dsh-primitives.js'
+import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
+import { chatRequest, feedMatches, stopRequest } from './chat-target.js'
+import { transcriptSegments } from './pi-transcript.js'
 
 // The chat follows its end while the user is this close to it.
 const FOLLOW_PX = 80
-const sameItem = (a, b) => a.kind === b.kind && a.time === b.time && a.text === b.text
+const sameItem = (a, b) => (a.entryId !== undefined && b.entryId !== undefined
+  ? a.entryId === b.entryId && a.block === b.block
+  : a.kind === b.kind && a.time === b.time && a.text === b.text && a.botId === b.botId)
 
 // A Bot's own chat: pages from the `chat` endpoint, new entries and the reply being
 // written from the feed. Entries that arrive while the first page loads wait for it.
-function useChat(botId, part, feed) {
-  const [view, setView] = useState({ sessionId: null, items: [], cursor: null, loading: botId !== undefined, failed: false })
+function useChat(botId, roomId, part, feed) {
+  const [view, setView] = useState({ sessionId: null, items: [], cursor: null, loading: botId !== undefined || roomId !== undefined, failed: false })
   const [stream, setStream] = useState(null)
   const [pending, setPending] = useState([])
   const ready = useRef(false)
@@ -24,12 +30,12 @@ function useChat(botId, part, feed) {
   const keep = useRef(null)
 
   const load = useCallback(async (cursor, scroller) => {
-    if (busy.current || botId === undefined) return
+    if (busy.current || (botId === undefined && roomId === undefined)) return
     busy.current = true
     if (cursor === undefined) ready.current = false
     setView(current => ({ ...current, loading: true, failed: false }))
     try {
-      const page = await call('chat', { botId, ...(cursor ? { cursor } : {}) })
+      const page = await call('chat', chatRequest(botId, roomId, cursor))
       if (cursor === undefined) {
         const later = early.current.filter(entry => entry.sessionId === page.sessionId && !page.items.some(item => sameItem(item, entry.item)))
         early.current = []
@@ -46,7 +52,7 @@ function useChat(botId, part, feed) {
     } finally {
       busy.current = false
     }
-  }, [botId])
+  }, [botId, roomId])
 
   // A new part starts the chat over.
   useEffect(() => { void load(undefined) }, [load, part])
@@ -54,7 +60,7 @@ function useChat(botId, part, feed) {
   useEffect(() => feed.on((event, data) => {
     // The feed came back after a break: entries may have been missed.
     if (event === 'hello') { if (ready.current) void load(undefined); return }
-    if (botId === undefined || data?.botId !== botId) return
+    if (!feedMatches(botId, roomId, data)) return
     if (event === 'message') {
       if (!ready.current) { early.current.push(data); return }
       setView(current => (data.sessionId !== current.sessionId || current.items.some(item => sameItem(item, data.item)) ? current : { ...current, items: [...current.items, data.item] }))
@@ -70,7 +76,7 @@ function useChat(botId, part, feed) {
       else if (data.phase === 'end') setStream(current => (current?.attemptId === data.attemptId ? null : current))
       else setStream(current => (current?.attemptId === data.attemptId ? { ...current, text: current.text + data.text } : current))
     }
-  }), [feed, botId, load])
+  }), [feed, botId, roomId, load])
 
   // Shown at once: the message can come back on the feed before the request returns.
   const send = async (text, actions, sessionId) => {
@@ -99,9 +105,10 @@ function useInput(field, setText) {
   }), [field, setText])
 }
 
-function Composer({ sessionId, placeholder, disabled, onSend, actions, useUi, useRoster }) {
+function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
   const [text, setText] = useState('')
   const [error, setError] = useState(null)
+  const [stopping, setStopping] = useState(false)
   const field = useRef(null)
   const inputActions = useInput(field, setText)
   const enterToSend = useRoster(state => sendsOnEnter(state.prefs))
@@ -122,6 +129,12 @@ function Composer({ sessionId, placeholder, disabled, onSend, actions, useUi, us
       setText(current => (current === '' ? value : current))
       setError(failure.message)
     }
+  }
+  const stop = async () => {
+    if (!running || stopping) return
+    setError(null)
+    setStopping(true)
+    try { await onStop() } catch (failure) { setError(failure.message) } finally { setStopping(false) }
   }
   return h('div', { className: 'dsb-composer-wrap' },
     error ? h('p', { className: 'dsb-composer-error', role: 'alert' }, error) : null,
@@ -145,8 +158,39 @@ function Composer({ sessionId, placeholder, disabled, onSend, actions, useUi, us
           },
         })),
       h('div', { className: 'dsb-composer-trailing' },
+        running ? h('button', { type: 'button', className: 'dsb-stop', disabled: stopping, onClick: () => { void stop() } }, stopping ? t('Stopping…') : t('Stop')) : null,
         h(ComposerVoice, { sessionId, inputActions, actions, useUi, useRoster }),
         h('button', { type: 'button', className: 'dsb-send', disabled: disabled || text.trim() === '', 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))))
+}
+
+function ToolRow({ row }) {
+  const label = String(row.name ?? 'tool').replaceAll('_', ' ')
+  const argumentsText = row.arguments && Object.keys(row.arguments).length > 0 ? JSON.stringify(row.arguments, null, 2) : ''
+  const result = typeof row.result === 'string' ? row.result : row.details === undefined ? '' : JSON.stringify(row.details, null, 2)
+  return h('details', { className: 'dsb-tool-row', 'data-error': row.isError || row.error ? '' : undefined },
+    h('summary', null, row.result === undefined ? t('Using {name}…', { name: label }) : t('Used {name}', { name: label })),
+    argumentsText ? h('pre', null, argumentsText) : null,
+    result ? h('pre', null, result) : null,
+    row.error ? h('p', { role: 'alert' }, row.error) : null)
+}
+
+const rowKey = (row, index) => {
+  const item = row.kind === 'chat' ? row.items[0] : row
+  return item?.entryId === undefined ? `${row.kind}:${row.callId ?? index}` : `${row.kind}:${item.entryId}:${item.block ?? ''}`
+}
+
+function Transcript({ items, sessionId, roster, actions, useUi, clock, showReasoning }) {
+  return transcriptSegments(items).map((row, index) => {
+    const key = rowKey(row, index)
+    if (row.kind === 'chat') return h(ChatRows, { key, items: row.items, sessionId, roster, actions, useUi, clock })
+    if (row.kind === 'reasoning') return showReasoning ? h('details', { key, className: 'dsb-reasoning' },
+      h('summary', null, t('Thought process')), row.redacted ? h('p', null, t('Reasoning was redacted.')) : h(MarkdownText, { text: row.text, variant: 'compact' }))
+      : null
+    if (row.kind === 'tool') return h(ToolRow, { key, row })
+    return row.reason === 'aborted'
+      ? h('div', { key, className: 'dsb-stopped' }, t('Stopped'))
+      : h('div', { key, className: 'dsb-failure', role: 'alert' }, row.detail || t('This turn failed.'))
+  })
 }
 
 // One conversation in the main view, drawn with the Bot views' own rows, cards and docks.
@@ -154,12 +198,22 @@ export function Chat({ sessionId, team }) {
   const { actions, hooks, chat: feed } = team
   const roster = hooks.useRoster(value => value)
   const bot = roster.byId[sessionId]
-  const name = bot?.name ?? roster.roomsById[sessionId]?.name ?? ''
-  const { view, stream, pending, load, send, keep } = useChat(bot?.id, sessionId, feed)
+  const room = roster.roomsById[sessionId]
+  const name = bot?.name ?? room?.name ?? ''
+  const { view, stream, pending, load, send, keep } = useChat(bot?.id, room?.id, sessionId, feed)
   const scroller = useRef(null)
   const follow = useRef(true)
   const question = roster.questions?.[sessionId]
-  const running = hooks.useSessionStatus(map => map.get(sessionId)?.running === true)
+  const botRunning = hooks.useSessionStatus(map => map.get(sessionId)?.running === true)
+  const useWork = hooks.useWork ?? (() => false)
+  const roomRunning = useWork(work => room !== undefined && (work.rooms?.[room.id] ?? []).length > 0)
+  const running = botRunning || roomRunning
+  const stop = () => {
+    const request = stopRequest(bot?.id, room?.id)
+    return request.endpoint === 'stop-bot-work'
+      ? actions.stopBotWork(request.payload.botId)
+      : actions.stopRoomWork(request.payload.roomId)
+  }
 
   useLayoutEffect(() => {
     const node = scroller.current
@@ -183,7 +237,7 @@ export function Chat({ sessionId, team }) {
       h('div', { className: 'dsb-column' },
         earlier ? h('div', { className: 'bt-earlier-top' }, earlier) : null,
         h('div', { className: 'dsb-flow', 'data-chat-flow': '', role: 'feed', 'aria-label': name, 'aria-busy': view.loading },
-          h(ChatRows, { items: view.items, sessionId, roster, actions, useUi: hooks.useUi, clock: true }),
+          h(Transcript, { items: view.items, sessionId, roster, actions, useUi: hooks.useUi, clock: true, showReasoning: thinkingShown(roster.prefs) }),
           pending.length ? h('div', { className: 'dsb-pending' }, h(ChatRows, { items: pending, sessionId, roster, actions })) : null,
           stream?.text ? h(Bubbles, { texts: [stream.text], roster, selfId: bot?.id, actions, streaming: true, sessionId }) : null,
           // The Bot views' activity row (from the header pill) draws itself in here.
@@ -194,8 +248,10 @@ export function Chat({ sessionId, team }) {
       h(Composer, {
         sessionId,
         disabled: waiting,
+        running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),
         onSend: text => send(text, actions, sessionId),
+        onStop: stop,
         actions,
         useUi: hooks.useUi,
         useRoster: hooks.useRoster,
