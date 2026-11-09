@@ -20,6 +20,7 @@ export function install(rt) {
   const encoder = new TextEncoder()
   /** @type {Set<ReadableStreamDefaultController<Uint8Array>>} */
   const clients = new Set()
+  const listeners = new Set()
   const send = (controller, chunk) => {
     if ((controller.desiredSize ?? 0) < -MAX_QUEUED) {
       leave(controller)
@@ -30,6 +31,11 @@ export function install(rt) {
   const publish = (event, data) => {
     const chunk = encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
     for (const controller of clients) send(controller, chunk)
+    for (const listener of listeners) listener(event, data)
+  }
+  rt.subscribeFeed = listener => {
+    listeners.add(listener)
+    return () => { listeners.delete(listener) }
   }
 
   const offSaved = rt.onSaved(() => {
@@ -116,6 +122,7 @@ export function install(rt) {
       clearInterval(keepalive)
       clearTimeout(liveTimer)
       offSaved()
+      listeners.clear()
       for (const controller of clients) leave(controller)
     }
   }, 'ds-bot: live feed')
