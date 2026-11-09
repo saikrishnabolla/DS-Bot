@@ -37,11 +37,14 @@ export class BlockAssembler {
   push(chunk) {
     const text = textDelta(chunk)
     if (text !== '') this.#text += text
-    if (chunk?.type === 'tool-call' || chunk?.type === 'tool_call') this.#blocks.push(chunk)
+    if (chunk?.type === 'tool-call' || chunk?.type === 'tool_call' || chunk?.type === 'toolcall_end') {
+      const call = chunk.toolCall ?? chunk
+      this.#blocks.push({ type: 'tool-call', id: call.id, name: call.name, arguments: call.arguments })
+    }
     if (chunk?.type === 'done' || chunk?.type === 'finish') {
       const reason = chunk.reason ?? chunk.stopReason ?? 'stop'
       this.finish = { kind: reason === 'toolUse' || reason === 'tool_calls' ? 'tool-calls' : String(reason) }
-      this.usage = chunk.usage
+      this.usage = chunk.usage ?? chunk.message?.usage
     }
     if (chunk?.type === 'error') this.finish = { kind: 'error', error: chunk.error }
     if (chunk?.usage) this.usage = chunk.usage
