@@ -26,12 +26,14 @@
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
+    "./engine": "./src/engine/owned-harness.js",
     "./web-search": "./web-search.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "src/host/",
+    "src/engine/",
     "src/shared/",
     "src/office/",
     "client.js",
@@ -69,6 +71,11 @@
     "qrcode-generator": "2.0.4"
   },
   "dependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@earendil-works/pi-mcp": "1.5.0",
     "@modelcontextprotocol/client": "2.4.0",
     "deep-view": "0.1.2",
     "imapflow": "2.9.1",
