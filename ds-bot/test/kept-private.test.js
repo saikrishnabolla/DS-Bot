@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const { outputFiles } = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/kept-private.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 // State survives between renders, as in a mounted component; effects never run.
 let slots = []

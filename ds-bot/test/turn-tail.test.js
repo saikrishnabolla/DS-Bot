@@ -7,9 +7,8 @@ import { build } from 'esbuild'
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/cells.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
-function MarkdownText() { return null }
 const effects = []
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
@@ -22,7 +21,6 @@ runInNewContext(bundle.outputFiles[0].text, {
         useLayoutEffect: () => {}, useMemo: make => make(), Fragment: 'fragment',
       },
       'react-dom': { createPortal: node => node },
-      '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText },
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]
@@ -66,7 +64,7 @@ function cellProps({ closingSeq = 10, turn = finished } = {}) {
   }
   return { props, asked, links }
 }
-const markdownOf = props => find(expand(AssistantCell(props), ['Bubbles', 'Bubble']), node => node.type === MarkdownText)
+const markdownOf = props => find(expand(AssistantCell(props), ['Bubbles', 'Bubble']), node => node.type?.name === 'MarkdownText')
 
 test('a reply that closes its turn links the files the turn changed or delivered', () => {
   const { props, asked, links } = cellProps()

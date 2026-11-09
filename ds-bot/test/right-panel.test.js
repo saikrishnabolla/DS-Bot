@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
 import { columnOpened, createSwitchWindow, drawerOpened, rightColumnOpen } from '../src/client/right-panel.js'
-
-// jsdom comes from the harness that test/harness-resolve.mjs found, like the dsh packages.
-const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
-const { JSDOM } = createRequire(join(process.env.DSH_HARNESS ?? join(PLUGIN, '..', 'deepseek-harness'), 'package.json'))('jsdom')
 
 const document = attrs => new JSDOM(`<!doctype html><body><div ${attrs}><div data-rightbar-col></div></div></body>`).window.document
 
@@ -75,7 +70,7 @@ test('a newer Session switch restarts the window and the old settle is stale', (
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/details-drawer.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
@@ -89,7 +84,6 @@ runInNewContext(bundle.outputFiles[0].text, {
         useSyncExternalStore: (_subscribe, get) => get(), Fragment: 'fragment',
       },
       'react-dom': { createPortal: node => node },
-      '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null },
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]

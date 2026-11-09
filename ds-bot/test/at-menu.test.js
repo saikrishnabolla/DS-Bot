@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatSessionReferenceMention, parseSessionReferenceText } from '@deepseek-ai/dsh-session-reference'
 import { BOTS_SOURCE, CHATS_SOURCE, atSources, chatRows, mentionRows, sessionMention } from '../src/client/at-menu.js'
 import { indexRoster } from '../src/client/sources.js'
 
@@ -13,12 +12,19 @@ const roster = indexRoster({
   rooms: [{ id: 'room', name: 'Launch', members: ['chief', 'king'], parts: ['king-in-room'] }],
 })
 const names = rows => rows.map(row => row.bot?.name ?? 'everyone')
+const readSessionMention = (value) => {
+  const match = /^@\[([\s\S]*)\]\(dsh-session:([A-Za-z0-9_-]*)\)$/.exec(value)
+  assert.ok(match)
+  return {
+    sessionId: JSON.parse(Buffer.from(match[2], 'base64url').toString('utf8')),
+    label: match[1].replace(/\\([\\\]])/g, '$1'),
+  }
+}
 
-test('a session mention is the one DSH writes and reads back', () => {
+test('a session mention keeps its id and escaped label', () => {
   for (const [id, label] of [['s-1', 'Chat with King'], ['会话/ä"x', 'a ] b \\ c'], ['', '']]) {
     const mention = sessionMention(id, label)
-    assert.equal(mention, formatSessionReferenceMention({ sessionId: id, label }))
-    assert.deepEqual(parseSessionReferenceText(`see ${mention}`), { text: `see @${label}`, references: [{ sessionId: id, label }] })
+    assert.deepEqual(readSessionMention(mention), { sessionId: id, label })
   }
 })
 

@@ -23,7 +23,7 @@ import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, che
 import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, splitRef, textOf } from './text.js'
 import { viaOf } from '../shared/im-platforms.js'
-import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
+import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from '../view/core/index.js'
 
 // An ask_user card as the user saw it. The user's reply is often just an option label,
 // which means nothing without the card. Arguments the tool would refuse (no question,
@@ -42,7 +42,7 @@ export function cardText(args) {
   return `[Question card] ${question}${detail ? ` (${detail})` : ''}\nOptions: ${options.join(' / ')}`
 }
 
-// The card text and reply format live in the shared deep-view core.
+// The card text and reply format live in the shared view core.
 export { viewCardText, viewReply }
 
 // What one event adds to a Bot's chat history: an answer of the Bot's (its text, or a

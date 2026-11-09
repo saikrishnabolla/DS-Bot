@@ -9,7 +9,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   stdin: { contents: "export { importPhotos, loadLibrary } from './src/client/avatar-library.js'", resolveDir: dirname(dirname(fileURLToPath(import.meta.url))) },
   bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 const react = {

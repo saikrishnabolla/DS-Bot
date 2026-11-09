@@ -14,7 +14,7 @@ const bundle = await build({
     resolveDir: root,
   },
   bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
@@ -30,7 +30,6 @@ runInNewContext(bundle.outputFiles[0].text, {
         useContext: ctx => ctx.value, Fragment: 'fragment',
       },
       'react-dom': { createPortal: node => node },
-      '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null, projectUserText: text => text },
     }
     if (!(name in platform)) throw new Error('no platform module ' + name)
     return platform[name]

@@ -1,15 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
 import { READ_LIMITS, READ_PAGE_SCRIPT, readPageScript } from '../src/client/read-page.js'
 
-// jsdom comes from the deepseek-harness checkout next to ds-bot, like the dsh packages.
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
-const harness = process.env.DSH_HARNESS ?? join(PLUGIN, '..', 'deepseek-harness')
-const { JSDOM } = createRequire(join(harness, 'package.json'))('jsdom')
 
 const PAGE = `<!doctype html><html lang="en"><head><title>Sample</title>
 <meta name="description" content="About the sample">

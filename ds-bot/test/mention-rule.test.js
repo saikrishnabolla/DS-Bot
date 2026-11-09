@@ -13,13 +13,13 @@ const bots = [{ id: 'a', name: '新 Bot' }, { id: 'b', name: '新 Bot 2' }, { id
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/user-message.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
   module, exports: module.exports,
   require: (name) => {
-    const platform = { react: { createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx }, useContext: ctx => ctx.value, useMemo: make => make(), useCallback: fn => fn, useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),  createElement: () => null, Fragment: 'fragment', useState: initial => [initial, () => {}], useEffect: () => {}, useRef: initial => ({ current: initial }), useLayoutEffect: () => {}, useId: () => 'id' }, 'react-dom': {}, '@deepseek-ai/dsh-client-ui-primitives': {} }
+    const platform = { react: { createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx }, useContext: ctx => ctx.value, useMemo: make => make(), useCallback: fn => fn, useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),  createElement: () => null, Fragment: 'fragment', useState: initial => [initial, () => {}], useEffect: () => {}, useRef: initial => ({ current: initial }), useLayoutEffect: () => {}, useId: () => 'id' }, 'react-dom': {} }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]
   },
@@ -79,8 +79,7 @@ test('the user bubble keeps the text around a mention, and a group only calls it
   assert.deepEqual(plain(mentionableBots(roster, 'r').map(bot => bot.id)), ['c', 'k'])
   assert.equal(mentionableBots(roster, 'a').length, 4)
   assert.equal(mentionableBots(roster, 'elsewhere').length, 0)
-  // Without DSH's text projection the plugin leaves the bubble to DSH.
-  assert.equal(canDrawUserMessages(), false)
+  assert.equal(canDrawUserMessages(), true)
 })
 
 test('a Bot name is something "@" can call without a second reading', () => {

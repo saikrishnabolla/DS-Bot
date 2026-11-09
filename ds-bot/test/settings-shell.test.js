@@ -1,7 +1,5 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
@@ -10,7 +8,7 @@ const plugin = fileURLToPath(new URL('..', import.meta.url))
 const bundle = async (contents) => (await build({
   stdin: { contents, resolveDir: plugin },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })).outputFiles[0].text
 
 // A stand-in React that draws one tree with effects left out.
@@ -42,52 +40,6 @@ const walk = (node, match, out = []) => {
 }
 const textOf = node => (typeof node === 'string' ? node : Array.isArray(node) ? node.map(textOf).join('') : node?.props ? textOf(node.props.children) : '')
 const roster = { byId: {}, roomsById: {}, bots: [], rooms: [], models: [], prefs: {} }
-const harnessRequire = createRequire(`${plugin}/dev/harness/package.json`)
-// The patch files are YAML; DSH's own parser reads them as a profile would.
-const { parse } = harnessRequire('yaml')
-const packageFile = (name, file) => harnessRequire.resolve(`${name}/package.json`).replace(/package\.json$/, file)
-
-// DSH's own settings shell, run as its browser module would: the child slots its
-// `sidebar.settings` entry and its General section declare are the ones DS Bot's seat
-// must declare in its place.
-function dshShellDeclarations() {
-  const source = readFileSync(packageFile('@deepseek-ai/dsh-client-ui-settings-general', 'lib/client.js'), 'utf8')
-  let factory
-  runInNewContext(source, { window: { __ModuleLoader__: { load: (row) => { factory = row.factory } } } })
-  const stub = () => new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : key === Symbol.toPrimitive ? () => '' : stub()), apply: () => stub(), construct: () => stub() })
-  const module = factory(name => (name === 'react' || name === 'react/jsx-runtime' ? react : stub()))
-  const children = {}
-  const ctx = new Proxy({
-    slots: { inject: (_, fn) => fn(), register: (options) => { Object.assign(children, options.children ?? {}); return () => {} } },
-    effect: fn => fn(),
-    remote: { $host: { isLoopback: false } },
-    remoteAccess: { whenAccess: (_, fn) => fn() },
-    get: () => undefined,
-  }, { get: (target, key) => (key in target ? target[key] : stub()) })
-  module.apply(ctx)
-  return children
-}
-
-// Slots a newer DSH's shell declares than the oldest DSH DS Bot runs on. Declaring one
-// an older shell lacks is harmless: nothing registers into it there.
-const NEWER_SLOTS = new Set(['settings.section.icon'])
-
-test('the seat declares every child slot DSH\'s own settings shell declares, alike', () => {
-  // Both sides come from their own realms, so the comparison goes through plain data.
-  const plain = value => JSON.parse(JSON.stringify(value))
-  const ours = plain(shell.SETTINGS_CHILDREN)
-  const dsh = plain(dshShellDeclarations())
-  for (const [name, spec] of Object.entries(dsh)) assert.deepEqual(ours[name], spec, name)
-  assert.deepEqual(Object.keys(ours).filter(name => !(name in dsh) && !NEWER_SLOTS.has(name)), [])
-})
-
-test('the bundle patch turns off the DSH settings shell row that dsh-web-app mounts', () => {
-  const rows = JSON.stringify(parse(readFileSync(packageFile('@deepseek-ai/dsh-web-app', 'cordis.patch.yml'), 'utf8')))
-  assert.match(rows, /"id":"ui-settings-general","name":"@deepseek-ai\/dsh-client-ui-settings-general"/)
-  const ours = parse(readFileSync(`${plugin}/cordis.patch.yml`, 'utf8'))
-  assert.ok(ours.some(row => row.id === 'ui-settings-general' && row.disabled === true))
-})
-
 test('onboarding skips DSH\'s preview notice and keeps the ledger order', () => {
   const entries = [
     { options: { id: 'deepseek-official', order: 0 } },

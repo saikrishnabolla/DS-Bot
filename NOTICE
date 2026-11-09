@@ -1,6 +1,9 @@
 DS Bot
 Copyright 2026 Fei2411 and the DS Bot contributors
 
+The view core and React components in ds-bot/src/view are derived from Deep View
+0.1.2 by Fei2411, licensed under the Apache License 2.0.
+
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 ==============================================================================

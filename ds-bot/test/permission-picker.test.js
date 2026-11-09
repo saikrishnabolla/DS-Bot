@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const { outputFiles } = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/permission-picker.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 
 // A minimal stateful React: hook cells live across renders and a setState re-renders,

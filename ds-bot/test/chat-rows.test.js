@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/cells.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
@@ -20,7 +20,6 @@ runInNewContext(bundle.outputFiles[0].text, {
         useLayoutEffect() {}, useEffect() {}, useMemo: make => make(),
       },
       'react-dom': {},
-      '@deepseek-ai/dsh-client-ui-primitives': {},
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]

@@ -10,7 +10,7 @@ const bundle = await build({
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
   },
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 const sandbox = {
@@ -25,7 +25,6 @@ const sandbox = {
         useRef: initial => ({ current: initial }),
       },
       'react-dom': {},
-      '@deepseek-ai/dsh-client-ui-primitives': {},
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]

@@ -8,7 +8,8 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
-import { scopeTarget } from '@deepseek-ai/dsh-scope'
+
+const scopeTarget = (target, agent) => Object.assign(target, { carrier: agent })
 
 let rt
 

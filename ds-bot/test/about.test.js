@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/about.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const react = {
   createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx },

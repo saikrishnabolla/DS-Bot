@@ -6,6 +6,5 @@
   "license": "Apache-2.0",
   "type": "module",
   "main": "index.js",
-  "keywords": ["dsh-plugin", "browser"],
-  "dsh": {}
+  "keywords": ["browser"]
 }

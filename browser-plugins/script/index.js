@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '../../ds-bot/src/engine/tool-definition.js'
 import { mountBrowserPlugin } from '../../ds-bot/src/host/browser/mount.js'
 import { id, label, systemPrompt, toolDefs } from '../../ds-bot/src/host/browser/script.js'
 

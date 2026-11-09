@@ -22,7 +22,7 @@ const { outputFiles } = await build({
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react'],
 })
 let current
 const slot = (make) => {
@@ -56,7 +56,7 @@ const module = { exports: {} }
 runInNewContext(outputFiles[0].text, {
   module, exports: module.exports,
   require: (name) => {
-    assert.ok(name === 'react' || name === '@deepseek-ai/dsh-client-ui-primitives')
+    assert.equal(name, 'react')
     return name === 'react' ? react : { MarkdownText: ({ text }) => text }
   },
   document: {

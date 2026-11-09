@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const { outputFiles } = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/bot-settings.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const react = {
   createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity) } }),

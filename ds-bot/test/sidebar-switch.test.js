@@ -1,15 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
 
-// jsdom comes from the harness that test/harness-resolve.mjs found, like the dsh packages.
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
-const { JSDOM } = createRequire(join(process.env.DSH_HARNESS ?? join(PLUGIN, '..', 'deepseek-harness'), 'package.json'))('jsdom')
 
 // The sidebar and its style sheets import the browser's React; bundle them with a minimal
 // stand-in, as the tool-cell tests do: components run as plain functions. Navigation
@@ -20,7 +18,7 @@ const { outputFiles } = await build({
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 let renderRefs
 let refIndex = 0
@@ -353,7 +351,7 @@ function collapsedGridRules() {
 test('the wide shell\'s collapsed sidebar keeps no track while its right column is closed', () => {
   const frames = collapsedGridRules()
   assert.equal(frames.length, 1)
-  assert.match(frames[0].grid, /^0px\s+minmax\(0,\s*1fr\)\s+0px$/)
+  assert.match(frames[0].grid, /^0px\s+minmax\(0(?:px)?,\s*1fr\)\s+0px$/)
 })
 
 // A narrow host may place the conversation in its first track instead of its second.

@@ -12,7 +12,7 @@ const { outputFiles } = await build({
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react'],
 })
 let current
 const slot = (make) => {

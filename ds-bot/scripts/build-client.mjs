@@ -3,10 +3,8 @@
 //   node scripts/build-client.mjs           writes client.js
 //   node scripts/build-client.mjs --check   exits 1 when client.js differs from a fresh build
 //
-// client.js is committed, so `link:` and git installs need no build step. dsh loads it as
-// a classic script; the wrapper mirrors packages/client/tsdown.client.ts in
-// deepseek-harness: `require` resolves the shell-seeded platform modules (react,
-// react-dom, ui-primitives, ...), which therefore stay external.
+// client.js is committed, so `link:` and git installs need no build step. The classic
+// script wrapper receives React and React DOM from its host.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +12,7 @@ import { build } from 'esbuild'
 
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
 const OUTPUT = join(PLUGIN, 'client.js')
-const PLATFORM_MODULES = ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives']
+const PLATFORM_MODULES = ['react', 'react-dom']
 
 export async function bundleClient() {
   const result = await build({

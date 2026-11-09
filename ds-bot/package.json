@@ -1,12 +1,8 @@
 {
   "name": "ds-bot",
   "version": "0.3.2",
-  "description": "DS Bot: a team of long-lived Bots for DeepSeek Harness, with Main Bots, Bot-to-Bot messages and group chats",
+  "description": "DS Bot: a team of long-lived Bots with Main Bots, Bot-to-Bot messages and group chats",
   "keywords": [
-    "dsh-plugin",
-    "deepseek-harness",
-    "dsh",
-    "deepseek",
     "bot",
     "multi-agent",
     "agents"
@@ -42,35 +38,24 @@
     "client.js",
     "office.js",
     "web-search.js",
-    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/build-client.mjs",
-    "test": "node --import ./test/harness-resolve.mjs --test --test-timeout=120000 --test-force-exit \"test/*.test.js\"",
+    "test": "node --test --test-timeout=120000 --test-force-exit \"test/*.test.js\"",
     "lint": "node scripts/lint.mjs",
-    "harness": "npm install --prefix dev/harness --legacy-peer-deps=false --no-package-lock --no-fund --no-audit",
     "check": "sh dev/check.sh"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-scope": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/dsh-web": "*"
-  },
-  "dsh": {
-    "client": {
-      "platform": "web"
-    },
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
+    "react": ">=19",
+    "react-dom": ">=19"
   },
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
     "esbuild": "0.28.2",
+    "jsdom": "31.0.0",
+    "oxlint": "1.93.0",
     "qrcode-generator": "2.0.4"
   },
   "dependencies": {
@@ -80,7 +65,6 @@
     "@earendil-works/pi-durable": "1.5.0",
     "@earendil-works/pi-mcp": "1.5.0",
     "@modelcontextprotocol/client": "2.4.0",
-    "deep-view": "0.1.2",
     "imapflow": "2.9.1",
     "mailparser": "3.12.4",
     "nodemailer": "10.2.1",

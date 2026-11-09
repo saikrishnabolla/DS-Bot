@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/exchange.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const find = (node, match) => {
   if (Array.isArray(node)) return node.flatMap(child => find(child, match))

@@ -10,7 +10,8 @@ import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
 import { install as installHandoffs } from '../src/host/handoffs.js'
-import { scopeTarget } from '@deepseek-ai/dsh-scope'
+
+const scopeTarget = (target, agent) => Object.assign(target, { carrier: agent })
 
 let rt
 

@@ -17,7 +17,7 @@ const { outputFiles } = await build({
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 // Hook slots per component, by its place among the components above it.
 const slots = new Map()

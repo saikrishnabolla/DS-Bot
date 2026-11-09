@@ -276,7 +276,7 @@ import { build } from 'esbuild'
 const btwBundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/btw.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const btwModule = { exports: {} }
 runInNewContext(btwBundle.outputFiles[0].text, {
@@ -292,7 +292,6 @@ runInNewContext(btwBundle.outputFiles[0].text, {
         useSyncExternalStore: (_subscribe, get) => get(), Fragment: 'fragment',
       },
       'react-dom': { createPortal: node => node },
-      '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null },
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]

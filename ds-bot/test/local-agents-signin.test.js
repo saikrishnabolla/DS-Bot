@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
 import { ENGINES } from '../src/host/local-agents/engines.js'
 
-// jsdom comes from the harness that test/harness-resolve.mjs found, like the dsh packages.
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
-const { JSDOM } = createRequire(join(process.env.DSH_HARNESS ?? join(PLUGIN, '..', 'deepseek-harness'), 'package.json'))('jsdom')
 
 // The sign-in row of the Local agents page, bundled once and rendered with a minimal
 // React stand-in whose useState survives re-renders (#1083).
@@ -19,7 +17,7 @@ const { outputFiles } = await build({
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const slots = []
 let idx = 0

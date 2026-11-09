@@ -4,7 +4,7 @@ import { createUserMessage } from '../engine/messages.js'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
-import { validateViewAnswer } from 'deep-view/core'
+import { validateViewAnswer } from '../view/core/index.js'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
 
 const LANGUAGES = { zh: 'Chinese (简体中文)', en: 'English' }

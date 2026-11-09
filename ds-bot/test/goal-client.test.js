@@ -13,7 +13,7 @@ const react = {
   useLayoutEffect: () => {}, useMemo: make => make(), useCallback: fn => fn, Fragment: 'fragment',
 }
 const require = (name) => {
-  const platform = { react, 'react-dom': { createPortal: node => node }, '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null } }
+  const platform = { react, 'react-dom': { createPortal: node => node } }
   if (!(name in platform)) throw new Error(`no platform module ${name}`)
   return platform[name]
 }
@@ -21,7 +21,7 @@ const bundled = async (entry) => {
   const bundle = await build({
     entryPoints: [fileURLToPath(new URL(`../src/client/${entry}`, import.meta.url))],
     bundle: true, format: 'cjs', platform: 'node', write: false,
-    external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+    external: ['react', 'react-dom'],
   })
   const module = { exports: {} }
   runInNewContext(bundle.outputFiles[0].text, { module, exports: module.exports, require, setTimeout, clearTimeout, URL, URLSearchParams })

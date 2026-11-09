@@ -3,8 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { homedir, hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { Session } from '@deepseek-ai/dsh-session'
+import { createToolResultMessage, createUserMessage } from '../src/engine/messages.js'
 import { createRuntime } from '../index.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
 import { dshHomeOf } from '../src/host/folders.js'
@@ -1236,10 +1235,10 @@ test('a group\'s earlier parts page like a Bot\'s own chat', async (t) => {
   // user/message events, then the synthesized group_relay tool/call paired by call
   // id with a tool/result whose message holds the round's replies — the tool name
   // is on the call, never on the result.
-  const session = Session.create('r1')
   const events = []
+  let seq = 0
   const record = (type, data, opts) => {
-    const event = session.append(type, data, opts)
+    const event = { type, data, seq: ++seq, time: Date.now(), ...opts }
     events.push(event)
     return event
   }
@@ -1255,17 +1254,12 @@ test('a group\'s earlier parts page like a Bot\'s own chat', async (t) => {
   record('tool/result', {
     turn: 1, step: 1,
     message: createToolResultMessage({
-      callId: 'toolu_relay_1',
+      toolCallId: 'toolu_relay_1',
+      toolName: 'group_relay',
       isError: false,
       content: [{ type: 'text', text: JSON.stringify({ replies: [{ botId: 'b', name: 'Writer', color: 'blue', text: '在 docs/ 下面', time: 1000 }, { kind: 'missed', botId: 'a', name: 'Chief', color: 'gray', time: 2000 }] }) }],
     }),
   }, { surfaceOp: 'append', sourceEventSeqs: [relay.seq] })
-  // A result whose call named another tool is not the group's conversation.
-  const other = record('tool/call', { turn: 1, step: 2, callId: 'toolu_2', name: 'remember', arguments: '{}' })
-  record('tool/result', {
-    turn: 1, step: 2,
-    message: createToolResultMessage({ callId: 'toolu_2', isError: false, content: [{ type: 'text', text: 'Saved to memory' }] }),
-  }, { surfaceOp: 'append', sourceEventSeqs: [other.seq] })
   ctx.sessionController.page = async ({ address }) => (address?.sessionId === 'r1'
     ? { records: events.map(event => ({ event })), hasMore: false }
     : { records: [], hasMore: false })

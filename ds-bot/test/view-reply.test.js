@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createRuntime } from '../index.js'
-import { normalizeView, VIEW_BYTE_LIMIT, viewBytes } from 'deep-view/core'
+import { normalizeView, VIEW_BYTE_LIMIT, viewBytes } from '../src/view/core/index.js'
 import { fakeContext } from './fake-ctx.js'
 
 let rt

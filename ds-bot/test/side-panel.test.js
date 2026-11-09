@@ -38,7 +38,7 @@ test('the details `···` hides when it would be empty', () => {
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/browser-pane.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 runInNewContext(bundle.outputFiles[0].text, {
@@ -53,7 +53,6 @@ runInNewContext(bundle.outputFiles[0].text, {
         useSyncExternalStore: (_subscribe, get) => get(), Fragment: 'fragment',
       },
       'react-dom': { createPortal: node => node },
-      '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null },
     }
     if (!(name in platform)) throw new Error(`no platform module ${name}`)
     return platform[name]
@@ -102,7 +101,7 @@ test('a rejecting menu action reports through reportError', async () => {
 const sideBundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/side-chat.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const sideExports = (states) => {
   const sideModule = { exports: {} }
@@ -120,7 +119,6 @@ const sideExports = (states) => {
           useSyncExternalStore: (_subscribe, get) => get(), Fragment: 'fragment',
         },
         'react-dom': { createPortal: node => node },
-        '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null },
       }
       if (!(name in platform)) throw new Error(`no platform module ${name}`)
       return platform[name]

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
-import { HarnessError } from '@deepseek-ai/dsh-llm'
+import { HarnessError } from '../src/engine/messages.js'
 import {
   createAutoSearchProvider, decodeBingUrl, findSources, parseBing, parseDuckDuckGo, planNative,
   readDeclared, readGemini, readMessages, readResponses, resolveConfig, routeOf, SEARCH_APIS,

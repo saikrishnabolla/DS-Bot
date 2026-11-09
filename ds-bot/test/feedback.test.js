@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/feedback.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const ISSUES = 'https://github.com/Fei2411/DS-Bot/issues/new'
 
@@ -34,7 +34,7 @@ function page(window) {
     navigator: { clipboard: { writeText: () => Promise.resolve() } },
     require: (name) => {
       if (name === 'react') return react
-      if (name === 'react-dom' || name === '@deepseek-ai/dsh-client-ui-primitives') return {}
+      if (name === 'react-dom') return {}
       throw new Error(`no platform module ${name}`)
     },
   })

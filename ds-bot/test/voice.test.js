@@ -10,7 +10,7 @@ import { build } from 'esbuild'
 const bundle = await build({
   stdin: { contents: "export { watchReply } from './src/client/voice.js'", resolveDir: dirname(dirname(fileURLToPath(import.meta.url))) },
   bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const module = { exports: {} }
 const platform = {
@@ -21,7 +21,6 @@ const platform = {
     createContext: initial => ({ value: initial, Provider: () => null }), useContext: ctx => ctx.value,
   },
   'react-dom': { createPortal: node => node },
-  '@deepseek-ai/dsh-client-ui-primitives': { MarkdownText: () => null },
 }
 runInNewContext(bundle.outputFiles[0].text, { module, exports: module.exports, require: name => platform[name] ?? {} })
 const { watchReply } = module.exports

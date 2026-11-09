@@ -19,12 +19,15 @@ const { outputFiles } = await build({
     resolveDir: fileURLToPath(new URL('..', import.meta.url)),
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 let effects = []
 const sets = []
 const Fragment = Symbol('Fragment')
-const h = (type, props, ...children) => ({ type, props: { ...props, children } })
+const h = (type, props, ...children) => {
+  if (type === 'div' && String(props?.className ?? '').includes('md_markdown')) markdownTexts.push(children.join(''))
+  return { type, props: { ...props, children } }
+}
 const react = {
   createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx },
   useContext: ctx => ctx.value,
@@ -47,7 +50,7 @@ class FakeObserver {
 // The markdown the host's renderer is given, and what DS Bot's copy controls write.
 const markdownTexts = []
 const copiedTexts = []
-const clipboard = {}
+const clipboard = { writeText: text => { copiedTexts.push(text); return Promise.resolve() } }
 class ClipboardItem {
   constructor(items) { this.getType = type => Promise.resolve(items[type]) }
 }
@@ -61,12 +64,6 @@ runInNewContext(outputFiles[0].text, {
   require: (name) => {
     if (name === 'react') return react
     if (name === 'react-dom') return { createPortal: node => node }
-    if (name === '@deepseek-ai/dsh-client-ui-primitives') {
-      return {
-        MarkdownText: ({ text }) => { markdownTexts.push(text); return text },
-        writeClipboard: text => { copiedTexts.push(text); return Promise.resolve(true) },
-      }
-    }
     throw new Error(`Unexpected platform module ${name}`)
   },
 })
