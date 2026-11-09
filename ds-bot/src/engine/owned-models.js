@@ -197,13 +197,17 @@ export class OwnedModels {
     if (this.#runtime.getProvider(provider) === undefined) throw invalid(`${provider} is not set up`)
     const status = this.#runtime.getProviderAuthStatus(provider)
     if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside DS Bot and cannot be changed here`)
-    await this.#runtime.setRuntimeApiKey(provider, checkKey(value))
+    const key = checkKey(value)
+    await this.#runtime.login(provider, 'api_key', {
+      prompt: async () => key,
+      notify: () => {},
+    })
   }
 
   async clearProviderKey(provider) {
     const status = this.#runtime.getProviderAuthStatus(provider)
     if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside DS Bot and cannot be changed here`)
-    await this.#runtime.removeRuntimeApiKey(provider)
+    await this.#runtime.logout(provider)
   }
 
   async addProvider(body) {
@@ -227,7 +231,7 @@ export class OwnedModels {
     const custom = this.#config.custom[provider] !== undefined
     const enabled = this.#config.enabled.includes(provider)
     if (!custom && !enabled) throw invalid(`${provider} is not set up or comes with this setup`)
-    await this.#runtime.removeRuntimeApiKey(provider).catch(() => undefined)
+    await this.#runtime.logout(provider).catch(() => undefined)
     if (custom) {
       this.#runtime.unregisterProvider(provider)
       delete this.#config.custom[provider]

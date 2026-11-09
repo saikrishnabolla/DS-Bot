@@ -3,6 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { OwnedModels, checkKey, keyRefFor } from '../src/engine/owned-models.js'
 
 const builtins = [
@@ -27,8 +28,11 @@ function runtime() {
     getModel: (provider, id) => models.get(`${provider}/${id}`),
     hasConfiguredAuth: id => keys.has(id) || providers.get(id)?.auth === undefined,
     getProviderAuthStatus: id => ({ configured: keys.has(id) || providers.get(id)?.auth === undefined, ...(keys.has(id) ? { source: 'runtime' } : {}) }),
-    setRuntimeApiKey: async (id, key) => { keys.set(id, key) },
-    removeRuntimeApiKey: async id => { keys.delete(id) },
+    login: async (id, type, interaction) => {
+      assert.equal(type, 'api_key')
+      keys.set(id, await interaction.prompt({ type: 'secret', message: 'API key' }))
+    },
+    logout: async id => { keys.delete(id) },
     refresh: async () => {},
     registerProvider(id, config) {
       registered.add(id)
@@ -110,4 +114,15 @@ test('provider input validation rejects values that cannot be used safely', asyn
   assert.throws(() => checkKey('KEY=sk-abc'), /NAME=value/)
   assert.throws(() => checkKey('"sk-abc"'), /without quotes/)
   assert.equal(keyRefFor('my-gateway2'), 'MY_GATEWAY2_API_KEY')
+})
+
+test('Pi credentials written through the owned boundary survive a fresh runtime', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ds-bot-auth-'))
+  const authPath = join(dir, 'auth.json')
+  const firstRuntime = await ModelRuntime.create({ authPath, modelsPath: null, refreshOnCreate: false })
+  const first = await OwnedModels.open(firstRuntime)
+  await first.setProviderKey('anthropic', 'sk-persisted')
+  const secondRuntime = await ModelRuntime.create({ authPath, modelsPath: null, refreshOnCreate: true })
+  assert.equal(secondRuntime.getProviderAuthStatus('anthropic').configured, true)
+  assert.equal((await secondRuntime.listCredentials()).find(entry => entry.providerId === 'anthropic')?.type, 'api_key')
 })
