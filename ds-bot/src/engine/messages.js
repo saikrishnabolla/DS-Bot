@@ -16,6 +16,8 @@ export class HarnessError extends Error {
 
 export class LlmError extends HarnessError {}
 
+export class WebError extends HarnessError {}
+
 export class LlmAdapter {
   dispose() {}
 }

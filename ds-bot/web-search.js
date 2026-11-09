@@ -8,7 +8,7 @@
 // unavailable, a keyless fallback parses a public results page fetched through ctx.web.fetch.
 // Every result says which path answered it; when both fail, the error tells the model not to
 // guess. Independent of the Bot team code in index.js.
-import { WebError } from '@deepseek-ai/dsh-web'
+import { WebError } from './src/engine/messages.js'
 
 export const name = 'web-search-auto'
 export const inject = ['web']
