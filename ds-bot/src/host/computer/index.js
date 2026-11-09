@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '../../engine/messages.js'
 import { defineTool } from '../../engine/tool-definition.js'
-import { dshVersion } from '../diagnostics.js'
+import { runtimeVersion } from '../diagnostics.js'
 import { LEGACY_EXECUTABLES, LEGACY_NAME } from '../legacy.mjs'
 import { classify, isComputerTool, levelAllows, LEVELS, DRIVER_GLOBAL, DRIVER_REFUSED } from './catalog.js'
 import { createLeases } from './leases.js'
@@ -141,7 +141,7 @@ export function install(rt) {
   // What to install when a package is missing (#1050): the packages at the
   // running DSH's version, added to the profile with the pnpm it is managed by.
   const installOf = (names) => {
-    const version = dshVersion()
+    const version = runtimeVersion()
     const packages = names.map(name => (version ? `${name}@${version}` : name))
     const dir = ctx.get?.('profileContext')?.dir
     const where = typeof dir === 'string' ? ` --dir "${dir}"` : ''

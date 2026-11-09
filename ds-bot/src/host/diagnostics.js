@@ -1,5 +1,5 @@
 // Diagnostics: what went wrong on this host, kept where the user can see it and report it.
-// DSH mounts no exporter for ctx.logger once it has started, so warnings would otherwise
+// The owned host has no external log exporter once it has started, so warnings would otherwise
 // reach only stderr. Entries are kept in memory and in <home>/logs/diagnostics.jsonl, so
 // a report written after a restart still has them. Every text is cleaned of saved keys,
 // credential-like strings and the home folder before it is kept and again before it is
@@ -67,7 +67,7 @@ export function reportMarkdown({ facts, client = {}, entries = [], clientEntries
     '| | |',
     '|---|---|',
     row('DS Bot', facts.botVersion),
-    row('DSH', facts.dshVersion),
+    row('Pi Durable', facts.runtimeVersion),
     row('Surface', client.surface),
     row('OS', facts.os),
     row('Node', facts.node),
@@ -97,14 +97,13 @@ const ownVersion = () => {
   }
 }
 
-// DSH packages share one version; the LLM package is always beside the plugin.
-export const dshVersion = () => {
+export const runtimeVersion = () => {
   try {
-    let dir = dirname(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-llm')))
+    let dir = dirname(fileURLToPath(import.meta.resolve('@earendil-works/pi-durable')))
     for (let depth = 0; depth < 5; depth += 1, dir = dirname(dir)) {
       try {
         const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
-        if (manifest.name === '@deepseek-ai/dsh-llm') return manifest.version
+        if (manifest.name === '@earendil-works/pi-durable') return manifest.version
       } catch {}
     }
   } catch {}
@@ -202,12 +201,12 @@ export function install(rt) {
     const groups = Object.keys(rt.state.rooms).length
     return {
       botVersion: ownVersion(),
-      dshVersion: dshVersion(),
+      runtimeVersion: runtimeVersion(),
       os: `${platform()} ${release()} ${arch()}`,
       node: process.version,
       team: `${count(bots.length, 'Bot', 'Bots')}, ${rt.state.mainBotIds.length} Main, ${count(groups, 'group chat', 'group chats')}`,
       models: models.length > 0 ? models.join(', ') : undefined,
-      readOnly: rt.readOnly?.() ? 'yes, another dsh holds the team' : undefined,
+      readOnly: rt.readOnly?.() ? 'yes, another host holds the team' : undefined,
     }
   }
 

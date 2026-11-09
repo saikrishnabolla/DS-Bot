@@ -41,13 +41,13 @@ export const clientErrors = () => entries.map(entry => (entry.count > 1 ? { ...e
 
 export function clientFacts() {
   return {
-    surface: window.dshDesktop ? 'DSH Desktop' : 'DSH Web',
+    surface: window.dsBotDesktop ? 'Desktop' : 'Web',
     language: language(),
     userAgent: navigator.userAgent,
   }
 }
 
-// Short words for the provider-neutral failure codes of DSH's LLM layer.
+// Short words for provider-neutral model failure codes.
 const FAILURES = {
   MISSING_CREDENTIAL: 'The model has no API key',
   INVALID_CREDENTIAL: 'The API key is not in the right format',
