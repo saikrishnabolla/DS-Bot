@@ -27,6 +27,7 @@
     ".": "./index.js",
     "./client": "./client.js",
     "./engine": "./src/engine/owned-harness.js",
+    "./server": "./src/server/owned-server.js",
     "./web-search": "./web-search.js",
     "./package.json": "./package.json"
   },
@@ -34,6 +35,7 @@
     "index.js",
     "src/host/",
     "src/engine/",
+    "src/server/",
     "src/shared/",
     "src/office/",
     "client.js",
