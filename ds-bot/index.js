@@ -65,7 +65,7 @@ export function apply(ctx, config = {}) {
 }
 
 export function createRuntime(ctx, config = {}) {
-  const dshHome = folders.dshHomeOf(process.env.DSH_HOME)
+  const dshHome = config.dataDir ?? folders.dshHomeOf(process.env.DSH_HOME)
   const home = config.home ?? join(dshHome, 'bot')
   const rt = {
     ctx,

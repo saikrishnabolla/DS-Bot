@@ -276,7 +276,9 @@ export function install(rt) {
           return ok(await rt.earlierPage(String(body.sessionId ?? ''), body.cursor ?? undefined))
         case 'chat':
           await rt.load()
-          return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined))
+          return ok(body.roomId === undefined
+            ? await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined)
+            : await rt.roomChatPage(String(body.roomId ?? ''), body.cursor ?? undefined))
         // DSH's own whole-log figures for the current part of a Bot's chat, the ones its
         // status bar shows; a window without that bar shows them in the Bot's details.
         case 'run-stats': {
@@ -416,6 +418,15 @@ export function install(rt) {
         case 'approval-answer':
           rt.answerApproval(body.id, body.choice)
           return ok(true)
+        case 'stop-bot-work': {
+          await rt.load()
+          const bot = rt.botOf(String(body.botId ?? ''))
+          if (bot === undefined) return fail('Unknown Bot', 'bot/not-found')
+          const agent = await rt.resolveAgent(rt.chatOf(bot.id))
+          if (agent.status === 'idle') return fail(`${bot.name} is not working`, 'bot/stale')
+          agent.cancel({ kind: 'user', reason: 'ds-bot/stopped' })
+          return ok(true)
+        }
         // A stop that fails partway still parks the goal, or it wakes the admin again.
         case 'stop-member-work':
           try {
