@@ -21,6 +21,10 @@ export function install(rt) {
   /** @type {Set<ReadableStreamDefaultController<Uint8Array>>} */
   const clients = new Set()
   const listeners = new Set()
+  // Attempts being streamed, by id. A turn that answers another Bot is hidden from the
+  // chat (turns.js marks it before the model is called), so its text is not streamed.
+  const writing = new Map()
+  const active = () => clients.size > 0 || listeners.size > 0
   const send = (controller, chunk) => {
     if ((controller.desiredSize ?? 0) < -MAX_QUEUED) {
       leave(controller)
@@ -35,16 +39,19 @@ export function install(rt) {
   }
   rt.subscribeFeed = listener => {
     listeners.add(listener)
-    return () => { listeners.delete(listener) }
+    return () => {
+      listeners.delete(listener)
+      if (!active()) writing.clear()
+    }
   }
 
   const offSaved = rt.onSaved(() => {
-    if (clients.size > 0) publish('revision', { revision: state.revision })
+    if (active()) publish('revision', { revision: state.revision })
   })
 
   let liveTimer
   const live = () => {
-    if (clients.size === 0 || liveTimer !== undefined) return
+    if (!active() || liveTimer !== undefined) return
     liveTimer = setTimeout(() => {
       liveTimer = undefined
       publish('live', {})
@@ -55,20 +62,17 @@ export function install(rt) {
   })
 
   ctx.on('session/event', (session, event) => {
-    if (clients.size === 0) return
+    if (!active()) return
     const botId = rt.chatOwners.get(session.id)
     if (botId === undefined) return
     for (const item of rt.displayItems(session.id, [event])) publish('message', { botId, sessionId: session.id, item })
     if (event.type === 'tool/call') live()
   })
 
-  // Attempts being streamed, by id. A turn that answers another Bot is hidden from the
-  // chat (turns.js marks it before the model is called), so its text is not streamed.
-  const writing = new Map()
   ctx.on('agent/assistant-stream', ({ agent, frame }) => {
     if (frame.type === 'start') {
       const botId = rt.chatOwners.get(agent.id)
-      if (clients.size === 0 || botId === undefined || (state.exchangeTurns[agent.id] ?? []).includes(frame.turn)) return
+      if (!active() || botId === undefined || (state.exchangeTurns[agent.id] ?? []).includes(frame.turn)) return
       writing.set(frame.attemptId, { botId, sessionId: agent.id })
       publish('stream', { botId, sessionId: agent.id, attemptId: frame.attemptId, phase: 'start' })
       return
@@ -89,7 +93,7 @@ export function install(rt) {
   const leave = (controller) => {
     clients.delete(controller)
     requests.delete(controller)
-    if (clients.size === 0) writing.clear()
+    if (!active()) writing.clear()
     try { controller.close() } catch { /* already closed or errored */ }
   }
 
