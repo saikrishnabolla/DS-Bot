@@ -14,11 +14,13 @@ const numericId = id => {
 export class OwnedHarness {
   #harness
   #models
+  #registry
   #context
 
-  constructor(harness, models, context) {
+  constructor(harness, models, registry, context) {
     this.#harness = harness
     this.#models = models
+    this.#registry = registry
     this.#context = context
   }
 
@@ -36,10 +38,15 @@ export class OwnedHarness {
       ...(settings === undefined ? {} : { settings }),
       ...(env === undefined ? {} : { env }),
     }, context)
-    return new OwnedHarness(harness, runtime, context)
+    return new OwnedHarness(harness, runtime, registry, context)
   }
 
   get models() { return this.#models }
+
+  install(extension) {
+    this.#registry.install(extension)
+    return () => this.#registry.uninstall(extension)
+  }
 
   resume() { this.#harness.resume() }
 
@@ -52,20 +59,49 @@ export class OwnedHarness {
     return this.#harness.conversation(numericId(id), this.#context)
   }
 
-  async submit(id, { content, requestId, whenBusy = 'followUp' }) {
+  async submit(id, { content, requestId, whenBusy = 'followUp', entry }) {
     const conversation = await this.conversation(id)
     if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
-    const submission = await conversation.submit({ type: 'input', content, requestId, whenBusy }, this.#context)
+    const submission = await conversation.submit({ type: 'input', content, requestId, whenBusy, ...(entry === undefined ? {} : { entry }) }, this.#context)
     return {
       id: String(submission.id),
       wait: () => submission.wait(this.#context),
     }
   }
 
-  async entries(id, { limit = 100, cursor, order = 'ascending' } = {}) {
+  async entries(id, { limit = 100, cursor, order = 'ascending', minEntryId, maxEntryId } = {}) {
     const conversation = await this.conversation(id)
     if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
-    return conversation.entries({ order }, limit, cursor, this.#context)
+    return conversation.entries({ order, ...(minEntryId === undefined ? {} : { minEntryId }), ...(maxEntryId === undefined ? {} : { maxEntryId }) }, limit, cursor, this.#context)
+  }
+
+  async context(id) {
+    const conversation = await this.conversation(id)
+    if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
+    return conversation.context(this.#context)
+  }
+
+  async configure(id, change) {
+    const conversation = await this.conversation(id)
+    if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
+    await conversation.configure(change, this.#context)
+  }
+
+  async agent(id) {
+    const conversation = await this.conversation(id)
+    if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
+    return conversation.agent(this.#context)
+  }
+
+  scanConversations(query = {}, limit = 100, cursor) {
+    return this.#harness.commit(tx => tx.scanConversations(query, limit, cursor), this.#context)
+  }
+
+  inspect() { return this.#harness.inspect(this.#context) }
+
+  async waitForIdle(id) {
+    const conversation = await this.conversation(id)
+    if (conversation !== undefined) await conversation.waitForIdle(this.#context)
   }
 
   async watch(id, window) {
