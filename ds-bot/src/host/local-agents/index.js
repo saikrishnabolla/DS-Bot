@@ -5,7 +5,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '../../engine/tool-definition.js'
 import { splitRef } from '../text.js'
 import { output } from '../tools.js'
 import { LocalAgentAdapter } from './adapter.js'

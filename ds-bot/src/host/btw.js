@@ -7,7 +7,7 @@
 // team writes them.
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { BlockAssembler } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler } from '../engine/messages.js'
 import { replaceFile } from './files.js'
 
 export const RESTART_ERROR = 'DS Bot restarted before this answer finished.'

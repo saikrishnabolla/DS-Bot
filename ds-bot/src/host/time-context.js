@@ -1,4 +1,4 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../engine/messages.js'
 
 const SOURCE = 'ds-bot-time-context'
 const isClock = source => source?.kind === SOURCE || source?.kind === 'time-context'

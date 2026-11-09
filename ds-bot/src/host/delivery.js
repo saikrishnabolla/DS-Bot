@@ -1,6 +1,6 @@
 // Delivery: how one Bot, the user, or DS Bot itself puts a message into a Bot Session.
 import { randomUUID } from 'node:crypto'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../engine/messages.js'
 import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
 import { headOf, textOf } from './text.js'
 

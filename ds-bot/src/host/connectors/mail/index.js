@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename, join, resolve, sep } from 'node:path'
 import { realpathSync, statSync } from 'node:fs'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '../../../engine/tool-definition.js'
 import { PRESETS, presetOf, mailSecretName } from './presets.js'
 import { connectImap, connectGmail } from './transport.js'
 import { output } from '../../tools.js'

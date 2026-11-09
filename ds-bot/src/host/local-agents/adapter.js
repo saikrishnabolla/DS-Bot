@@ -4,7 +4,7 @@
 // adapter turns each request into a prompt for the CLI session the Session is
 // mapped to, and the CLI's output back into stream chunks.
 import { createHash } from 'node:crypto'
-import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError } from '../../engine/messages.js'
 import { textOf } from '../text.js'
 import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'

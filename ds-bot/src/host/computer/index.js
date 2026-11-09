@@ -3,8 +3,8 @@
 // caller: per-Bot levels, per-Bot app consent, one-Bot-per-app leases, the
 // indicator, and take-over/hand-back.
 import { randomUUID } from 'node:crypto'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { createUserMessage } from '../../engine/messages.js'
+import { defineTool } from '../../engine/tool-definition.js'
 import { dshVersion } from '../diagnostics.js'
 import { LEGACY_EXECUTABLES, LEGACY_NAME } from '../legacy.mjs'
 import { classify, isComputerTool, levelAllows, LEVELS, DRIVER_GLOBAL, DRIVER_REFUSED } from './catalog.js'

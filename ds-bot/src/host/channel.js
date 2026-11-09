@@ -1,6 +1,6 @@
 // Client channel: the team view the browser renders, and the POST /api/bot endpoints.
 import { randomUUID } from 'node:crypto'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage } from '../engine/messages.js'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'

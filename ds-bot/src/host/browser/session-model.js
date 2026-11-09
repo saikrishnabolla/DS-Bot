@@ -4,7 +4,7 @@ import {
   createSystemMessage,
   createToolResultMessage,
   createUserMessage,
-} from '@deepseek-ai/dsh-llm'
+} from '../../engine/messages.js'
 
 const NO_SESSION_MODEL = 'browser_task needs a Bot session model'
 const OMITTED_IMAGE = '[Browser screenshot omitted.]'

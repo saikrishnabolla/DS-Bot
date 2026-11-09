@@ -1,7 +1,7 @@
 // Team tools: the roster, bot-to-bot messages, group chat settings and posts, and the
 // question and view cards. Group rounds and reading chats are in groups.js.
 import { randomUUID } from 'node:crypto'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '../engine/tool-definition.js'
 import { readAvatar } from './avatar.js'
 import { COLORS, EXTRA_COLORS, MESSAGE_INLINE_MAX, ROOM_MODES, SOURCE_KIND } from './constants.js'
 import { within } from './folders.js'

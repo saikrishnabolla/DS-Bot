@@ -3,7 +3,7 @@
 //
 // Turn tracking: which turns were triggered by another Bot, and what they said.
 import { randomUUID } from 'node:crypto'
-import { carrierKeyOf } from '@deepseek-ai/dsh-scope'
+import { carrierKeyOf } from '../engine/scope.js'
 import { HANDOFF_ACK, LATE_ANSWER, MESSAGE_INLINE_MAX, REFERENCE_KIND, REPLY_KIND, SOURCE_KIND, STEER_CUT } from './constants.js'
 import { cleanText } from './diagnostics.js'
 import { absoluteLinks } from './links.js'

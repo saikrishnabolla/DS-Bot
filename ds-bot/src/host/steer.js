@@ -5,7 +5,7 @@
 //  - a running model call is cancelled (hook reason) and the steer is moved to
 //    the front of next-turn, so a fresh turn claims it at once.
 import { isAbsolute, resolve } from 'node:path'
-import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { boundContextSummary, createUserMessage } from '../engine/messages.js'
 import { STEER_CUT } from './constants.js'
 
 const SHELL_TOOLS = ['pwsh', 'bash']

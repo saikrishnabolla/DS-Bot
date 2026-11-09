@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { chmodSync, copyFileSync, readFileSync } from 'node:fs'
 import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '../engine/tool-definition.js'
 import { replaceFile } from './files.js'
 import { output } from './tools.js'
 

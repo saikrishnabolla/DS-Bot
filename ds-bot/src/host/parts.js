@@ -15,7 +15,7 @@
 // word, and where the rest is. Input that arrives meanwhile waits and moves along.
 // read_own_chat searches every part, the condensed messages included.
 import { randomUUID } from 'node:crypto'
-import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, createUserMessage } from '../engine/messages.js'
 import { openTurnAt } from './btw.js'
 import { HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
 import { parseReplies, stackReplies } from '../shared/group-replies.js'
