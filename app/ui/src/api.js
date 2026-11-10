@@ -2,6 +2,24 @@
 // actions (the Bot views' own `call`), and the live feed api/bot/feed for what changes.
 const RETRY_MS = [500, 1000, 2000, 5000]
 
+export async function uploadAttachment(file, signal) {
+  const response = await fetch('api/bot/upload', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'content-type': file.type || 'application/octet-stream',
+      'x-dsbot-file-name': encodeURIComponent(file.name || 'file'),
+      'x-dsbot-upload': '1',
+    },
+    body: file,
+    signal,
+  })
+  let result
+  try { result = await response.json() } catch { result = undefined }
+  if (!response.ok || result?.ok !== true) throw new Error(result?.error?.message ?? `Upload failed (HTTP ${response.status})`)
+  return result.value
+}
+
 function parseEvent(block) {
   let event = 'message'
   const data = []

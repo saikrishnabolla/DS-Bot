@@ -10,18 +10,41 @@ const INPUT_KIND = 'ds-bot.user'
 const textContent = value => Array.isArray(value) ? value : [{ type: 'text', text: String(value ?? '') }]
 const timeOf = message => Number.isFinite(Number(message?.timestamp)) ? Number(message.timestamp) : Date.now()
 
-function inputContent(message) {
+async function inputContent(message, attachments, acceptsImages = true) {
   const content = textContent(message?.content ?? message)
-  return content.flatMap(block => {
-    if (block?.type === 'text' && typeof block.text === 'string') return [{ type: 'text', text: block.text }]
-    if (block?.type === 'image' && typeof block.data === 'string' && typeof block.mimeType === 'string') return [block]
+  const converted = []
+  for (const block of content) {
+    if (block?.type === 'text' && typeof block.text === 'string') { converted.push({ type: 'text', text: block.text }); continue }
+    if (block?.type === 'image' && typeof block.data === 'string' && typeof block.mimeType === 'string') {
+      converted.push(acceptsImages ? block : { type: 'text', text: `[Image (${block.mimeType}) omitted because this model does not accept images.]` })
+      continue
+    }
     const attachment = block?.attachment
     if (block?.type === 'image' && typeof attachment?.data === 'string' && typeof attachment?.mimeType === 'string') {
-      return [{ type: 'image', data: attachment.data, mimeType: attachment.mimeType }]
+      converted.push(acceptsImages
+        ? { type: 'image', data: attachment.data, mimeType: attachment.mimeType }
+        : { type: 'text', text: `[Image (${attachment.mimeType}) omitted because this model does not accept images.]` })
+      continue
     }
-    if (block?.type === 'file') return [{ type: 'text', text: `[Attached file: ${attachment?.name ?? 'file'}]` }]
-    return []
-  })
+    if ((block?.type === 'image' || block?.type === 'file') && attachments !== undefined) {
+      const checked = block.type === 'image' && typeof attachments.imageReference === 'function'
+        ? await attachments.imageReference(attachment)
+        : await attachments.reference(attachment)
+      const path = attachments.hostPath(checked)
+      const label = `${JSON.stringify(checked.name ?? 'file')} (${checked.mediaType ?? 'application/octet-stream'}, ${checked.bytes} bytes)`
+      if (block.type === 'image') {
+        converted.push({ type: 'text', text: `[Image ${label}. Read-only copy saved at ${JSON.stringify(path)}.]` })
+        if (acceptsImages) {
+          const chunks = []
+          for await (const chunk of attachments.readFileStream(checked)) chunks.push(chunk)
+          converted.push({ type: 'image', data: Buffer.concat(chunks).toString('base64'), mimeType: checked.mediaType })
+        }
+      } else if (block.type === 'file') {
+        converted.push({ type: 'text', text: `[Attached file ${label}. Read-only copy saved at ${JSON.stringify(path)}. Read it with your file tools before acting on it.]` })
+      }
+    }
+  }
+  return converted
 }
 
 function sourceOf(entry) {
@@ -40,7 +63,8 @@ function eventRecords(entries) {
     const message = Array.isArray(entry?.model) ? entry.model[0] : undefined
     if ((entry.kind === 'pi.user' || entry.kind === INPUT_KIND) && message?.role === 'user') {
       const time = timeOf(message)
-      push(entry, 'user/message', { content: textContent(message.content), source: sourceOf(entry) }, time)
+      const receipt = entry.kind === INPUT_KIND && Array.isArray(entry.data?.content) ? entry.data.content : textContent(message.content)
+      push(entry, 'user/message', { content: receipt, source: sourceOf(entry) }, time)
       push(entry, 'turn/start', { turn: Number(entry.byTaskId ?? entry.id) }, time)
       continue
     }
@@ -210,6 +234,7 @@ export class OwnedContext {
   #agents = new Map()
   #watches = new Map()
   #pending = new Map()
+  #inputQueues = new Map()
   #configureChanges = new Map()
   #selectedExtensions = new Map()
   #tools = new Map()
@@ -651,7 +676,7 @@ export class OwnedContext {
       steer: message => this.#enqueue(id, message, 'steer'),
       inject: message => this.#enqueue(id, message, 'steer'),
       cancel: cause => this.harness.abort(id, { background: true, cause }),
-      whenIdle: async () => { await this.#flush(id); await this.harness.waitForIdle(id) },
+      whenIdle: async () => { await this.#inputQueues.get(id); await this.#flush(id); await this.harness.waitForIdle(id) },
       runMaintenance: async work => work(new AbortController().signal),
     }
     this.#agents.set(id, agent)
@@ -695,14 +720,26 @@ export class OwnedContext {
 
   #enqueue(id, message, whenBusy) {
     if (this.#closed) return Promise.resolve()
-    const source = message?.source ?? { kind: 'user' }
-    const requestId = source.requestId ?? message?.id ?? randomUUID()
-    const promise = this.harness.submit(id, {
-      content: inputContent(message), requestId, whenBusy,
-      entry: { kind: INPUT_KIND, data: { source, requestId } },
+    const key = String(id)
+    const before = this.#inputQueues.get(key) ?? Promise.resolve()
+    const prepared = before.catch(() => undefined).then(async () => {
+      const source = message?.source ?? { kind: 'user' }
+      const requestId = source.requestId ?? message?.id ?? randomUUID()
+      const receipt = textContent(message?.content ?? message)
+      const configured = this.#sessionStates.get(key)?.config
+      const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
+      const content = await inputContent(message, this.get('attachments'), model === undefined || (model.input ?? []).includes('image'))
+      const submission = this.harness.submit(id, {
+        content, requestId, whenBusy,
+        entry: { kind: INPUT_KIND, data: { source, requestId, content: receipt } },
+      })
+      this.#track(id, submission)
+      return { submission }
     })
-    this.#track(id, promise)
-    return promise
+    const queued = prepared.then(() => undefined, () => undefined)
+    this.#inputQueues.set(key, queued)
+    void queued.finally(() => { if (this.#inputQueues.get(key) === queued) this.#inputQueues.delete(key) })
+    return prepared.then(value => value.submission)
   }
 
   async #compact(target, signal) {
@@ -789,9 +826,11 @@ export class OwnedContext {
 
   async #prompt({ sessionId, requestId = randomUUID(), mode, content }) {
     const whenBusy = mode === 'steer' ? 'steer' : 'followUp'
+    const configured = this.#sessionStates.get(String(sessionId))?.config
+    const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
     const submission = await this.harness.submit(sessionId, {
-      content: inputContent({ content }), requestId, whenBusy,
-      entry: { kind: INPUT_KIND, data: { source: { kind: 'user', requestId }, requestId } },
+      content: await inputContent({ content }, this.get('attachments'), model === undefined || (model.input ?? []).includes('image')), requestId, whenBusy,
+      entry: { kind: INPUT_KIND, data: { source: { kind: 'user', requestId }, requestId, content: textContent(content) } },
     })
     return { submissionId: submission.id }
   }
@@ -1065,7 +1104,16 @@ export class OwnedContext {
   }
 
   #displayEvent(event) {
-    if (event.type === 'user/message') return [{ kind: 'user', text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'), time: event.time, seq: event.seq }]
+    if (event.type === 'user/message') {
+      const attachments = event.data.content.filter(block => (block.type === 'image' || block.type === 'file') && block.attachment !== undefined)
+      return [{
+        kind: 'user',
+        text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
+        ...(attachments.length === 0 ? {} : { attachments, images: attachments.filter(block => block.type === 'image').length }),
+        time: event.time,
+        seq: event.seq,
+      }]
+    }
     if (event.type === 'assistant/message') return event.data.message.content.filter(block => block.type === 'text').map(block => ({ kind: 'bot', text: block.text, time: event.time, seq: event.seq, turn: event.data.turn }))
     return []
   }

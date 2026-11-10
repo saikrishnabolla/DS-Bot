@@ -120,6 +120,50 @@ test('the API preserves the endpoint envelope and limits request bodies', async 
   assert.equal(calls.length, 1)
 })
 
+test('uploads require authentication and the upload header and have an independent byte limit', async t => {
+  const uploads = []
+  const { server } = await fixture(t, {
+    maxRequestBytes: 32,
+    maxUploadBytes: 8,
+    upload: async input => {
+      uploads.push(input)
+      return { attachmentId: `sha256:${'a'.repeat(64)}`, name: input.name, bytes: input.data.length, mediaType: input.mediaType }
+    },
+  })
+  const unauthenticated = await fetch(`${server.origin}/api/bot/upload`, {
+    method: 'POST',
+    headers: { 'x-dsbot-file-name': 'note.txt', 'x-dsbot-upload': '1' },
+    body: 'hello',
+  })
+  assert.equal(unauthenticated.status, 401)
+
+  const cookie = await authenticate(server)
+  const missingHeader = await fetch(`${server.origin}/api/bot/upload`, {
+    method: 'POST', headers: { cookie, 'x-dsbot-file-name': 'note.txt' }, body: 'hello',
+  })
+  assert.equal(missingHeader.status, 403)
+
+  const uploaded = await fetch(`${server.origin}/api/bot/upload`, {
+    method: 'POST',
+    headers: { cookie, origin: server.origin, 'content-type': 'text/plain', 'x-dsbot-file-name': encodeURIComponent('../note.txt'), 'x-dsbot-upload': '1' },
+    body: 'hello',
+  })
+  assert.equal(uploaded.status, 200)
+  assert.equal((await uploaded.json()).value.bytes, 5)
+  assert.deepEqual(uploads.map(input => ({ name: input.name, mediaType: input.mediaType, data: input.data.toString() })), [
+    { name: '../note.txt', mediaType: 'text/plain', data: 'hello' },
+  ])
+
+  const oversized = await fetch(`${server.origin}/api/bot/upload`, {
+    method: 'POST',
+    headers: { cookie, 'x-dsbot-file-name': 'big.bin', 'x-dsbot-upload': '1' },
+    body: '123456789',
+  })
+  assert.equal(oversized.status, 413)
+  assert.equal((await oversized.json()).error.code, 'bot/upload-too-large')
+  assert.equal(uploads.length, 1)
+})
+
 test('Host and Origin headers must name the bound loopback server', async t => {
   await assert.rejects(startOwnedServer({
     uiDir: tmpdir(),

@@ -2180,7 +2180,13 @@ function teamActions({ call: call2, after, partFor, roster, ui, live, cards, hel
     setPrefs: (prefs) => after(call2("set-prefs", prefs)),
     setMain: (id, main = true, options = {}) => after(call2("set-main", { id, main, ...options })),
     updateRoom: (id, patch) => after(call2("update-room", { id, ...patch })),
-    send: (sessionId, text) => after(call2("send", { sessionId: partFor(sessionId), text })),
+    send: (sessionId, text, attachments = []) => after(call2("send", {
+      sessionId: partFor(sessionId),
+      content: [
+        ...String(text ?? "").trim() === "" ? [] : [{ type: "text", text: String(text).trim() }],
+        ...attachments.map((item) => ({ type: item.type, attachment: item.attachment }))
+      ]
+    })),
     answerQuestion: (sessionId, questionId, answer) => after(call2("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: (sessionId) => after(call2("dismiss-question", { sessionId })),
     answerView: (sessionId, viewId, action, values) => after(call2("view-reply", { sessionId: partFor(sessionId), viewId, action, values })),
@@ -4356,6 +4362,9 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-ububble [class*="_markdown"],.bt-ububble a{color:inherit!important}
 .bt-ububble p{margin:0;line-height:24px}
 .bt-uimages{display:block;font-size:12px;opacity:.7}
+.bt-uattachments{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:6px}
+.bt-uattachment-image{display:block;width:96px;height:72px;border-radius:10px;object-fit:cover;background:var(--bt-hover)}
+.bt-uattachment-file{display:block;max-width:220px;padding:5px 8px;border:1px solid var(--bt-line-2);border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .bt-utime{margin-top:-4px;font-size:11px;line-height:14px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-earlier .bt-event{margin:4px 0}
 .bt-agent-sessions-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -14394,7 +14403,11 @@ function EarlierUser({ row, actions }) {
       { className: "bt-ububble", "data-folded": folded || void 0 },
       control ? (0, import_react33.createElement)("div", { className: "bt-fold-body" }, area) : area,
       control,
-      row.images ? (0, import_react33.createElement)("span", { className: "bt-uimages" }, row.images === 1 ? t("1 image") : t("{count} images", { count: row.images })) : null
+      Array.isArray(row.attachments) ? (0, import_react33.createElement)("span", { className: "bt-uattachments" }, row.attachments.map((block, index) => {
+        const attachment = block.attachment ?? {};
+        const digest = String(attachment.attachmentId ?? "").replace(/^sha256:/, "");
+        return block.type === "image" && /^[a-f0-9]{64}$/.test(digest) ? (0, import_react33.createElement)("img", { key: index, className: "bt-uattachment-image", src: `api/bot/attachment/${digest}`, alt: attachment.name ?? "Image" }) : (0, import_react33.createElement)("span", { key: index, className: "bt-uattachment-file", title: attachment.name }, attachment.name ?? "File");
+      })) : row.images ? (0, import_react33.createElement)("span", { className: "bt-uimages" }, row.images === 1 ? t("1 image") : t("{count} images", { count: row.images })) : null
     ),
     row.via ? (0, import_react33.createElement)("div", { className: "bt-utime" }, (0, import_react33.createElement)(ViaTag, { via: row.via }), Number.isFinite(row.time) ? messageClock(row.time) : null) : null
   );

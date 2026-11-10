@@ -1284,6 +1284,9 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-ububble [class*="_markdown"],.bt-ububble a{color:inherit!important}
 .bt-ububble p{margin:0;line-height:24px}
 .bt-uimages{display:block;font-size:12px;opacity:.7}
+.bt-uattachments{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:6px}
+.bt-uattachment-image{display:block;width:96px;height:72px;border-radius:10px;object-fit:cover;background:var(--bt-hover)}
+.bt-uattachment-file{display:block;max-width:220px;padding:5px 8px;border:1px solid var(--bt-line-2);border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .bt-utime{margin-top:-4px;font-size:11px;line-height:14px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-earlier .bt-event{margin:4px 0}
 .bt-agent-sessions-head{display:flex;align-items:center;justify-content:space-between;gap:8px}

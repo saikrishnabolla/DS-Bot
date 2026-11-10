@@ -74,8 +74,14 @@ export class OwnedHost {
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)
       context.resume()
+      const attachments = context.get('attachments')
       server = await startOwnedServer({
         dispatch: runtime.handle,
+        upload: (input, signal) => {
+          signal?.throwIfAborted()
+          return attachments.saveFile(input)
+        },
+        attachment: reference => attachments.load(reference),
         subscribe: runtime.subscribeFeed,
         revision: () => runtime.state.revision,
         uiDir,

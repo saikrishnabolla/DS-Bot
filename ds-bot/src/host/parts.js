@@ -1715,9 +1715,10 @@ export function install(rt) {
       const source = event.data?.source
       if (source?.kind === 'user') {
         const content = Array.isArray(event.data.content) ? event.data.content : []
-        const images = content.filter(block => block?.type === 'image').length
+        const attachments = content.filter(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)
+        const images = attachments.filter(block => block.type === 'image').length
         const via = viaOf(source)
-        stamp(event, { kind: 'user', text: textOf(content), ...(images > 0 ? { images } : {}), ...(via ? { via } : {}), time: event.time })
+        stamp(event, { kind: 'user', text: textOf(content), ...(attachments.length > 0 ? { attachments } : {}), ...(images > 0 ? { images } : {}), ...(via ? { via } : {}), time: event.time })
       } else if (source?.kind === REPLY_KIND) {
         const text = textOf(event.data.content)
         const reply = readReply(text)

@@ -35,6 +35,16 @@ const api = (host, cookie) => async (endpoint, payload = {}) => {
   return response.json()
 }
 
+const upload = async (host, cookie, { name, type, data }) => {
+  const response = await fetch(`${host.origin}/api/bot/upload`, {
+    method: 'POST',
+    headers: { cookie, origin: host.origin, 'content-type': type, 'x-dsbot-file-name': encodeURIComponent(name), 'x-dsbot-upload': '1' },
+    body: data,
+  })
+  assert.equal(response.status, 200)
+  return (await response.json()).value
+}
+
 async function followFeed(host, cookie, signal, events) {
   const response = await fetch(`${host.origin}/api/bot/feed`, { headers: { cookie }, signal })
   assert.equal(response.status, 200)
@@ -296,6 +306,90 @@ test('a production Pi threshold switch waits for the running turn and keeps its 
   const handoff = await host.runtime.ctx.harness.context(newSession)
   const handoffText = handoff.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).join('\n')
   assert.match(handoffText, /threshold-switch-request/)
+})
+
+test('owned Host uploads image and file attachments, sends their real content to Pi, and restores their receipts', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-attachments-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  faux.setResponses([fauxAssistantMessage('Ready.')])
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  let host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  let cookie = await authenticate(host)
+  let call = api(host, cookie)
+  const initial = await call('state', { locale: 'en' })
+  const bot = initial.value.bots[0]
+  assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  await waitFor(() => faux.state.callCount >= 1)
+
+  const imageData = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('exact image bytes')])
+  const fileData = Buffer.from('%PDF exact file bytes')
+  const image = await upload(host, cookie, { name: '../screen.png', type: 'image/png', data: imageData })
+  const duplicate = await upload(host, cookie, { name: 'copy.png', type: 'image/png', data: imageData })
+  const file = await upload(host, cookie, { name: 'notes.pdf', type: 'application/pdf', data: fileData })
+  assert.equal(image.attachmentId, duplicate.attachmentId)
+  assert.equal(image.name, 'screen.png')
+  const imageDigest = image.attachmentId.slice('sha256:'.length)
+  const unauthenticatedImage = await fetch(`${host.origin}/api/bot/attachment/${imageDigest}`)
+  assert.equal(unauthenticatedImage.status, 401)
+  const servedImage = await fetch(`${host.origin}/api/bot/attachment/${imageDigest}`, { headers: { cookie } })
+  assert.equal(servedImage.headers.get('content-type'), 'image/png')
+  assert.equal(servedImage.headers.get('x-content-type-options'), 'nosniff')
+  assert.deepEqual(Buffer.from(await servedImage.arrayBuffer()), imageData)
+  const servedFile = await fetch(`${host.origin}/api/bot/attachment/${file.attachmentId.slice('sha256:'.length)}`, { headers: { cookie } })
+  assert.equal(servedFile.headers.get('content-type'), 'application/octet-stream')
+  assert.equal((await call('send', { sessionId: bot.id, content: [{ type: 'image', attachment: file }] })).error.code, 'bot/invalid')
+  assert.equal((await call('send', { sessionId: bot.id, content: [{ type: 'file', attachment: { ...file, bytes: file.bytes + 1 } }] })).error.code, 'bot/invalid')
+  assert.equal((await call('send', { sessionId: bot.id, content: [{ type: 'unknown', attachment: file }] })).error.code, 'bot/invalid')
+
+  let modelRequest
+  faux.setResponses([async context => {
+    modelRequest = context
+    return fauxAssistantMessage('Attachments received.')
+  }])
+  const sent = await call('send', {
+    sessionId: bot.id,
+    content: [
+      { type: 'text', text: 'check these' },
+      { type: 'image', attachment: image },
+      { type: 'file', attachment: file },
+    ],
+  })
+  assert.equal(sent.ok, true)
+  await waitFor(() => modelRequest)
+  const user = modelRequest.messages.find(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text === 'check these'))
+  assert.ok(user.content.some(block => block.type === 'image' && block.data === imageData.toString('base64') && block.mimeType === 'image/png'))
+  const fileNote = user.content.find(block => block.type === 'text' && block.text.includes('notes.pdf'))?.text
+  assert.match(fileNote, /Read-only copy saved at/)
+  const [, path] = /saved at ("(?:[^"\\]|\\.)+")/.exec(fileNote)
+  assert.deepEqual(await readFile(JSON.parse(path)), fileData)
+  await assert.rejects(writeFile(JSON.parse(path), 'changed'), /EACCES|EPERM/)
+
+  const before = await waitFor(async () => {
+    const chat = await call('chat', { botId: bot.id })
+    return chat.value.items.some(item => item.kind === 'bot' && item.text === 'Attachments received.') ? chat.value : undefined
+  })
+  const receipt = before.items.find(item => item.kind === 'user' && item.text === 'check these')
+  assert.deepEqual(receipt.attachments.map(block => [block.type, block.attachment.name]), [['image', 'screen.png'], ['file', 'notes.pdf']])
+
+  await host.close()
+  host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  t.after(() => host.close())
+  cookie = await authenticate(host)
+  call = api(host, cookie)
+  const restored = await call('chat', { botId: bot.id })
+  const restoredReceipt = restored.value.items.find(item => item.kind === 'user' && item.text === 'check these')
+  assert.deepEqual(restoredReceipt.attachments.map(block => [block.type, block.attachment.name, block.attachment.bytes]), [
+    ['image', 'screen.png', imageData.length],
+    ['file', 'notes.pdf', fileData.length],
+  ])
 })
 
 test('owned Host redacts saved secrets from durable model requests', async t => {

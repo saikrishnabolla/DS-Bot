@@ -486,7 +486,14 @@ function EarlierUser({ row, actions }) {
   return h('div', { className: 'bt-urow' }, h('div', { className: 'bt-ububble', 'data-folded': folded || undefined },
     control ? h('div', { className: 'bt-fold-body' }, area) : area,
     control,
-    row.images ? h('span', { className: 'bt-uimages' }, row.images === 1 ? t('1 image') : t('{count} images', { count: row.images })) : null),
+    Array.isArray(row.attachments) ? h('span', { className: 'bt-uattachments' }, row.attachments.map((block, index) => {
+      const attachment = block.attachment ?? {}
+      const digest = String(attachment.attachmentId ?? '').replace(/^sha256:/, '')
+      return block.type === 'image' && /^[a-f0-9]{64}$/.test(digest)
+        ? h('img', { key: index, className: 'bt-uattachment-image', src: `api/bot/attachment/${digest}`, alt: attachment.name ?? 'Image' })
+        : h('span', { key: index, className: 'bt-uattachment-file', title: attachment.name }, attachment.name ?? 'File')
+    }))
+      : row.images ? h('span', { className: 'bt-uimages' }, row.images === 1 ? t('1 image') : t('{count} images', { count: row.images })) : null),
     row.via ? h('div', { className: 'bt-utime' }, h(ViaTag, { via: row.via }), Number.isFinite(row.time) ? messageClock(row.time) : null) : null)
 }
 

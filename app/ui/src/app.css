@@ -59,6 +59,13 @@ html[data-mac] .dsb-frame .dsb-side{padding-top:var(--dsb-band)}
 .dsb-composer-wrap{width:100%;max-width:min(992px,100%)}
 .dsb-composer{position:relative}
 .dsb-composer[data-multiline]{border-radius:18px!important}
+.dsb-attachments{order:0;flex:0 0 100%;display:flex;gap:7px;overflow-x:auto;box-sizing:border-box;padding:2px 8px 7px}
+.dsb-attachment{position:relative;display:flex;align-items:center;gap:7px;min-width:0;max-width:220px;height:38px;padding:3px 7px 3px 3px;box-sizing:border-box;border:1px solid var(--bt-line-2);border-radius:10px;background:var(--bt-card)}
+.dsb-attachment img,.dsb-attachment-kind{width:30px;height:30px;flex:none;border-radius:7px;object-fit:cover;background:var(--bt-hover)}
+.dsb-attachment-kind{display:grid;place-items:center;color:var(--bt-ink-3);font-size:8px;font-weight:700}
+.dsb-attachment-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--bt-ink)}
+.dsb-attachment button{position:absolute;top:-5px;right:-5px;width:16px;height:16px;padding:0;display:grid;place-items:center;border:1px solid var(--bt-line-2);border-radius:50%;background:var(--bt-main);color:var(--bt-ink-2);cursor:pointer}
+.dsb-attachment button svg{width:10px;height:10px}
 .dsb-composer-tools{order:1;display:flex;flex:none;align-self:flex-end}
 .dsb-composer-input{display:flex;flex:1 1 0;min-width:0;padding:0 8px}
 .dsb-composer-input textarea{flex:1;width:100%;max-height:168px;margin:0;border:0;outline:0;resize:none;background:none;color:var(--bt-ink);font:inherit;font-size:14px;line-height:24px;overflow-y:auto}

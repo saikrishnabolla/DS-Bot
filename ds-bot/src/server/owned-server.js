@@ -5,8 +5,11 @@ import { extname, resolve, sep } from 'node:path'
 
 const API_ROUTE = '/api/bot'
 const FEED_ROUTE = `${API_ROUTE}/feed`
+const UPLOAD_ROUTE = `${API_ROUTE}/upload`
+const ATTACHMENT_ROUTE = `${API_ROUTE}/attachment/`
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
+const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 const DEFAULT_MAX_FEED_CLIENTS = 32
 const DEFAULT_MAX_QUEUED_EVENTS = 512
 const DEFAULT_KEEPALIVE_MS = 20_000
@@ -71,6 +74,26 @@ const requestBody = async (request, limit) => {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+const requestBytes = async (request, limit) => {
+  const declared = Number(request.headers['content-length'])
+  if (Number.isFinite(declared) && declared > limit) {
+    request.resume()
+    return undefined
+  }
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > limit) {
+      request.resume()
+      return undefined
+    }
+    chunks.push(chunk)
+  }
+  if (request.aborted || !request.complete) throw Object.assign(new Error('Upload was interrupted'), { code: 'ABORT_ERR' })
+  return Buffer.concat(chunks)
+}
+
 const eventChunk = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
 
 /**
@@ -81,6 +104,8 @@ const eventChunk = (event, data) => `event: ${event}\ndata: ${JSON.stringify(dat
  */
 export async function startOwnedServer({
   dispatch,
+  upload,
+  attachment,
   subscribe = () => () => {},
   revision = () => 0,
   uiDir,
@@ -88,11 +113,14 @@ export async function startOwnedServer({
   port = 0,
   launchToken = randomBytes(32).toString('base64url'),
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
+  maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
   maxFeedClients = DEFAULT_MAX_FEED_CLIENTS,
   maxQueuedEvents = DEFAULT_MAX_QUEUED_EVENTS,
   keepaliveMs = DEFAULT_KEEPALIVE_MS,
 } = {}) {
   if (typeof dispatch !== 'function') throw new TypeError('dispatch must be a function')
+  if (upload !== undefined && typeof upload !== 'function') throw new TypeError('upload must be a function')
+  if (attachment !== undefined && typeof attachment !== 'function') throw new TypeError('attachment must be a function')
   if (typeof subscribe !== 'function') throw new TypeError('subscribe must be a function')
   if (typeof revision !== 'function') throw new TypeError('revision must be a function')
   if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
@@ -199,6 +227,78 @@ export async function startOwnedServer({
         response.once('close', () => { if (!response.writableEnded) controller.abort() })
         const result = await dispatch(String(body?.endpoint ?? ''), body?.payload, controller.signal)
         json(response, 200, result)
+        return
+      }
+
+      if (url.pathname === UPLOAD_ROUTE && upload !== undefined) {
+        if (request.method !== 'POST') {
+          response.writeHead(405, { allow: 'POST' })
+          response.end()
+          return
+        }
+        if (request.headers['x-dsbot-upload'] !== '1') {
+          refusal(response, 403, 'bot/forbidden', 'Upload header is required')
+          return
+        }
+        const encodedName = request.headers['x-dsbot-file-name']
+        if (typeof encodedName !== 'string' || encodedName === '') {
+          refusal(response, 400, 'bot/invalid', 'File name is required')
+          return
+        }
+        let name
+        try { name = decodeURIComponent(encodedName) } catch {
+          refusal(response, 400, 'bot/invalid', 'File name is invalid')
+          return
+        }
+        const data = await requestBytes(request, maxUploadBytes)
+        if (data === undefined) {
+          refusal(response, 413, 'bot/upload-too-large', 'File is too large')
+          return
+        }
+        const controller = new AbortController()
+        request.once('aborted', () => controller.abort())
+        response.once('close', () => { if (!response.writableEnded) controller.abort() })
+        let reference
+        try {
+          reference = await upload({
+            data,
+            name,
+            mediaType: String(request.headers['content-type'] ?? 'application/octet-stream').split(';', 1)[0].trim(),
+          }, controller.signal)
+        } catch (error) {
+          if (!(error instanceof TypeError)) throw error
+          refusal(response, 400, 'bot/invalid', error.message)
+          return
+        }
+        json(response, 200, { ok: true, value: reference })
+        return
+      }
+
+      if (url.pathname.startsWith(ATTACHMENT_ROUTE) && attachment !== undefined) {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          response.writeHead(405, { allow: 'GET, HEAD' })
+          response.end()
+          return
+        }
+        const digest = url.pathname.slice(ATTACHMENT_ROUTE.length)
+        if (!/^[a-f0-9]{64}$/.test(digest)) {
+          refusal(response, 404, 'bot/not-found', 'Attachment not found')
+          return
+        }
+        let stored
+        try { stored = await attachment({ attachmentId: `sha256:${digest}` }) } catch {
+          refusal(response, 404, 'bot/not-found', 'Attachment not found')
+          return
+        }
+        response.writeHead(200, {
+          'cache-control': 'private, max-age=31536000, immutable',
+          ...(stored.mediaType === 'application/octet-stream' ? { 'content-disposition': 'attachment' } : {}),
+          'content-length': stored.data.length,
+          'content-security-policy': "default-src 'none'",
+          'content-type': stored.mediaType,
+          'x-content-type-options': 'nosniff',
+        })
+        response.end(request.method === 'HEAD' ? undefined : stored.data)
         return
       }
 

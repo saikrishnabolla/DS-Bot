@@ -18,6 +18,38 @@ const isInternal = error => error instanceof TypeError || error instanceof Refer
 const MEMORY_LIMIT_SCOPES = new Set(['group', 'bot', 'team'])
 const MEMORY_LIMIT_MIN = 1_000
 const MEMORY_LIMIT_MAX = 200_000
+const MAX_MESSAGE_ATTACHMENTS = 10
+
+async function sentContent(ctx, body) {
+  const supplied = Array.isArray(body?.content) ? body.content : undefined
+  if (supplied === undefined) {
+    const text = String(body?.text ?? '').trim()
+    return text === '' ? [] : [{ type: 'text', text }]
+  }
+  const attachments = ctx.get?.('attachments')
+  const content = []
+  let attachmentCount = 0
+  for (const block of supplied) {
+    if (block?.type === 'text') {
+      if (typeof block.text !== 'string') throw invalid('Message text is invalid')
+      const text = block.text.trim()
+      if (text !== '') content.push({ type: 'text', text })
+      continue
+    }
+    if (block?.type !== 'image' && block?.type !== 'file') throw invalid('Attachment type is invalid')
+    attachmentCount += 1
+    if (attachmentCount > MAX_MESSAGE_ATTACHMENTS) throw invalid(`A message can include at most ${MAX_MESSAGE_ATTACHMENTS} attachments`)
+    if (attachments === undefined || typeof attachments.reference !== 'function') throw invalid('Attachments are unavailable')
+    let attachment
+    try {
+      attachment = block.type === 'image' && typeof attachments.imageReference === 'function'
+        ? await attachments.imageReference(block.attachment)
+        : await attachments.reference(block.attachment)
+    } catch { throw invalid('Attachment is invalid or no longer available') }
+    content.push({ type: block.type, attachment })
+  }
+  return content
+}
 
 export function errorCode(error) {
   if (typeof error?.code === 'string' && error.code.startsWith('bot/')) return error.code
@@ -548,10 +580,12 @@ export function install(rt) {
           return ok(true)
         }
         case 'send': {
-          const text = String(body.text ?? '').trim()
-          if (text === '' || typeof body.sessionId !== 'string') return fail('Nothing to send', 'bot/invalid')
+          if (typeof body.sessionId !== 'string') return fail('Nothing to send', 'bot/invalid')
+          let content
+          try { content = await sentContent(ctx, body) } catch (error) { return fail(error.message, errorCode(error)) }
+          if (content.length === 0) return fail('Nothing to send', 'bot/invalid')
           await rt.load()
-          await rt.sendUser({ sessionId: body.sessionId, content: [{ type: 'text', text }] })
+          await rt.sendUser({ sessionId: body.sessionId, content })
           return ok(true)
         }
         case 'btw-delete': {

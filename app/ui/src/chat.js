@@ -6,7 +6,7 @@ import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.j
 import { sendsOnEnter } from '../../../ds-bot/src/client/enter-key.js'
 import { HandoffDock } from '../../../ds-bot/src/client/handoff-card.js'
 import { t } from '../../../ds-bot/src/client/i18n.js'
-import { ArrowUpIcon } from '../../../ds-bot/src/client/icons.js'
+import { ArrowUpIcon, CloseIcon } from '../../../ds-bot/src/client/icons.js'
 import { LearningDock } from '../../../ds-bot/src/client/learning-card.js'
 import { ModelChoiceDock } from '../../../ds-bot/src/client/model-menu.js'
 import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
@@ -16,9 +16,11 @@ import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
 import { WidgetDock } from '../../../ds-bot/src/client/widget-cell.js'
 import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
+import { uploadAttachment } from './api.js'
 
 // The chat follows its end while the user is this close to it.
 const FOLLOW_PX = 80
+const ATTACHMENT_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 const sameItem = (a, b) => (a.entryId !== undefined && b.entryId !== undefined
   ? a.entryId === b.entryId && a.block === b.block
   : a.kind === b.kind && a.time === b.time && a.text === b.text && a.botId === b.botId)
@@ -84,12 +86,12 @@ function useChat(botId, roomId, part, feed) {
   }), [feed, botId, roomId, load])
 
   // Shown at once: the message can come back on the feed before the request returns.
-  const send = async (text, actions, sessionId) => {
-    const entry = { kind: 'user', text, time: Date.now() }
+  const send = async (text, attachments, actions, sessionId) => {
+    const entry = { kind: 'user', text, attachments, images: attachments.filter(item => item.type === 'image').length, time: Date.now() }
     setPending(list => [...list, entry])
     actions.noteSent(sessionId)
     try {
-      await actions.send(sessionId, text)
+      await actions.send(sessionId, text, attachments)
     } catch (error) {
       setPending(list => list.filter(item => item !== entry))
       throw error
@@ -112,7 +114,9 @@ function useInput(field, setText) {
 
 function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
   const [text, setText] = useState('')
+  const [attachments, setAttachments] = useState([])
   const [error, setError] = useState(null)
+  const [sending, setSending] = useState(false)
   const [stopping, setStopping] = useState(false)
   const field = useRef(null)
   const inputActions = useInput(field, setText)
@@ -123,17 +127,45 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
     node.style.height = `${node.scrollHeight}px`
   }, [text])
   useEffect(() => { if (!disabled) field.current?.focus() }, [sessionId, disabled])
+  const attachmentsRef = useRef(attachments)
+  attachmentsRef.current = attachments
+  useEffect(() => () => {
+    for (const item of attachmentsRef.current) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  }, [])
+  const addFiles = (files) => {
+    const incoming = [...(files ?? [])].filter(file => file instanceof File)
+    if (incoming.length === 0) return
+    setAttachments(current => [...current, ...incoming.slice(0, Math.max(0, 10 - current.length)).map(file => {
+      const image = ATTACHMENT_IMAGE_TYPES.has(file.type)
+      return {
+        id: `${Date.now()}:${crypto.randomUUID?.() ?? Math.random()}`,
+        file,
+        type: image ? 'image' : 'file',
+        previewUrl: image ? URL.createObjectURL(file) : undefined,
+      }
+    })])
+  }
+  const removeAttachment = (id) => setAttachments(current => {
+    const removed = current.find(item => item.id === id)
+    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+    return current.filter(item => item.id !== id)
+  })
   const submit = async () => {
     const value = text.trim()
-    if (value === '' || disabled) return
+    const files = attachments
+    if ((value === '' && files.length === 0) || disabled || sending) return
     setError(null)
     setText('')
+    setSending(true)
     try {
-      await onSend(value)
+      const uploaded = await Promise.all(files.map(async item => ({ type: item.type, attachment: await uploadAttachment(item.file) })))
+      await onSend(value, uploaded)
+      for (const item of files) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      setAttachments(current => current.filter(item => !files.includes(item)))
     } catch (failure) {
       setText(current => (current === '' ? value : current))
       setError(failure.message)
-    }
+    } finally { setSending(false) }
   }
   const stop = async () => {
     if (!running || stopping) return
@@ -143,7 +175,18 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
   }
   return h('div', { className: 'dsb-composer-wrap' },
     error ? h('p', { className: 'dsb-composer-error', role: 'alert' }, error) : null,
-    h('div', { className: 'dsb-composer', 'data-composer-card': '', 'data-multiline': text.includes('\n') || undefined },
+    h('div', {
+      className: 'dsb-composer',
+      'data-composer-card': '',
+      'data-multiline': text.includes('\n') || attachments.length > 0 || undefined,
+      onDragOver: event => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault() },
+      onDrop: event => { if (event.dataTransfer?.files?.length) { event.preventDefault(); addFiles(event.dataTransfer.files) } },
+    },
+      h('input', { type: 'file', multiple: true, hidden: true, onChange: event => { addFiles(event.target.files); event.target.value = '' } }),
+      attachments.length > 0 ? h('div', { className: 'dsb-attachments', 'data-slot': 'conversation.input.attachments' }, attachments.map(item => h('span', { key: item.id, className: 'dsb-attachment' },
+        item.previewUrl ? h('img', { src: item.previewUrl, alt: '' }) : h('span', { className: 'dsb-attachment-kind', 'aria-hidden': true }, item.file.name.split('.').pop()?.slice(0, 4).toUpperCase() || 'FILE'),
+        h('span', { className: 'dsb-attachment-name', title: item.file.name }, item.file.name),
+        h('button', { type: 'button', 'aria-label': t('Remove {name}', { name: item.file.name }), onClick: () => removeAttachment(item.id) }, h(CloseIcon))))) : null,
       h('div', { className: 'dsb-composer-tools' }, h(ComposerPlus, { sessionId, inputActions, useRoster, actions })),
       h('div', { className: 'dsb-composer-input', 'data-input-scroll': '' },
         h('textarea', {
@@ -155,6 +198,7 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
           'aria-label': placeholder,
           'data-composer-input': '',
           onChange: event => setText(event.target.value),
+          onPaste: event => { if (event.clipboardData?.files?.length) { event.preventDefault(); addFiles(event.clipboardData.files) } },
           onKeyDown: (event) => {
             if (event.key === 'Enter' && enterToSend && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
@@ -165,7 +209,7 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
       h('div', { className: 'dsb-composer-trailing' },
         running ? h('button', { type: 'button', className: 'dsb-stop', disabled: stopping, onClick: () => { void stop() } }, stopping ? t('Stopping…') : t('Stop')) : null,
         h(ComposerVoice, { sessionId, inputActions, actions, useUi, useRoster }),
-        h('button', { type: 'button', className: 'dsb-send', disabled: disabled || text.trim() === '', 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))))
+        h('button', { type: 'button', className: 'dsb-send', disabled: disabled || sending || (text.trim() === '' && attachments.length === 0), 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))))
 }
 
 function ToolRow({ row }) {
@@ -295,7 +339,7 @@ export function Chat({ sessionId, team }) {
         disabled: waiting,
         running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),
-        onSend: text => send(text, actions, sessionId),
+        onSend: (text, attachments) => send(text, attachments, actions, sessionId),
         onStop: stop,
         actions,
         useUi: hooks.useUi,
