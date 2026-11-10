@@ -70,6 +70,6 @@
     "mailparser": "3.12.4",
     "nodemailer": "10.2.1",
     "playwright-core": "1.64.1",
-    "ws": "8.18.3"
+    "ws": "8.21.0"
   }
 }
