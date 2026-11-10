@@ -71,6 +71,76 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.equal(listed.items.some(item => item.sessionId === sessionId), true)
 })
 
+test('owned projections report durable Pi usage and active context pressure', async t => {
+  const { ctx, dataDir, models, provider } = await contextFixture(t)
+  provider.setResponses([fauxAssistantMessage('first answer'), fauxAssistantMessage('second answer')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  agent.followup({ content: 'first prompt', source: { kind: 'user' } })
+  await agent.whenIdle()
+  agent.followup({ content: 'second prompt', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const before = await ctx.sessionController.projections({ sessionId })
+  assert.equal(before.values.sessionStats.turns, 2)
+  assert.ok(before.values.tokenUsage.outputTokens > 0)
+  assert.ok(before.values.tokenUsage.cacheWriteTokens > 0)
+  assert.ok(before.values.tokenUsage.cacheReadTokens > 0)
+  assert.ok(before.values.contextPressure.pressureTokens > 0)
+  assert.equal(before.values.contextPressure.contextWindow, provider.models[0].contextWindow)
+  assert.deepEqual(
+    ctx.get('sessionProjections').snapshot(agent.session, ['sessionStats', 'tokenUsage', 'contextPressure']).values,
+    {
+      sessionStats: before.values.sessionStats,
+      tokenUsage: before.values.tokenUsage,
+      contextPressure: before.values.contextPressure,
+    },
+  )
+  await ctx.close()
+
+  const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir })
+  t.after(() => restarted.close())
+  const after = await restarted.sessionController.projections({ sessionId })
+  assert.deepEqual(after.values.tokenUsage, before.values.tokenUsage)
+  assert.equal(after.values.sessionStats.turns, 2)
+  assert.ok(after.values.contextPressure.pressureTokens > 0)
+})
+
+test('owned pre-step control never sends rejected or empty requests to a provider', async t => {
+  for (const decision of [{ kind: 'reject', reason: 'blocked by policy' }, { kind: 'enter', messages: [] }]) {
+    const { ctx, provider } = await contextFixture(t)
+    const { sessionId } = await ctx.sessionController.create()
+    await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+    const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+    ctx.on('agent/pre-step', async (payload, next) => {
+      assert.equal(payload.agent, agent)
+      assert.equal(typeof next, 'function')
+      return decision
+    }, { prepend: true })
+    ctx.resume()
+
+    agent.followup({ content: 'must not reach the provider', source: { kind: 'user' } })
+    await agent.whenIdle()
+
+    const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+    assert.equal(provider.state.callCount, 0)
+    assert.deepEqual(
+      page.records.map(record => record.event.type),
+      decision.kind === 'reject'
+        ? ['user/message', 'turn/start', 'assistant/message', 'turn/end']
+        : ['user/message', 'turn/start', 'turn/end'],
+    )
+    if (decision.kind === 'reject') {
+      assert.equal(page.records[2].event.data.message.stopReason, 'aborted')
+      assert.equal(page.records[2].event.data.message.errorMessage, decision.reason)
+    }
+    await ctx.close()
+  }
+})
+
 test('owned context adapts legacy tools per conversation and keeps exec.agent compatibility', async t => {
   const { ctx, provider } = await contextFixture(t)
   t.after(() => ctx.close())

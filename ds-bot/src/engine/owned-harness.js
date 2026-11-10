@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
+import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { createRegistry, defineExtension, GenerationTask, Harness, hook } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
@@ -11,6 +12,39 @@ const numericId = id => {
   const value = Number(id)
   if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`Invalid conversation id: ${String(id)}`)
   return value
+}
+
+const ZERO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+}
+
+const isGenerationControl = value => value?.kind === 'complete' || value?.kind === 'reject'
+
+function controlledStream(model, control) {
+  const stream = createAssistantMessageEventStream()
+  const rejected = control.kind === 'reject'
+  const message = {
+    role: 'assistant',
+    api: model.api,
+    provider: model.provider,
+    model: model.id,
+    content: [],
+    usage: ZERO_USAGE,
+    stopReason: rejected ? 'aborted' : 'stop',
+    timestamp: Date.now(),
+    ...(rejected ? { errorMessage: control.reason ?? 'Model step rejected before provider request' } : {}),
+  }
+  queueMicrotask(() => {
+    stream.push(rejected
+      ? { type: 'error', reason: 'aborted', error: message }
+      : { type: 'done', reason: 'stop', message })
+  })
+  return stream
 }
 
 export class OwnedHarness {
@@ -47,6 +81,7 @@ export class OwnedHarness {
     const requestTransforms = new Set()
     const generationTransforms = new Set()
     const messageOwners = new WeakMap()
+    const generationControls = new Map()
     const streamBoundary = { run: undefined }
     const bridge = createModelBridge(runtime, async (request) => {
       const conversationId = request.messages?.map(message => messageOwners.get(message)).find(id => id !== undefined)
@@ -57,21 +92,38 @@ export class OwnedHarness {
         })
         if (next !== undefined) messages = next
       }
+      if (conversationId !== undefined) {
+        for (const message of messages ?? []) {
+          if (message !== null && typeof message === 'object') messageOwners.set(message, conversationId)
+        }
+      }
       return messages === request.messages ? request : { ...request, messages }
-    }, (model, request, options, next) => streamBoundary.run?.(model, request, options, next, {
-      conversationId: request.messages?.map(message => messageOwners.get(message)).find(id => id !== undefined),
-    }) ?? next())
+    }, (model, request, options, next) => {
+      const conversationId = request.messages?.map(message => messageOwners.get(message)).find(id => id !== undefined)
+      const control = conversationId === undefined ? undefined : generationControls.get(conversationId)
+      if (control !== undefined) {
+        generationControls.delete(conversationId)
+        return controlledStream(model, control)
+      }
+      return streamBoundary.run?.(model, request, options, next, { conversationId }) ?? next()
+    })
     const generationPolicy = defineExtension({
       name: 'ds-bot-generation-policy',
       hooks: [hook(GenerationTask, {
         beforeRequest: async (request, api) => {
+          const conversationId = String(api.conversationId)
+          generationControls.delete(conversationId)
           let messages = request.messages
           for (const transform of generationTransforms) {
-            const next = await transform(messages, { conversationId: String(api.conversationId) })
+            const next = await transform(messages, { conversationId })
+            if (isGenerationControl(next)) {
+              generationControls.set(conversationId, next)
+              break
+            }
             if (next !== undefined) messages = next
           }
-          for (const message of messages) {
-            if (message !== null && typeof message === 'object') messageOwners.set(message, String(api.conversationId))
+          for (const message of new Set([...(request.messages ?? []), ...(messages ?? [])])) {
+            if (message !== null && typeof message === 'object') messageOwners.set(message, conversationId)
           }
           return messages === request.messages ? undefined : { messages }
         },

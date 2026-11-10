@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
@@ -101,6 +102,25 @@ function allMessages(entries) {
   return messagesWithSources(messages, entries)
 }
 
+const count = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0
+
+function tokenUsageOf(usage) {
+  const totals = { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 }
+  for (const value of Object.values(usage?.models ?? {})) {
+    totals.uncachedInputTokens += count(value?.input)
+    totals.cacheReadTokens += count(value?.cacheRead)
+    totals.cacheWriteTokens += count(value?.cacheWrite)
+    totals.outputTokens += count(value?.output)
+  }
+  return totals
+}
+
+function stepOf(messages) {
+  let lastUser = -1
+  for (let index = 0; index < messages.length; index += 1) if (messages[index]?.role === 'user') lastUser = index
+  return 1 + messages.slice(lastUser + 1).filter(message => message?.role === 'assistant').length
+}
+
 function legacyParameters(parameters) {
   if (parameters?.type === 'object') return parameters
   const properties = {}
@@ -168,6 +188,7 @@ export class OwnedContext {
   #dispatch
   #hostRuntime
   #sessionStates = new Map()
+  #projectionDefinitions = new Map()
 
   constructor(harness, { workspacePath, logger = console } = {}) {
     this.harness = harness
@@ -219,6 +240,16 @@ export class OwnedContext {
       },
     })
     this.#services.set('agents', { list: () => [...this.#agents.values()] })
+    this.#services.set('sessionProjections', {
+      register: definition => {
+        this.#projectionDefinitions.set(definition.key, definition)
+        return () => {
+          if (this.#projectionDefinitions.get(definition.key) === definition) this.#projectionDefinitions.delete(definition.key)
+        }
+      },
+      stateOf: (session, key) => this.#projectionState(session, key),
+      snapshot: (session, keys) => this.#projectionSnapshot(session, keys),
+    })
     this.harness.setShellEnvironment?.(({ conversationId }) => {
       const agent = this.#agents.get(String(conversationId))
       if (agent === undefined) return undefined
@@ -239,8 +270,12 @@ export class OwnedContext {
       const decision = await this.#middleware('agent/pre-step', {
         agent: resolved.agent,
         messages: sourced,
+        step: stepOf(sourced),
+        modelSelection: state?.config,
         signal,
       }, async () => ({ kind: 'enter', messages: sourced }))
+      if (decision?.kind === 'reject') return { kind: 'reject', ...(decision.reason === undefined ? {} : { reason: String(decision.reason) }) }
+      if (Array.isArray(decision?.messages) && decision.messages.length === 0) return { kind: 'complete' }
       return Array.isArray(decision?.messages) ? decision.messages : sourced
     })
     this.llm = this.#llmService()
@@ -562,7 +597,8 @@ export class OwnedContext {
       state.view = next
       const before = state.events.length
       state.events = eventRecords(next.entries)
-      for (const record of state.events.slice(before)) {
+      const appended = state.events.slice(before)
+      for (const record of appended) {
         this.emit('session/event', session, record.event)
         const owner = this.#hostRuntime?.chatOwners?.get?.(id) ?? id
         for (const item of this.#displayEvent(record.event)) this.publishFeed('message', { botId: owner, sessionId: id, item })
@@ -581,6 +617,7 @@ export class OwnedContext {
         state.status = status
         this.emit('agent/status', { agent, status })
       }
+      if (appended.some(record => record.event.type === 'turn/end')) await this.#refreshProjectionState(id, state)
     }
     watch.start(async call => { if (call.kind === 'value') await update(call.value) })
     this.#watches.set(id, watch)
@@ -645,18 +682,65 @@ export class OwnedContext {
   }
 
   async #projections({ sessionId }) {
-    const records = eventRecords(await this.#allEntries(String(sessionId)))
+    const id = String(sessionId)
+    const state = this.#sessionStates.get(id)
+    if (state !== undefined) {
+      await this.#refreshProjectionState(id, state)
+      return state.projections
+    }
+    const entries = await this.#allEntries(id)
+    const context = await this.harness.context(id)
+    const configured = await this.harness.agent(id)
+    const watch = await this.harness.watch(id, { min: 1, max: 1 })
+    try {
+      return this.#projectionValues(entries, watch.value.docs?.['pi.usage'], context.messages, configured)
+    } finally {
+      await watch.stop()
+    }
+  }
+
+  #projectionValues(entries, usage, messages, configured) {
+    const records = eventRecords(entries)
     if (records.length === 0) return { asOfSeq: -1, values: {} }
-    const messages = records.filter(record => record.event.type === 'user/message' || record.event.type === 'assistant/message')
+    const turns = records.filter(record => record.event.type === 'turn/end').length
+    const model = configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.model.provider, configured.model.modelId)
+    const pressureTokens = estimateContextTokens(messages).tokens
     return {
       asOfSeq: records.at(-1).event.seq,
       values: {
-        sessionStats: { messages: messages.length },
-        tokenUsage: {},
-        contextPressure: {},
+        sessionStats: { turns },
+        tokenUsage: tokenUsageOf(usage),
+        contextPressure: model?.contextWindow > 0 ? { pressureTokens, contextWindow: model.contextWindow } : {},
         turnOutline: records.filter(record => record.event.type === 'turn/start').map(record => record.event.data.turn),
       },
     }
+  }
+
+  async #refreshProjectionState(id, state) {
+    const context = await this.harness.context(id)
+    const configured = await this.harness.agent(id)
+    state.projections = this.#projectionValues(state.view.entries, state.view.docs?.['pi.usage'], context.messages, configured)
+  }
+
+  #projectionState(session, key) {
+    const id = String(session?.id ?? session)
+    const builtIn = this.#sessionStates.get(id)?.projections?.values?.[key]
+    if (builtIn !== undefined) return builtIn
+    const definition = this.#projectionDefinitions.get(key)
+    if (definition === undefined || session?.snapshotEvents === undefined) return undefined
+    let state = definition.init(session.header, session.inheritedEventCount)
+    for (const event of session.snapshotEvents()) state = definition.apply(state, event)
+    return state
+  }
+
+  #projectionSnapshot(session, keys) {
+    const id = String(session?.id ?? session)
+    const current = this.#sessionStates.get(id)?.projections ?? { asOfSeq: -1, values: {} }
+    const values = Object.fromEntries((keys ?? Object.keys(current.values)).flatMap(key => {
+      const value = this.#projectionState(session, key)
+      return value === undefined ? [] : [[key, value]]
+    }))
+    return { asOfSeq: current.asOfSeq, values }
   }
 
   async #list() {
