@@ -3,7 +3,7 @@ import test from 'node:test'
 import { ComputerDriverHost, packagedComputerModule } from '../src/computer-driver.mjs'
 
 test('packaged computer modules resolve from the unpacked dependency', () => {
-  assert.match(packagedComputerModule('/Applications/Cue.app/Contents/Resources', 'index.js'),
+  assert.match(packagedComputerModule('/Applications/Cue.app/Contents/Resources', 'index.js', 'darwin'),
     /^file:\/\/\/Applications\/Cue\.app\/Contents\/Resources\/app\.asar\.unpacked\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)
   assert.match(packagedComputerModule('/opt/Cue/resources', 'index.js', 'linux'),
     /^file:\/\/\/opt\/Cue\/resources\/app\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)

@@ -5,7 +5,7 @@ import test from 'node:test'
 import { createElement as h } from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { JSDOM } from '../../../ds-bot/node_modules/jsdom/lib/api.js'
+import { JSDOM } from 'jsdom'
 
 const peerModules = {
   react: new URL('../../node_modules/react/index.js', import.meta.url).href,
