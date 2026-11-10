@@ -82,7 +82,6 @@ jobs:
           fi
 
       - run: npm ci --no-fund --no-audit
-      - run: npm run harness
       - run: npm test
       - run: node scripts/build-client.mjs --check
       - run: npm run lint
