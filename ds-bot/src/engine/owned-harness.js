@@ -119,6 +119,16 @@ export class OwnedHarness {
 
   resume() { this.#harness.resume() }
 
+  commit(change, options) { return this.#harness.commit(change, this.#context, options) }
+
+  snapshot(token) { return this.#harness.snapshot(token, this.#context) }
+
+  getTask(id) { return this.#harness.getTask(id, this.#context) }
+
+  scanTasks(query = {}, limit = 100, cursor) { return this.#harness.commit(tx => tx.scanTasks(query, limit, cursor), this.#context) }
+
+  abortTask(id) { return this.#harness.abortTask(id, this.#context) }
+
   async createConversation(agent) {
     const conversation = await this.#harness.createConversation({ ownership: { kind: 'ownerless' }, agent }, this.#context)
     return String(conversation.id)
