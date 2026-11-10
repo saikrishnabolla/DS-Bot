@@ -14,6 +14,8 @@ await installHooks()
 
 before(async () => { await startApp({ acknowledged: false }) })
 
+const trayCards = win => windowCards(win).filter(card => /system tray/u.test(card.message))
+
 test('a page that does not show the card does not hold the close', async () => {
   await waitFor(() => window() !== undefined, 'open the window')
   await waitFor(() => state.tray !== undefined, 'build the tray')
@@ -40,10 +42,10 @@ test('the close asks on a card in the window and hides it once the card is answe
   win.minimize()
   const focused = win.focused
   win.close()
-  await waitFor(() => windowCards(win).length === 1, 'tell about the tray on a card')
+  await waitFor(() => trayCards(win).length === 1, 'tell about the tray on a card')
   assert.equal(win.minimized, false, 'the window comes back up with its card')
   assert.ok(win.focused > focused, 'the window with the card is brought to the front')
-  const card = windowCards(win)[0]
+  const card = trayCards(win)[0]
   assert.match(card.message, /system tray/u)
   assert.deepEqual(card.buttons, [{ label: 'OK', primary: true }])
   assert.equal(card.cancel, undefined, 'only the answer lets the window go')
@@ -51,7 +53,7 @@ test('the close asks on a card in the window and hides it once the card is answe
   // A second close while the card is up asks nothing more; it brings the card to the front.
   const again = win.focused
   win.close()
-  assert.equal(windowCards(win).length, 1)
+  assert.equal(trayCards(win).length, 1)
   assert.ok(win.focused > again, 'the second close brings the card forward')
   answerCard(0, win)
   await waitFor(() => win.visible === false, 'hide the window')
@@ -65,7 +67,7 @@ test('later closes hide the window without asking', async () => {
   await waitFor(() => win.visible === true, 'show the window')
   win.close()
   await waitFor(() => win.visible === false, 'hide the window')
-  assert.equal(windowCards(win).length, 1, 'no second card')
+  assert.equal(trayCards(win).length, 1, 'no second tray card')
 })
 
 test('the tray quit ends the app', async () => {

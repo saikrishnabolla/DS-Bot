@@ -2,6 +2,7 @@
 // one and takes its name only once it is whole, so a copy that stopped or failed leaves nothing
 // that looks like data. The old folder stays as it was.
 import { basename, dirname, join, resolve } from 'node:path'
+import { hostname } from 'node:os'
 import { copyTree, disk, real, within } from './copy-tree.mjs'
 
 export { copyReason } from './copy-tree.mjs'
@@ -9,11 +10,30 @@ export { copyReason } from './copy-tree.mjs'
 const { existsSync, readdirSync, statSync } = disk
 const { mkdir, rename, rm, rmdir, writeFile } = disk.promises
 
-// The engine's lock on the team belongs to the old folder; the first-run copy and its check
-// leave their temporary folders only when they were cut short.
-const LEFT_BEHIND = [/^bot[\\/]state\.lock$/u, /^\.import(-check)?-\d+$/u]
+// The engine's lock on the team belongs to the old folder.
+const LEFT_BEHIND = [/^bot[\\/]state\.lock$/u]
 // Marks a staging folder as this app's, so that only those are removed.
 const MARK = '.ds-bot-moving'
+const LOCK_STALE_MS = 15_000
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error?.code === 'EPERM'
+  }
+}
+
+/** Whether another owned Host still holds this team's state lock. */
+export function teamInUse(from, { host = hostname(), now = Date.now(), isAlive = pidAlive } = {}) {
+  const path = join(from, 'bot', 'state.lock')
+  const lock = statSync(path, { throwIfNoEntry: false })
+  if (lock === undefined || now - lock.mtimeMs >= LOCK_STALE_MS) return false
+  let holder
+  try { holder = JSON.parse(disk.readFileSync(path, 'utf8')) } catch { return true }
+  return holder?.host !== host || isAlive(holder.pid)
+}
 
 /** The folder that an update or uninstall replaces: on macOS the whole .app bundle. */
 export function installFolder(exe, platform = process.platform) {
@@ -25,17 +45,16 @@ export function installFolder(exe, platform = process.platform) {
 
 /**
  * What keeps `to` from being the new data location, or undefined.
- * @param {{ from: string, to: string, workspace?: string, dshHome: string, program?: string }} places
- * @returns {'drive' | 'nested' | 'workspace' | 'dsh' | 'program' | 'notEmpty' | undefined}
+ * @param {{ from: string, to: string, workspace?: string, program?: string }} places
+ * @returns {'drive' | 'nested' | 'workspace' | 'program' | 'notEmpty' | undefined}
  */
 export function moveProblem(places) {
-  const [from, to, dshHome] = [places.from, places.to, places.dshHome].map(real)
+  const [from, to] = [places.from, places.to].map(real)
   const workspace = places.workspace === undefined ? undefined : real(places.workspace)
   const program = places.program === undefined ? undefined : real(places.program)
   if (dirname(to) === to) return 'drive'
   if (within(to, from) || within(from, to)) return 'nested'
   if (workspace !== undefined && (within(to, workspace) || within(workspace, to))) return 'workspace'
-  if (within(to, dshHome) || within(dshHome, to)) return 'dsh'
   if (program !== undefined && within(to, program)) return 'program'
   if (existsSync(to) && (!statSync(to).isDirectory() || readdirSync(to).length > 0)) return 'notEmpty'
   return undefined

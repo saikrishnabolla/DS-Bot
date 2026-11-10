@@ -1,5 +1,5 @@
 // What the start window needs before the team view has loaded: the theme source and the motion
-// tier the team view reported last. Kept in the app's own userData, never in DSH_HOME or ~/.dsh
+// tier the team view reported last. Kept in the app's own userData, outside the Bot data folder.
 // (docs/plans/2026-10-26-start-window.md §3, §10).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'

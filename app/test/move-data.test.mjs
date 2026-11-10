@@ -11,8 +11,7 @@ const write = (path, text) => {
   writeFileSync(path, text)
 }
 
-// The app's data with a team, a chat and a key, plus what stays behind: the engine's lock and
-// the temporary folders of a first-run copy and check that were cut short.
+// The app's data with a team, a chat and a key, plus the engine lock that stays behind.
 function setup(t) {
   const root = mkdtempSync(join(tmpdir(), 'ds-bot-move-'))
   t.after(() => { rmSync(root, { recursive: true, force: true, maxRetries: 5 }) })
@@ -21,8 +20,6 @@ function setup(t) {
   write(join(from, 'bot', 'state.lock'), '{}')
   write(join(from, 'sessions', 'g', 's1', 'log.jsonl'), 'chat')
   write(join(from, '.credentials.yaml'), 'key: test')
-  write(join(from, '.import-12', 'bot', 'state.json'), '{}')
-  write(join(from, '.import-check-34', 'check.json'), '[]')
   return { root, from }
 }
 
@@ -38,9 +35,9 @@ const files = (dir) => {
   return found.sort()
 }
 
-test('the new data location is an empty or new folder apart from the data, the team workspace, DSH and the program', (t) => {
+test('the new data location is an empty or new folder apart from the data, team workspace and program', (t) => {
   const { root, from } = setup(t)
-  const places = { from, workspace: join(root, 'work'), dshHome: join(root, 'dsh'), program: join(root, 'program') }
+  const places = { from, workspace: join(root, 'work'), program: join(root, 'program') }
   const problem = to => moveProblem({ ...places, to })
   assert.equal(problem(join(root, 'new')), undefined)
   mkdirSync(join(root, 'empty'))
@@ -51,8 +48,6 @@ test('the new data location is an empty or new folder apart from the data, the t
   assert.equal(problem(root), 'nested')
   assert.equal(problem(join(root, 'work', 'data')), 'workspace')
   assert.equal(moveProblem({ ...places, workspace: join(root, 'new', 'work'), to: join(root, 'new') }), 'workspace')
-  assert.equal(problem(join(root, 'dsh', 'data')), 'dsh')
-  assert.equal(moveProblem({ ...places, dshHome: join(root, 'new', '.dsh'), to: join(root, 'new') }), 'dsh')
   assert.equal(problem(join(root, 'program', 'data')), 'program')
   write(join(root, 'full', 'note.txt'), 'x')
   assert.equal(problem(join(root, 'full')), 'notEmpty')
@@ -64,7 +59,7 @@ test('the program folder is the whole app bundle on macOS', () => {
   assert.equal(installFolder(join('C:', 'Programs', 'DS Bot', 'DS Bot.exe'), 'win32'), join('C:', 'Programs', 'DS Bot'))
 })
 
-test('the data is copied whole, without the lock and the temporary folders, and the old folder stays', async (t) => {
+test('the data is copied whole without the lock, and the old folder stays', async (t) => {
   const { root, from } = setup(t)
   const before = files(from)
   for (const to of [join(root, 'new', 'data'), join(root, 'empty')]) {
@@ -108,11 +103,8 @@ const folderLink = process.platform === 'win32' ? 'junction' : 'dir'
 
 test('a folder that a link leads into counts as that folder', (t) => {
   const { root, from } = setup(t)
-  mkdirSync(join(root, 'dsh'))
-  symlinkSync(join(root, 'dsh'), join(root, 'dsh-link'), folderLink)
-  assert.equal(moveProblem({ from, to: join(root, 'dsh-link', 'data'), dshHome: join(root, 'dsh') }), 'dsh')
   symlinkSync(from, join(root, 'data-link'), folderLink)
-  assert.equal(moveProblem({ from, to: join(root, 'data-link', 'inside'), dshHome: join(root, 'dsh') }), 'nested')
+  assert.equal(moveProblem({ from, to: join(root, 'data-link', 'inside') }), 'nested')
 })
 
 test('a data folder that is itself a link moves with its contents', async (t) => {

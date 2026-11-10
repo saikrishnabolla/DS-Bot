@@ -122,14 +122,14 @@ const sameFolder = (a, b) => within(a, b) && within(b, a)
  * when it is new, empty, or an empty root of the app's own; otherwise `DS Bot` inside it,
  * as inside a drive. The data goes to R\data and the Bots' files to R\workspace.
  * @param {string} picked
- * @param {{ dshHome?: string, program?: string, env?: NodeJS.ProcessEnv, probe?: boolean, current?: { dataDir: string, workspace?: string } }} where
+ * @param {{ program?: string, env?: NodeJS.ProcessEnv, probe?: boolean, current?: { dataDir: string, workspace?: string } }} where
  *   `probe` writes a file into R\data to see that the place can be written (default true);
  *   `current` names the places the data is in now
- * @returns {{ same: true } | { root: string, dataDir: string, workspace: string, added: boolean, reason?: 'permission' | 'onedrive' | 'foreign' | 'nested' | 'dsh' | 'program', at?: string }}
+ * @returns {{ same: true } | { root: string, dataDir: string, workspace: string, added: boolean, reason?: 'permission' | 'onedrive' | 'foreign' | 'nested' | 'program', at?: string }}
  *   `same`: the place the data is in now was picked, which is no change; `reason` says why R
  *   cannot be used, with the path `at` that the card names
  */
-export function rootOf(picked, { dshHome, program, env = process.env, probe = true, current } = {}) {
+export function rootOf(picked, { program, env = process.env, probe = true, current } = {}) {
   const chosen = resolve(picked)
   const places = root => ({ root, dataDir: join(root, DATA_DIR), workspace: join(root, WORKSPACE_DIR) })
   try {
@@ -164,10 +164,6 @@ export function rootOf(picked, { dshHome, program, env = process.env, probe = tr
     const physical = real(root)
     if (now.some(path => within(physical, path) || within(path, physical))) return reject('nested', chosen)
     if (inOneDrive(physical, env)) return reject('onedrive', chosen)
-    if (dshHome !== undefined && existsSync(dshHome)) {
-      const dsh = real(dshHome)
-      if (within(physical, dsh) || within(dsh, physical)) return reject('dsh', chosen)
-    }
     if (program !== undefined && within(physical, real(program))) return reject('program', chosen)
     if (probe && !canWrite(result.dataDir)) return reject('permission', chosen)
     return result

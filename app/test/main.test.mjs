@@ -12,12 +12,14 @@ import { installHooks } from './helpers/register.mjs'
 
 await installHooks()
 
-before(async () => { await startApp() })
+let home
+before(async () => { ({ home } = await startApp()) })
 
 test('the app starts with a window and a tray', async () => {
   await waitFor(() => window() !== undefined, 'open the window')
   await waitFor(() => state.tray !== undefined, 'build the tray')
   assert.equal(state.tray.tooltip, 'DS Bot')
+  assert.equal(hostState.cwds[0], home, 'the Host works from the real data folder')
   assert.equal(state.quits, 0, 'the app goes on')
 })
 

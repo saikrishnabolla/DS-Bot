@@ -1,5 +1,5 @@
 // The main process of the app, with the Electron parts as a test double: the window, the
-// tray and the Host, without a display, without DSH and without the data of the user.
+// tray and the Host, without a display or the data of the user.
 // The loader (test/helpers/loader.mjs) puts the test doubles in place of "electron".
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

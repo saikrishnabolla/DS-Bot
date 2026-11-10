@@ -1,4 +1,4 @@
-// Check the window and the tray of the app in a real Electron, with a fake Host: no DSH, no
+// Check the window and the tray of the app in a real Electron, with a fake Host: no
 // model, no data of the user. The app hides the window instead of closing it, the tray opens
 // it again, and a window that is gone for good is built anew and talks to the Host that runs.
 // Usage: node scripts/check-lifecycle.mjs
@@ -14,7 +14,7 @@ const electron = require('electron')
 const here = import.meta.dirname
 // The data of the run is a folder of its own in the app's own directory: the check never
 // writes into the data of the user.
-const work = join(here, '..', '.dsh-test-tray-lifecycle')
+const work = join(here, '..', '.ds-bot-test-tray-lifecycle')
 
 // The app answers over its standard output and over a plain socket. Both carry one answer
 // per line, so that the check needs no dependency.

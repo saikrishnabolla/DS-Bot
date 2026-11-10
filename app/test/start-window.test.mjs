@@ -56,10 +56,10 @@ test('a failure gets one of the six reasons of the failure page', () => {
   assert.equal(failureReason(new Error('EPERM: operation not permitted, open \'x\'')), 'permission')
   assert.equal(failureReason(coded('ENOSPC', 'ENOSPC: no space left on device, write')), 'space')
   assert.equal(failureReason(new Error('There is not enough space on the disk.')), 'space')
-  assert.equal(failureReason(new Error('The DSH Host stopped (exit 1):\nError: Cannot find module \'@deepseek-ai/dsh-base\'')), 'files')
+  assert.equal(failureReason(new Error("The DS Bot Host stopped (exit 1):\nError: Cannot find package 'ds-bot'")), 'files')
   assert.equal(failureReason(new Error('The app could not load its own bundles:\nds-bot: missing')), 'files')
-  assert.equal(failureReason(new Error('The DSH Host stopped (exit 1):\nError: EACCES: permission denied, open \'state.json\'')), 'permission')
-  assert.equal(failureReason(new Error('The DSH Host stopped (exit 3221225477)')), 'engine')
+  assert.equal(failureReason(new Error("The DS Bot Host stopped (exit 1):\nError: EACCES: permission denied, open 'state.json'")), 'permission')
+  assert.equal(failureReason(new Error('The DS Bot Host stopped (exit 3221225477)')), 'engine')
   assert.equal(failureReason(new Error('The profile in D:\\x does not start the engine\'s web server and connection.')), 'engine')
   assert.equal(failureReason(new Error('DS Bot: no free port on 127.0.0.1')), 'other')
   assert.equal(failureReason('a string'), 'other')
@@ -78,8 +78,8 @@ test('only a missing file of the app\'s own says that the install is incomplete'
   assert.equal(failureReason(missing(data, `ENOENT: no such file or directory, mkdir '${data}'`), where), 'missing')
   // A Host that stopped: its error output names the missing file.
   const bundle = join(program, 'resources', 'app.asar.unpacked', 'node_modules', 'x', 'index.js')
-  assert.equal(failureReason(new Error(`The DSH Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${bundle}'`), where), 'files')
-  assert.equal(failureReason(new Error(`The DSH Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${join(data, 'state.json')}'`), where), 'engine')
+  assert.equal(failureReason(new Error(`The DS Bot Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${bundle}'`), where), 'files')
+  assert.equal(failureReason(new Error(`The DS Bot Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${join(data, 'state.json')}'`), where), 'engine')
 })
 
 test('the main process takes only its own acts, each in its own views', () => {
@@ -379,7 +379,7 @@ test('a dialog of the start window shows it at once: it never opens over nothing
 test('〔保存日志…〕 writes the log where the app\'s picker says, and nothing when it is cancelled', async (t) => {
   const s = startWindow(t)
   s.start.open('first')
-  s.start.fail(new Error('The DSH Host stopped (exit 1)'))
+  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
   const dir = mkdtempSync(join(tmpdir(), 'ds-bot-log-'))
   t.after(() => { rmSync(dir, { recursive: true, force: true }) })
   assert.equal(s.act('saveLog'), true)
@@ -490,7 +490,7 @@ test('a data folder that cannot be written fails at the data stage, a stopped en
   for (const [error, reason, phase, done] of [
     [Object.assign(new Error('EACCES: permission denied, mkdir'), { code: 'EACCES' }), 'permission', 'data', []],
     [Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }), 'space', 'data', []],
-    [new Error('The DSH Host stopped (exit 1)'), 'engine', 'engine', ['data']],
+    [new Error('The DS Bot Host stopped (exit 1)'), 'engine', 'engine', ['data']],
   ]) {
     await t.test(reason, (st) => {
       const s = startWindow(st)
@@ -511,7 +511,7 @@ test('a retry after the engine was up guards the new engine, while the whale kee
   s.start.done('data')
   s.start.done('engine')
   s.start.teamLoading()
-  s.start.fail(new Error('The DSH Host stopped (exit 1)'))
+  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
   assert.equal(s.state().view, 'failed')
   assert.equal(s.state().failure.reason, 'engine')
   assert.equal(s.act('retry'), true)
@@ -754,7 +754,7 @@ test('a failure during the hand-off draws the failure page on a fresh page', (t)
   s.start.done('engine')
   s.start.ready()
   s.tick(300)
-  s.start.fail(new Error('The DSH Host stopped (exit 1)'))
+  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
   assert.equal(s.state().view, 'failed')
   assert.equal(s.win().webContents.reloads, 1)
   // The team window that waited under the start window is hidden again.
@@ -775,7 +775,7 @@ test('a failure after the hand-off opens a fresh start window over the hidden te
   s.tick(2500)
   const handed = s.win()
   assert.equal(s.main.visible, true)
-  s.start.fail(new Error('The DSH Host stopped (exit 1)'), 'later')
+  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'), 'later')
   assert.equal(handed.destroyed, true)
   assert.notEqual(s.win(), handed)
   assert.equal(s.main.visible, false)
@@ -841,7 +841,7 @@ test('the place line, its picker and its cards, and a start over in another fold
   assert.equal(s.state().view, 'boot')
   assert.deepEqual(s.state().done, ['data', 'engine'])
   // No card after a failure: the failure page has its own buttons.
-  s.start.fail(new Error('The DSH Host stopped (exit 1)'))
+  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
   s.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
   assert.equal(s.state().view, 'failed')
   assert.equal(s.act('pick', { value: 'changePlace' }), false)

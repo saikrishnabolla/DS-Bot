@@ -1,5 +1,5 @@
 // The loader of the main process test: it puts the test doubles in place of the packages
-// that would need a display, a DSH install or the network. It is installed by the test
+// that would need a display or the network. It is installed by the test
 // files that need it, so that the other tests keep the real packages.
 import { register, registerHooks } from 'node:module'
 

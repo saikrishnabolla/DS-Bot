@@ -178,7 +178,7 @@ test('a folder that cannot be read counts as one without permission', { skip: !w
   assert.equal(refused.at, 'C:\\System Volume Information')
 })
 
-test('OneDrive, the DSH home and the program folder are refused, through links too', (t) => {
+test('OneDrive and the program folder are refused, through links too', (t) => {
   const dir = temp(t)
   const cloud = join(dir, 'OneDrive', 'Docs')
   assert.equal(rootOf(cloud, noProbe).reason, 'onedrive')
@@ -189,21 +189,7 @@ test('OneDrive, the DSH home and the program folder are refused, through links t
   assert.equal(rootOf(join(dir, 'OneDrive-old', 'Docs'), noProbe).reason, undefined)
   const synced = join(dir, 'Synced')
   assert.equal(rootOf(synced, { ...noProbe, env: { OneDrive: join(dir, 'Synced') } }).reason, 'onedrive')
-  const dsh = join(dir, '.dsh')
-  mkdirSync(dsh)
-  const inDsh = rootOf(join(dsh, 'bots'), { ...noProbe, dshHome: dsh })
-  assert.equal(inDsh.reason, 'dsh')
-  assert.equal(inDsh.at, join(dsh, 'bots'))
-  assert.equal(rootOf(dir, { ...noProbe, dshHome: join(dir, 'missing-dsh') }).reason, undefined)
   assert.equal(rootOf(join(dir, 'app', 'data'), { ...noProbe, program: join(dir, 'app') }).reason, 'program')
-  // A link into the DSH home leads there.
-  const link = join(dir, 'link')
-  try {
-    symlinkSync(dsh, link, 'junction')
-  } catch {
-    return
-  }
-  assert.equal(rootOf(join(link, 'bots'), { ...noProbe, dshHome: dsh }).reason, 'dsh')
 })
 
 test('the write probe makes only the missing layers and takes them away again', (t) => {

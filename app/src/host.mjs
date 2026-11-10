@@ -1,78 +1,37 @@
-// The Host: the shell runs this file in plain Node on Linux and Electron's Node mode elsewhere.
-// It boots the app's own `ds-bot` profile
-// on a loopback port and reports the launch URL over IPC. With DS_BOT_CHECK, the path of a JSON list
-// of Session ids, it boots the first-run check's profile instead and reports which of them it cannot read.
-// Follows DeepSeek Harness apps/desktop-host/src/index.ts (MIT); see NOTICE.
-import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
-import { loadLayeredEnv, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
-import { runProfile } from '@deepseek-ai/dsh/profile-boot'
-import { writeAppPatch } from './app-patch.mjs'
-import { CHECK_PROFILE, INSTALL_ANCHOR, loadAppProfile, loadCheckProfile, PROFILE } from './profile.mjs'
-import { reconcileGoal } from './goal-patch.mjs'
-import { reconcileOfficeRuntime } from './office-patch.mjs'
-import { reconcileSearchSelector } from './search-patch.mjs'
-import { unreadableSessions } from './session-check.mjs'
+import { OwnedHost } from 'ds-bot/host'
 
 const MAX_FATAL_DIAGNOSTIC_CHARS = 64 * 1024
+const here = dirname(fileURLToPath(import.meta.url))
 
-const send = (message) => new Promise((resolve, reject) => {
+const send = message => new Promise((resolve, reject) => {
   if (!process.connected || process.send === undefined) { resolve(); return }
-  process.send(message, (error) => { if (error === null) resolve(); else reject(error) })
+  process.send(message, error => { if (error === null) resolve(); else reject(error) })
 })
 
 async function main() {
-  const pnpm = process.argv[2]
-  const check = process.env.DS_BOT_CHECK || undefined
-  const profile = check === undefined ? loadAppProfile() : loadCheckProfile()
-  reportSkippedBundles('dsh', profile)
-  // The Office payload is the app's own, for the team profile; the first-run check reads
-  // chats without it.
-  const office = check === undefined ? reconcileOfficeRuntime(profile) : { patchFiles: [] }
-  // ds-bot reads the payload's Node for the Office commands it runs itself.
-  if (office.node !== undefined) process.env.DS_BOT_OFFICE_NODE = office.node
-  const application = runProfile({
-    environment: loadLayeredEnv('dsh'),
-    profile: check === undefined ? PROFILE : CHECK_PROFILE,
-    resolvedProfile: { profile, installAnchor: INSTALL_ANCHOR },
-    patchFiles: check === undefined ? [...writeAppPatch(profile), ...reconcileSearchSelector(profile), ...reconcileGoal(profile), ...office.patchFiles] : [],
-    args: ['--no-open', '--port', process.env.DS_BOT_PORT || '0'],
-    ...(pnpm === undefined ? {} : {
-      packageManager: { command: process.execPath, args: ['--expose-internals', pnpm], env: { ELECTRON_RUN_AS_NODE: '1' } },
-    }),
+  const dataDir = process.env.DS_BOT_DATA_DIR
+  if (!dataDir) throw new Error('DS Bot data directory is not set')
+  const owned = await OwnedHost.open({
+    dataDir,
+    uiDir: join(here, '..', 'ui', 'dist'),
+    workspacePath: process.env.DS_BOT_WORKSPACE,
+    port: Number(process.env.DS_BOT_PORT || 0),
   })
   let stopping
   const stop = () => stopping ??= (async () => {
-    // A Host that failed to boot has nothing to shut down; the shell already has the failure.
-    const running = await application.catch(() => undefined)
-    await running?.shutdown.shutdown(0)
+    await owned.close()
     await send({ type: 'shutdown-complete' })
     if (process.connected) process.disconnect()
   })()
-  process.on('message', (message) => { if (message?.type === 'shutdown') void stop() })
+  process.on('message', message => { if (message?.type === 'shutdown') void stop() })
   process.once('disconnect', () => { void stop() })
-  const { ctx } = await application
-  if (check !== undefined) {
-    const persistence = ctx.get('sessionPersistence')
-    if (persistence === undefined) throw new Error(`The profile in ${profile.dir} does not store Sessions.`)
-    await send({ type: 'checked', unreadable: await unreadableSessions(persistence, JSON.parse(readFileSync(check, 'utf8'))) })
-    return
-  }
-  const [webServer, connection] = [ctx.get('webServer'), ctx.get('connection')]
-  // A profile patch can turn these rows off; then the window has nothing to talk to.
-  if (webServer === undefined || connection === undefined) throw new Error(`The profile in ${profile.dir} does not start the engine's web server and connection`)
-  // ds-bot waits on these before it registers its API. A Session-store failure
-  // must reach the shell's error box here, not read as an endless
-  // "Setting up your Main Bot…" in a window that looks ready (#516). The Host
-  // process attaches the engine log tail — the real cause — to this message.
-  const missing = ['sessionController', 'workspaceRegistry'].filter(name => ctx.get(name) === undefined)
-  if (missing.length > 0) throw new Error(`The profile in ${profile.dir} did not start ${missing.join(', ')}; the engine log has the cause`)
-  const url = connection.authenticatedUrl(`http://127.0.0.1:${String(webServer.port)}`)
-  // The window is the owner's page; DSH 0.2.2 builds the injections for the Peer they serve.
-  await send({ type: 'ready', url, injections: webServer.collectIndexInjections(connection.browserPeer) })
+  await send({ type: 'ready', url: owned.launchUrl, injections: [] })
 }
 
-main().catch(async (error) => {
+main().catch(async error => {
   console.error(error)
   process.exitCode = 1
   const message = error instanceof Error ? error.message : String(error)

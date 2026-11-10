@@ -1,16 +1,10 @@
 // Runs the Host in plain Node on Linux, Electron's Node mode elsewhere, and owns its lifetime.
 // Follows DeepSeek Harness apps/desktop/src/host-process.ts (MIT); see NOTICE.
 import { spawn } from 'node:child_process'
-import { join } from 'node:path'
 
 const STDERR_TAIL_CHARS = 8 * 1024
 
-// Electron on Linux leaks system glib symbols into sharp's bundled libvips.
-export function hostExecutable(runtimeDir, platform = process.platform) {
-  return platform === 'linux'
-    ? join(runtimeDir, 'primary-runtime', 'dependencies', 'node', 'bin', 'node')
-    : process.execPath
-}
+export function hostExecutable() { return process.execPath }
 
 // The web server prints its launch URL, and the launch token in it opens the Host.
 const redact = (text) => text.replace(/([?&]token=)[^&\s]+/gu, '$1<hidden>')
@@ -29,7 +23,6 @@ const settlesWithin = (promise, ms) => new Promise((resolve) => {
 
 export class HostProcess {
   #options
-  #platform
   #child
   #ready
   #exit
@@ -39,20 +32,19 @@ export class HostProcess {
   #messageListeners = new Set()
 
   /**
-   * @param {{ entry: string, cwd: string, env: NodeJS.ProcessEnv, pnpm: string, onFailure: (error: Error) => void, output?: (stream: 'stdout' | 'stderr', text: string) => void }} options
+   * @param {{ entry: string, cwd: string, env: NodeJS.ProcessEnv, onFailure: (error: Error) => void, output?: (stream: 'stdout' | 'stderr', text: string) => void }} options
    *   `onFailure` receives the first unexpected failure, also after the Host was ready. `output`
    *   takes the Host's output with the launch token hidden; by default it goes to this process's.
    */
-  constructor(options, platform = process.platform) { this.#options = options; this.#platform = platform }
+  constructor(options) { this.#options = options }
 
   /**
-   * @returns {Promise<{ url: string, injections: unknown[] } | { unreadable: string[] }>} the Host's launch URL
-   *   and index injections; for the first-run check, the Sessions it cannot read
+   * @returns {Promise<{ url: string, injections: unknown[] }>} the Host's launch URL and index injections
    */
   start() {
     this.#ready ??= new Promise((resolve, reject) => {
-      const { entry, cwd, env, pnpm, output = (stream, text) => { process[stream].write(text) } } = this.#options
-      const child = spawn(hostExecutable(env.DS_BOT_RUNTIME_DIR, this.#platform), ['--expose-internals', entry, pnpm], {
+      const { entry, cwd, env, output = (stream, text) => { process[stream].write(text) } } = this.#options
+      const child = spawn(hostExecutable(), [entry], {
         cwd, env: { ...env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       })
       this.#child = child
@@ -66,13 +58,12 @@ export class HostProcess {
       child.on('message', (message) => {
         for (const listener of this.#messageListeners) listener(message)
         if (message?.type === 'ready') resolve({ url: message.url, injections: message.injections })
-        else if (message?.type === 'checked') resolve({ unreadable: message.unreadable })
         else if (message?.type === 'fatal') this.#fail(new Error(withLogTail(message.message, this.#stderr)), reject)
       })
       child.once('error', (error) => { this.#fail(error, reject) })
       this.#exit = new Promise((done) => {
         child.once('close', (code) => {
-          this.#fail(new Error(withLogTail(`The DSH Host stopped (exit ${String(code)})`, this.#stderr)), reject)
+          this.#fail(new Error(withLogTail(`The DS Bot Host stopped (exit ${String(code)})`, this.#stderr)), reject)
           done()
         })
       })
@@ -83,7 +74,7 @@ export class HostProcess {
   onMessage(listener) { this.#messageListeners.add(listener); return () => this.#messageListeners.delete(listener) }
 
   send(message) {
-    if (!this.#child?.connected) throw new Error('The DSH Host IPC channel is closed')
+    if (!this.#child?.connected) throw new Error('The DS Bot Host IPC channel is closed')
     this.#child.send(message)
   }
 

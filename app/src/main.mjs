@@ -1,14 +1,13 @@
-// Electron main process: a small start window while the app's own DSH Host boots, then one window
-// for the Bot team. The team window loads the Host's loopback address as DSH Web does: DSH's
-// sign-in sends the page's origin as the address the browser comes back to, and accepts only a
-// loopback one. It loads hidden and shows once the team view is ready (start-window.mjs). Closing
+// Electron main process: a small start window while the owned Host boots, then one window
+// for the Bot team. The team window loads the Host's loopback address. It loads hidden and shows
+// once the team view is ready (start-window.mjs). Closing
 // the team window hides it; the tray brings it back and its Quit ends the app (shell.mjs). Only
 // what the start window and the tray need is imported up front; the rest loads once the start
 // window is up (docs/plans/2026-10-26-start-window.md §11).
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell as electronShell, systemPreferences, Tray, WebContentsView } from 'electron'
 import { createComputerIndicator, indicatorHtml } from './computer-indicator.mjs'
 import { createComputerCursor } from './computer-cursor.mjs'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { release } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
@@ -53,7 +52,7 @@ const IPC = {
 const IMPORT_FILE_MAX = 32 * 1024 * 1024
 const MOVE_PROBLEMS = { drive: 'dialog.move.drive', nested: 'dialog.move.nested', workspace: 'dialog.move.workspace', program: 'dialog.move.inProgram', notEmpty: 'dialog.move.notEmpty' }
 // The same problems as the start page's 「这里放不了」 reasons (reason.place.*).
-const MOVE_REASONS = { drive: 'drive', nested: 'nested', workspace: 'workspace', dsh: 'dsh', program: 'program', notEmpty: 'foreign' }
+const MOVE_REASONS = { drive: 'drive', nested: 'nested', workspace: 'workspace', program: 'program', notEmpty: 'foreign' }
 // A team window that does not say within this time that it shows a card cannot show one.
 const CARD_SHOWN_MS = 2000
 const UPDATE_CHECK_WAIT_MS = 15_000
@@ -78,8 +77,8 @@ const frameFile = join(app.getPath('userData'), 'start-frame.json')
 // Loaded once the start window is up (loadModules).
 let BotBrowserGuests, partitionOf, BotViews, isBotId, importFromBrowser, listSources, applyCookies, CookieImports, parseCookieFile
 let downloadSaver, chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx, HostProcess
-let copySessions, findTeam, importTeam, restoreSessions, teamInUse, teamSizes, userDshHome, copyData, copyReason, moveProblem, CHECK_PROFILE, PROFILE, ImportFlow
-let watchReleases, watchUpdates, RELEASE_PAGE, getDshRuntimeVersion, electronUpdater
+let copyData, copyReason, moveProblem, teamInUse
+let watchReleases, watchUpdates, RELEASE_PAGE, electronUpdater
 
 let mainWindow
 // Settles once the hidden team window exists.
@@ -106,21 +105,14 @@ let picking = false
 let proposed
 // The folder a later start's move card asks about.
 let moveTo
-// Takes the answer of the card that askCard() put up, and that card's kind.
+// Takes the answer of the card that askCard() put up.
 let answering
-let asked
 // The new version that the failure page's update banner offers.
 let offered
 // A retry or a start over is stopping the old engine: no second one starts meanwhile.
 let restarting = false
-// The team in the user's own DSH that the first run offers, until the import card has its
-// answer, and the import that runs meanwhile (import-flow.mjs).
-let importOffer
-let importFlow
 // Each boot of the engine; a retry starts a new one, and what an old one still reports is dropped.
 let attempt = 0
-// Aborted when the start begins again in another folder: the import card of the boot before goes.
-let bootAbort = new AbortController()
 // The Host answered and the window may talk to it without the launch URL.
 let hostReady = false
 // The Host's launch URL: the first window trades it for the Host's cookie.
@@ -133,8 +125,7 @@ let bootstrap
 let tokenSpent = false
 // The download handler of the app's session is bound once, not once per window.
 let downloadsBound = false
-// Quitting during the first run's import (its card or its copy) or a data move waits for it to
-// stop at a safe point, so that it leaves no half team and no temporary copy.
+// Quitting during a data move waits for it to stop at a safe point, so it leaves no temporary copy.
 let copying
 const copyAbort = new AbortController()
 let browserGuests
@@ -207,8 +198,6 @@ if (canonical !== undefined) {
     onClose: () => { app.quit() },
     // 「换个位置…」: a first start picks the place again; a later start moves the data there.
     onPick: () => {
-      // On the import card and the cards of its own picker, the import picks the place itself.
-      if (answering !== undefined && ['import', 'importSpace', 'rejected', 'picked'].includes(asked)) { answering('pick'); return }
       (startWindow.kind === 'later' ? moveFromStart() : changePlace()).catch(fail)
     },
     onAnswer: (value) => {
@@ -216,7 +205,6 @@ if (canonical !== undefined) {
       (startWindow.kind === 'later' ? moveAnswer(value) : placeAnswer(value)).catch(fail)
     },
     onUpdate: (name) => { updateAct(name) },
-    onImport: (name, value) => { importFlow?.act(name, value) },
   })
   // A second launch shows the window that is showing: the start window until the hand-off
   // (also after a failed start), then the team window, built anew when it is gone.
@@ -286,11 +274,10 @@ async function prepare() {
 }
 
 async function loadModules() {
-  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, imports, flows, moves, profile, updatesModule, boot, updater] = await Promise.all([
+  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, moves, updatesModule, updater] = await Promise.all([
     import('./bot-browser.mjs'), import('./bot-views.mjs'), import('./browser-sources.mjs'), import('./cookie-import.mjs'),
     import('./cookie-parse.mjs'), import('./downloads.mjs'), import('./first-run.mjs'), import('./host-process.mjs'),
-    import('./import.mjs'), import('./import-flow.mjs'), import('./move-data.mjs'), import('./profile.mjs'), import('./updates.mjs'),
-    import('@deepseek-ai/dsh-app-boot'), import('electron-updater'),
+    import('./move-data.mjs'), import('./updates.mjs'), import('electron-updater'),
   ])
   ;({ BotBrowserGuests, partitionOf } = browser)
   ;({ BotViews, isBotId } = views)
@@ -300,12 +287,8 @@ async function loadModules() {
   ;({ downloadSaver } = downloads)
   ;({ chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx } = firstRun)
   ;({ HostProcess } = hostProcess)
-  ;({ copySessions, findTeam, importTeam, restoreSessions, teamInUse, teamSizes, userDshHome } = imports)
-  ;({ ImportFlow } = flows)
-  ;({ copyData, copyReason, moveProblem } = moves)
-  ;({ CHECK_PROFILE, PROFILE } = profile)
+  ;({ copyData, copyReason, moveProblem, teamInUse } = moves)
   ;({ watchReleases, watchUpdates, RELEASE_PAGE } = updatesModule)
-  ;({ getDshRuntimeVersion } = boot)
   electronUpdater = updater.default
   browserGuests = new BotBrowserGuests({ session, origin: () => origin, devTools: !app.isPackaged })
   botViews = new BotViews({
@@ -317,7 +300,6 @@ async function loadModules() {
 }
 
 function run() {
-  bootAbort = new AbortController()
   const mine = (attempt += 1)
   boot(mine).catch((error) => { if (mine === attempt) void fail(error) })
 }
@@ -374,13 +356,11 @@ function askCard(card, { signal, settle } = {}) {
     const done = (value) => {
       if (answering !== done) return
       answering = undefined
-      asked = undefined
       signal?.removeEventListener('abort', gone)
       resolve(value)
     }
     const gone = () => { done(undefined) }
     answering = done
-    asked = card.kind
     if (signal?.aborted || !startWindow.card(card)) { gone(); return }
     signal?.addEventListener('abort', gone, { once: true })
     void settle?.then(() => { done('settled') }, gone)
@@ -406,12 +386,11 @@ async function boot(mine) {
     }
     const where = chooseLocations()
     setPlaces({ dataDir: where.dataDir, workspace: where.workspace })
-    importOffer = where.offer
-    if (first) startWindow.explain(explainOf({ offered: importOffer !== undefined, team: teamIn(where.dataDir) }))
+    if (first) startWindow.explain(explainOf({ team: teamIn(where.dataDir) }))
     else tellLowSpace(where.freeAtStart)
   }
   // Also the check that the data folder can be written.
-  mkdirSync(profileDir(), { recursive: true })
+  mkdirSync(places.dataDir, { recursive: true })
   startWindow.done('data')
   const engine = await startEngine(mine)
   if (engine === undefined || mine !== attempt) return
@@ -470,7 +449,7 @@ function tellLowSpace(freeAtStart) {
 // (windows-onboarding §3, 一个位置). The root is used at once when it is the folder picked; a
 // layer the app added is confirmed on the 「会放在…」 card; a place that cannot be used says why.
 // A cancelled picker leaves things as they were: the line, or the card it came from. Not during
-// the first run's copy, whose team would be left behind.
+// a data copy, whose staging folder is being settled.
 async function changePlace() {
   if (startWindow.kind !== 'first' || places === undefined || copying !== undefined || picking || restarting || stopping || failed) return
   picking = true
@@ -488,7 +467,7 @@ async function changePlace() {
 async function pickAndPlace() {
   const picked = await pickRoot(pickFrom(places.dataDir), copyAbort.signal, ui())
   if (stopping || startWindow.owner() === undefined) return
-  const root = picked === undefined ? { same: true } : rootOf(picked, { dshHome: userDshHome(), program: app.isPackaged ? programFolder() : undefined, current: places })
+  const root = picked === undefined ? { same: true } : rootOf(picked, { program: app.isPackaged ? programFolder() : undefined, current: places })
   if (root.same) {
     proposed = undefined
     startWindow.card(undefined)
@@ -517,9 +496,8 @@ async function placeAnswer(value) {
 
 // The start begins again in the root R (start-window §7): the whale sinks at once, the engine
 // that may be up on the default folder stops, what this start made there goes, and the boot runs
-// again. The places are saved at once: the import question has been answered by now.
+// again. The places are saved at once.
 async function startOver(root) {
-  bootAbort.abort()
   const mine = (attempt += 1)
   forgetHost()
   failed = false
@@ -557,9 +535,6 @@ async function removeMade() {
   if (made.root && root !== undefined && existsSync(root) && isEmptyTree(root)) await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch((error) => { console.error(error) })
 }
 
-const profileDir = () => join(places.dataDir, 'profiles', PROFILE)
-const pnpmEntry = () => join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
-const runtimeDir = () => app.isPackaged ? process.resourcesPath : join(here, '..', 'build', 'runtime')
 const hostOutput = (stream, chunk) => {
   logs.write('engine', chunk)
   rawOutput[stream](chunk)
@@ -570,49 +545,22 @@ function newHost() {
   const mine = attempt
   return new HostProcess({
     entry: join(here, 'host.mjs'),
-    cwd: profileDir(),
-    env: { ...process.env, DSH_HOME: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', DS_BOT_USER_DSH_HOME: userDshHome(), DS_BOT_RUNTIME_DIR: runtimeDir(), ...(app.isPackaged && process.platform === 'darwin' ? { DS_BOT_COMPUTER_HELPER_HOME: join(app.getPath('userData'), 'computer-use') } : {}), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
-    pnpm: pnpmEntry(),
+    // A packaged `here` is inside app.asar, which cannot be an operating-system working directory.
+    cwd: places.dataDir,
+    env: { ...process.env, DS_BOT_DATA_DIR: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', ...(app.isPackaged && process.platform === 'darwin' ? { DS_BOT_COMPUTER_HELPER_HOME: join(app.getPath('userData'), 'computer-use') } : {}), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
     onFailure: (error) => { if (mine === attempt) void fail(error) },
     output: hostOutput,
   })
 }
 
-// A failed check is not a failed start: start() rejects, and the copy goes on unchecked.
-function newCheck(home, list) {
-  const cwd = join(home, 'profiles', CHECK_PROFILE)
-  mkdirSync(cwd, { recursive: true })
-  return new HostProcess({ entry: join(here, 'host.mjs'), cwd, env: { ...process.env, DSH_HOME: home, DS_BOT_CHECK: list, DS_BOT_RUNTIME_DIR: runtimeDir() }, pnpm: pnpmEntry(), onFailure: () => {}, output: hostOutput })
-}
-
-/**
- * @returns {Promise<{ url: string } | undefined>} the Host's launch URL; none when the app quits
- *   during the copy, or when a retry during the copy starts the engine itself
- */
+/** @returns {Promise<{ url: string }>} the Host's launch URL */
 async function startEngine(mine) {
-  let warm
-  if (importOffer !== undefined) {
-    const imported = await importStep(mine)
-    if (imported === undefined || mine !== attempt) return undefined
-    warm = imported.warm
-  }
-  // Not during the import, which a restart would cut short; before the Host, so that an
-  // update can still come when this version's Host does not start.
   if (!updatesStarted) {
     updatesStarted = true
     updates = startUpdates()
     updates?.subscribe((state) => { mainWindow?.webContents.send(IPC.appUpdateChanged, state) })
-
   }
-  // Before a new Host, which reads the Sessions; the engine warmed on an import that was not
-  // taken has nothing left out.
-  if (warm === undefined) {
-    await restoreSessions(places.dataDir).then(({ copied, newer }) => {
-      if (copied.length > 0) console.log(`DS Bot: copied ${copied.join(', ')}, which the import left out`)
-      if (newer.length > 0) console.warn(`DS Bot: this DSH cannot read ${newer.join(', ')}, which the import left out`)
-    }, (error) => { console.error('DS Bot: the Sessions the import left out were not copied:', error) })
-  }
-  host = warm?.host ?? newHost()
+  host = newHost()
   host.onMessage(message => {
     if (message?.type !== 'ds-bot:browser-endpoint' || typeof message.id !== 'string' || !isBotId(message.botId)) return
     const downloadRoots = message.downloadRoots
@@ -624,106 +572,9 @@ async function startEngine(mine) {
       host?.send({ type: 'ds-bot:browser-endpoint-response', id: message.id, url })
     }).catch(() => host?.send({ type: 'ds-bot:browser-endpoint-response', id: message.id, error: 'Could not create the browser endpoint.' }))
   })
-  const engine = await (warm?.up ?? host.start())
-  // The copying card stays on 「启动团队」 until the engine of the copied team is up.
+  const engine = await host.start()
   if (mine === attempt) startWindow.card(undefined)
   return engine
-}
-
-// The import card while the engine warms up on the new data location (windows-onboarding §4,
-// start-window §6). The places are saved once the card has its answer. Undefined when this start
-// gives way (a quit, another place, the failure page); else the engine that warmed up, when the
-// start goes on with it: 〔先不复制〕 takes it as it is, without a restart.
-async function importStep(mine) {
-  const offer = importOffer
-  const where = { ...places }
-  const signal = AbortSignal.any([copyAbort.signal, bootAbort.signal])
-  const warm = newHost()
-  host = warm
-  let warmStopped = false
-  const up = warm.start()
-  // The engine's arc fills once it is up and the import's has filled; the team's waits for the answer.
-  up.then(() => { if (mine === attempt && !warmStopped) startWindow.done('engine') }, () => {})
-  const sizes = await teamSizes(offer.from, offer.team).catch((error) => { console.error(error); return { sessions: 0 } })
-  let result
-  for (;;) {
-    if (signal.aborted || mine !== attempt) return undefined
-    const flow = new ImportFlow({
-      offer: { from: offer.from, bots: offer.bots, rooms: offer.rooms, names: botNames(offer.team), sessions: sizes.sessions, sizes, profiles: offer.profiles },
-      ask: (card, options) => askCard(card, { signal, ...options }),
-      show: (card) => { startWindow.card(card) },
-      room: () => ({ free: freeSpace(where.dataDir), drive: driveOf(where.dataDir) }),
-      inUse: () => teamInUse(offer.from),
-      until,
-      check: (checkSignal, onProgress) => checkTeam(where, checkSignal, onProgress),
-      // The copy goes into the data location that the engine has started on once, and with the
-      // engine stopped.
-      warmed: async () => {
-        await up
-        warmStopped = true
-        await warm.stop()
-        if (host === warm) host = undefined
-        if (mine === attempt) startWindow.engineDown()
-      },
-      copy: options => importTeam({ from: offer.from, to: where.dataDir, workspace: where.workspace, dsh: getDshRuntimeVersion(), ...options }),
-      reasonOf: copyReason,
-      progress: setProgress,
-      lang: lang(),
-      signal,
-    })
-    importFlow = flow
-    // The card's and the copy's time is not the engine's: the start's clock stands still, and
-    // the 180 s question with it.
-    copying = startWindow.asking(flow.run())
-    try {
-      result = await copying
-    } finally {
-      copying = undefined
-      importFlow = undefined
-    }
-    if (result.outcome !== 'pick') break
-    if (await importElsewhere(signal)) return undefined
-  }
-  if (result.outcome === 'gone' || signal.aborted || mine !== attempt) return undefined
-  importOffer = undefined
-  saveLocations(where)
-  if (result.outcome === 'copied') {
-    startWindow.done('import')
-    const { summary } = result
-    console.log(`DS Bot: copied ${String(summary.bots)} Bots and ${String(summary.sessions)} Sessions from ${summary.from}`)
-    // The team lives here now; moving it is Settings' job (the data move).
-    startWindow.place(undefined)
-    return {}
-  }
-  startWindow.card(undefined)
-  return { warm: warmStopped ? undefined : { host: warm, up } }
-}
-
-const botNames = team => Object.values(team.bots ?? {}).map(bot => bot?.name).filter(name => typeof name === 'string' && name !== '')
-
-// 〔选择其他位置…〕 on the import's space card, or 「换个位置…」 while the import card is up: the
-// picker and the root rule as for 「换个位置…」 (changePlace), asked on cards that this import
-// waits for. True once the start begins again in the new root; false to go back to the import
-// card.
-async function importElsewhere(signal) {
-  for (;;) {
-    const picked = await pickRoot(pickFrom(places.dataDir), signal, ui())
-    if (signal.aborted || picked === undefined) return false
-    const root = rootOf(picked, { dshHome: userDshHome(), program: app.isPackaged ? programFolder() : undefined, current: places })
-    if (root.same) return false
-    if (root.reason !== undefined) {
-      console.log(`DS Bot: the place ${root.at} cannot be used (${root.reason})`)
-      if (await askCard({ kind: 'rejected', reason: root.reason, path: root.at }, { signal }) === 'pick') continue
-      return false
-    }
-    if (root.added) {
-      const answer = await askCard({ kind: 'picked', path: root.root }, { signal })
-      if (answer === 'pick') continue
-      if (answer !== 'use') return false
-    }
-    await startOver(root)
-    return true
-  }
 }
 
 function handleIpc() {
@@ -889,42 +740,6 @@ function handleIpc() {
 const owner = () => startWindow.owner() ?? mainWindow
 const setProgress = (value) => { owner()?.setProgressBar(value) }
 
-// Before the copy, the app's own DSH reads every chat of the team once, in a DSH home of its own
-// so that nothing of the check stays in the data: a newer DSH can write records that this one
-// refuses while the log format stays the same. The number of chats it cannot read; a check that
-// fails lets the copy go on unchecked. `onProgress` counts the chats copied for it.
-async function checkTeam(where, signal, onProgress) {
-  // A run that was killed can leave its temporary check home behind.
-  for (const name of readdirSync(where.dataDir).filter(entry => /^\.import-check-\d+$/u.test(entry))) {
-    await rm(join(where.dataDir, name), { recursive: true, force: true }).catch((error) => { console.error(error) })
-  }
-  const home = join(where.dataDir, `.import-check-${String(Date.now())}`)
-  try {
-    const found = findTeam(importOffer?.from ?? userDshHome())
-    const ids = found === undefined ? [] : await copySessions(found.from, found.team, home, signal, onProgress)
-    if (ids.length === 0) return 0
-    const list = join(home, 'check.json')
-    writeFileSync(list, JSON.stringify(ids))
-    const check = newCheck(home, list)
-    const stop = () => { void check.stop() }
-    signal.addEventListener('abort', stop, { once: true })
-    try {
-      signal.throwIfAborted()
-      const { unreadable } = await check.start()
-      if (unreadable.length > 0) console.warn(`DS Bot: this DSH cannot read ${unreadable.join(', ')}`)
-      return unreadable.length
-    } finally {
-      signal.removeEventListener('abort', stop)
-      await check.stop()
-    }
-  } catch (error) {
-    if (!signal.aborted) console.error('DS Bot: the chats were not checked before the copy:', error)
-    return 0
-  } finally {
-    await rm(home, { recursive: true, force: true, maxRetries: 5 }).catch((error) => { console.error(error) })
-  }
-}
-
 // The data moves as a copy while the Host is stopped, and the app starts again on the new
 // folder; after a failed copy it starts again on the old one. The old folder stays.
 async function moveData(workspace) {
@@ -1018,9 +833,8 @@ async function askMove(workspace) {
 
 // The team workspace can move while a dialog is open; the window tells the latest one.
 function moveProblemOf(to, workspace) {
-  const dshHome = userDshHome()
   for (const current of new Set([workspace, places.workspace])) {
-    const problem = moveProblem({ from: places.dataDir, to, workspace: current, dshHome, program: app.isPackaged ? programFolder() : undefined })
+    const problem = moveProblem({ from: places.dataDir, to, workspace: current, program: app.isPackaged ? programFolder() : undefined })
     if (problem !== undefined) return problem
   }
   return undefined
@@ -1029,13 +843,13 @@ function moveProblemOf(to, workspace) {
 async function moveRefused(to, workspace) {
   const problem = moveProblemOf(to, workspace)
   if (problem === undefined) return false
-  await askInWindow({ message: problem === 'dsh' ? tx('dialog.move.inDsh', { home: userDshHome() }) : tx(MOVE_PROBLEMS[problem]), buttons: [{ label: tx('btn.ok'), primary: true }], cancel: 0 })
+  await askInWindow({ message: tx(MOVE_PROBLEMS[problem]), buttons: [{ label: tx('btn.ok'), primary: true }], cancel: 0 })
   return true
 }
 
 // The move itself, on the start window's moving page. What keeps it from going through is said on
 // a card there, 「没有搬成」, and the app starts again on the old folder: a folder that cannot be
-// used after all, another DSH on the data (the move goes on by itself once it is closed), a copy
+// used after all, another Host on the data (the move goes on by itself once it is closed), a copy
 // that failed (〔重试〕 copies again). Quitting meanwhile stops it without a new start.
 async function runMove(to, workspace) {
   const signal = copyAbort.signal
@@ -1055,7 +869,7 @@ async function runMove(to, workspace) {
       if (!signal.aborted) app.relaunch()
       return
     }
-    // Another DSH on the same data would go on writing while the copy is made.
+    // Another Host on the same data would go on writing while the copy is made.
     if (teamInUse(from)) {
       const free = new AbortController()
       const answer = await askCard({ ...stay, why: 'inUse' }, { signal, settle: until(() => !teamInUse(from), free.signal) })
@@ -1270,7 +1084,7 @@ function createWindow() {
     ...startWindow.mainBounds(), minWidth: 508, minHeight: 480,
     title: 'DS Bot', show: false, icon: iconFile,
     backgroundColor: material ? '#00000000' : dark ? '#1b1b1c' : '#ffffff',
-    // Frameless as in DSH Desktop: the window controls overlay the page's band. On Windows the
+    // The window controls overlay the page's band. On Windows the
     // caption buttons keep the sidebar's colors until the page sends the colors of the surface
     // under them.
     ...frameOptions(process.platform, material, { color: sidebarFill(), symbolColor: dark ? '#f9fafb' : '#0f1115' }),
@@ -1325,7 +1139,7 @@ function createWindow() {
   const card = readFileSync(join(here, 'page-card.css'), 'utf8')
   contents.on('dom-ready', () => { void contents.insertCSS(card) })
   contents.setWindowOpenHandler(({ url }) => {
-    // DSH's sign-in opens a blank window during the click and sends it to the sign-in page later.
+    // A sign-in can open a blank window before sending it to the provider page.
     if (url === 'about:blank') return { action: 'allow', overrideBrowserWindowOptions: { show: false, webPreferences: { sandbox: true, webviewTag: false } } }
     openOutside(url)
     return { action: 'deny' }

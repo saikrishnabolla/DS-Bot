@@ -5,8 +5,8 @@ import { disk } from '../src/copy-tree.mjs'
 
 // Only Electron's fs shows the bug, and this job has no Electron: check-packed.mjs runs the copy
 // itself. This keeps the files that touch the user's folders from going back to that fs.
-test('the import, the data move and the data location stay off Electron\'s fs', () => {
-  for (const name of ['copy-tree', 'import', 'move-data', 'place']) {
+test('the data move and the data location stay off Electron\'s fs', () => {
+  for (const name of ['copy-tree', 'move-data', 'place']) {
     const source = readFileSync(new URL(`../src/${name}.mjs`, import.meta.url), 'utf8')
     assert.doesNotMatch(source, /from 'node:fs(\/promises)?'/u, name)
   }

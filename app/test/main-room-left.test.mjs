@@ -43,13 +43,13 @@ test('a later start with room to spare shows no place line; Settings still moves
   const to = join(mkdtempSync(join(tmpdir(), 'ds-bot-move-')), 'data')
   state.openAnswer = { canceled: false, filePaths: [to] }
   const moved = state.ipc.get('ds-bot:move-data')(event, workspace)
-  await waitFor(() => windowCards(win).length === 1, 'ask about the move on a card')
+  await waitFor(() => windowCards(win).some(card => /move.*data|data.*move/iu.test(card.message)), 'ask about the move on a card')
   // The picker is the app's own, on the team window's page.
   const picker = win.webContents.sent.find(([channel]) => channel === 'ds-bot:app-picker')?.[1]
   assert.equal(picker?.mode, 'folder')
   assert.match(picker.title, /folder/u)
   assert.equal(picker.labels.chooseFolder, 'Choose this folder')
-  assert.match(windowCards(win)[0].message, /data/u)
+  assert.match(windowCards(win).at(-1).message, /data/u)
   answerCard(0, win)
   assert.equal(await moved, true)
   assert.deepEqual(messageBoxes(), [], 'no message box')

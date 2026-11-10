@@ -196,7 +196,7 @@ const REASONS = [
   ['permission', /\b(?:EACCES|EPERM)\b|permission denied|operation not permitted|access is denied/iu],
   ['space', /\b(?:ENOSPC|EDQUOT)\b|no space left|not enough space|disk (?:is )?full/iu],
   ['files', /\b(?:MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND)\b|cannot find (?:module|package)|could not load its own bundles|not a valid Win32 application|0xC0000135|3221225781/iu],
-  ['engine', /DSH Host stopped|engine's web server/iu],
+  ['engine', /DS Bot Host stopped|engine's web server/iu],
 ]
 
 // Only a missing file of the program's own says that the install is incomplete: a data folder

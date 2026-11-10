@@ -1,11 +1,9 @@
 // The first start: where the app keeps its data and the Bots' files (the default places, or the
-// one folder picked from the start page), and whether it copies the Bot team of the user's own
-// DSH. The answers are kept in the app's own data.
+// one folder picked from the start page). The answers are kept in the app's own data.
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { findTeam, userDshHome } from './import.mjs'
 import { installFolder } from './move-data.mjs'
 import { freeSpace } from './place.mjs'
 import { langOf, t } from './start/text.mjs'
@@ -62,33 +60,18 @@ export const defaultPlaces = () => ({ dataDir: join(homedir(), '.ds-bot'), works
 /** The Bot team in a data folder, if it has one. */
 export function teamIn(dataDir) {
   try {
-    return findTeam(dataDir)
+    const team = JSON.parse(readFileSync(join(dataDir, 'bot', 'state.json'), 'utf8'))
+    return { bots: Object.keys(team.bots ?? {}).length, rooms: Object.keys(team.rooms ?? {}).length, team }
   } catch {
     return undefined
   }
 }
 
 /**
- * What the start window can say before the first-run questions: the team that a reinstall keeps,
- * or whether the user's own DSH has a team to offer.
+ * What the start window can say before the first-run questions: the team that a reinstall keeps.
  */
 export function teamsAt(dataDir = defaultPlaces().dataDir) {
-  const team = teamIn(dataDir)
-  return { team, offered: team === undefined && teamIn(userDshHome()) !== undefined }
-}
-
-/**
- * The team that the user's own DSH offers to a data folder without one, if any. The start page
- * asks about it on the import card (import-flow.mjs).
- * @returns {ReturnType<typeof findTeam>}
- */
-function offerOf(dataDir) {
-  try {
-    return teamIn(dataDir) === undefined ? findTeam(userDshHome()) : undefined
-  } catch (error) {
-    console.error(error)
-    return undefined
-  }
+  return { team: teamIn(dataDir) }
 }
 
 /**
@@ -121,12 +104,10 @@ function readSaved(file) {
 /**
  * Where the app keeps its data and the Bots' files: the saved places, or at the first start the
  * default ones without a question (the start page says where the data goes and offers
- * 「换个位置…」; windows-onboarding §3). A team in the user's own DSH comes back as `offer`: the
- * places are saved once the import card has its answer, so that quitting before that asks again.
- * A run on throwaway folders (DS_BOT_HOME, for development and tests) asks nothing and copies
- * nothing. `freeAtStart` is the free space of the data's drive that saveLocations() kept, none
- * when it kept none yet.
- * @returns {{ dataDir: string, workspace?: string, freeAtStart?: number, offer?: NonNullable<ReturnType<typeof findTeam>> }}
+ * 「换个位置…」; windows-onboarding §3). A run on throwaway folders (DS_BOT_HOME, for development
+ * and tests) asks nothing. `freeAtStart` is the free space of the data's drive that
+ * saveLocations() kept, none when it kept none yet.
+ * @returns {{ dataDir: string, workspace?: string, freeAtStart?: number }}
  */
 export function chooseLocations() {
   if (process.env.DS_BOT_HOME) return { dataDir: process.env.DS_BOT_HOME, workspace: process.env.DS_BOT_WORKSPACE || undefined }
@@ -136,9 +117,6 @@ export function chooseLocations() {
     return { dataDir: saved.dataDir, workspace: saved.workspace, freeAtStart: roomOf(saved.freeAtStart) }
   }
   const { dataDir, workspace } = defaultPlaces()
-  const offer = offerOf(dataDir)
-  if (offer !== undefined) return { dataDir, workspace, offer }
-  // There is nothing to copy, so the first run ends with the chosen places.
   saveLocations({ dataDir, workspace })
   return { dataDir, workspace }
 }
