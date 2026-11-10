@@ -470,6 +470,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_secrets',
+    replay: 'safe',
     description: 'List the keys the user saved for the team: name, purpose, which Bots may use them, and whether you may. Values are never shown.',
     parameters: {},
     output,

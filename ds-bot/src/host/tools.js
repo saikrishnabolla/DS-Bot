@@ -78,6 +78,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_bots',
+    replay: 'safe',
     description: 'List every Bot on the user\'s team with its role, what it does and what it is doing right now, and the group chats you can see.',
     parameters: {},
     output,
@@ -451,6 +452,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_bot_models',
+    replay: 'safe',
     description: 'List the models a Bot can run on, as provider/model refs for create_bot and update_bot. A model in use also lists the thinking levels it serves.',
     parameters: {},
     output,
@@ -1135,6 +1137,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_capabilities',
+    replay: 'safe',
     description: 'List shared MCP servers, skills, and packs, plus the capabilities attached to you.',
     parameters: {},
     output,

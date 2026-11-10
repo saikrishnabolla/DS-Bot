@@ -186,6 +186,7 @@ export function install(rt) {
       }),
       defineTool({
         name: 'schedule_list',
+        replay: 'safe',
         ownedSchedule: true,
         description: 'List scheduled tasks for this Bot chat. Active tasks come first, ordered by scheduledAt.',
         parameters: {
@@ -208,6 +209,7 @@ export function install(rt) {
       }),
       defineTool({
         name: 'schedule_view',
+        replay: 'safe',
         ownedSchedule: true,
         description: 'View one scheduled task by id.',
         parameters: { id: { type: 'string', required: true, description: 'Task id.' } },

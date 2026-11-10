@@ -1039,7 +1039,7 @@ export class OwnedContext {
       name: definition.name,
       description: definition.description ?? definition.name,
       parameters: legacyParameters(definition.parameters),
-      replay: 'unsafe',
+      replay: definition.replay === 'safe' ? 'safe' : 'unsafe',
       ...(definition.prepareArguments === undefined ? {} : { prepareArguments: definition.prepareArguments }),
       ...(definition.structuredOutputSchema === undefined ? {} : { structuredOutputSchema: definition.structuredOutputSchema }),
       ...(definition.outputLimits === undefined ? {} : { outputLimits: definition.outputLimits }),

@@ -494,6 +494,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_connectors',
+    replay: 'safe',
     description: 'List the connectors the team can use: name, what it offers, whether it is connected, and whether you may use it. Connect one for yourself with request_connector.',
     parameters: {},
     output,

@@ -11,6 +11,7 @@ import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
 
 const GUARDED_CODING_TOOLS = new Set(['bash', 'powershell', 'write', 'edit'])
+const REPLAY_SAFE_CODING_TOOLS = new Set(['read'])
 
 function installCodingApprovals(context, runtime) {
   context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
@@ -69,7 +70,11 @@ export class OwnedHost {
       await installOwnedSchedules(context)
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
       installModelBoundary(runtime, models)
-      runtime.teamTools.push(...CodingTools.tools.map(tool => ({ ...tool, ownedNative: true })))
+      runtime.teamTools.push(...CodingTools.tools.map(tool => ({
+        ...tool,
+        ownedNative: true,
+        replay: tool.replay ?? (REPLAY_SAFE_CODING_TOOLS.has(tool.name) ? 'safe' : 'unsafe'),
+      })))
       installCodingApprovals(context, runtime)
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)

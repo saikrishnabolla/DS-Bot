@@ -1140,6 +1140,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'recall',
+    replay: 'safe',
     description: 'Search your memory, the team memory, and in a group chat the group memory, or read one topic whole. It also finds entries saved after this conversation began. With no arguments, lists what is saved where.',
     parameters: {
       query: { type: 'string', description: 'Words to look for, separated by spaces. An entry must have all of them; when none has, those with the most are shown' },

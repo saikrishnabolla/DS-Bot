@@ -1142,6 +1142,7 @@ export function install(rt) {
   // Private context enters a group only through this tool, and the group sees each use.
   rt.teamTools.push(defineTool({
     name: 'read_own_chat',
+    replay: 'safe',
     description: 'Read or search your own chat with the user, across all its parts, including earlier parts that left your working context. Each line starts with its anchor, such as [part 2 #1234 · 10-08 14:22]; long messages are cut. Pass the anchor as around to read that message in full, with what was said just before and after it. In a group chat the group sees that you looked, so share only what the group needs.',
     parameters: {
       query: { type: 'string', description: 'Words to look for in every part, separated by spaces. A message must have all of them; when none has, those with the most are shown. Omit for the latest messages' },
@@ -1197,6 +1198,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'read_group_chat',
+    replay: 'safe',
     description: 'Read the latest messages of a group chat, including what you said there. You speak in groups from separate conversations, so your own chat does not show them. Main Bots may read any group; others the groups they are in.',
     parameters: {
       group: GROUP_REF,

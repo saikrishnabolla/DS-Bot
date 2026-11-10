@@ -336,6 +336,9 @@ test('owned pre-step control never sends rejected or empty requests to a provide
 test('owned context adapts legacy tools per conversation and keeps exec.agent compatibility', async t => {
   const { ctx, provider } = await contextFixture(t)
   t.after(() => ctx.close())
+  const installed = []
+  const install = ctx.harness.install.bind(ctx.harness)
+  ctx.harness.install = extension => { installed.push(extension); return install(extension) }
   provider.setResponses([
     fauxAssistantMessage(fauxToolCall('echo_legacy', { text: 'hello' }, { id: 'call-1' }), { stopReason: 'toolUse' }),
     fauxAssistantMessage('tool complete'),
@@ -343,6 +346,7 @@ test('owned context adapts legacy tools per conversation and keeps exec.agent co
   const executions = []
   const definition = {
     name: 'echo_legacy',
+    replay: 'safe',
     description: 'Echo text',
     parameters: { text: { type: 'string', required: true } },
     output: { render: (_args, value) => [{ type: 'text', text: `rendered ${value}` }] },
@@ -351,7 +355,9 @@ test('owned context adapts legacy tools per conversation and keeps exec.agent co
       return args.text
     },
   }
-  ctx.installTools([definition])
+  ctx.installTools([definition, legacyTool('unsafe_legacy')])
+  assert.equal(installed.find(extension => extension.tools?.[0]?.name === 'echo_legacy').tools[0].replay, 'safe')
+  assert.equal(installed.find(extension => extension.tools?.[0]?.name === 'unsafe_legacy').tools[0].replay, 'unsafe')
   const { sessionId } = await ctx.sessionController.create()
   await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
   const { agent } = await ctx.sessionController.resolveAgent(sessionId)

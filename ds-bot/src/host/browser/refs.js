@@ -26,6 +26,7 @@ export const toolDefs = [
   },
   {
     name: 'browser_snapshot',
+    replay: 'safe',
     needsBrowser: true,
     description: 'Return the current page snapshot.',
     parameters: {},
@@ -118,6 +119,7 @@ export const toolDefs = [
   },
   {
     name: 'browser_screenshot',
+    replay: 'safe',
     needsBrowser: true,
     description: 'Take a screenshot of the current page.',
     parameters: {},
