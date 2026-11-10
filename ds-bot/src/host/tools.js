@@ -49,6 +49,86 @@ const WORKING_DIRECTORY_TOOL = 'working_directory'
 
 export function install(rt) {
   const { ctx, state } = rt
+  const blockingQuestions = new Map()
+
+  const cancelledQuestion = () => Object.assign(new Error('The question was cancelled.'), { code: 'ASK_CANCELLED' })
+  const cancelBlockingQuestion = (sessionId) => {
+    const pending = blockingQuestions.get(String(sessionId))
+    if (pending === undefined) return false
+    blockingQuestions.delete(String(sessionId))
+    pending.signal?.removeEventListener?.('abort', pending.abort)
+    pending.reject(cancelledQuestion())
+    return true
+  }
+  const answerBlockingQuestion = async (sessionId, questionId, answer) => {
+    const pending = blockingQuestions.get(String(sessionId))
+    if (pending === undefined || pending.card.id !== questionId) return false
+    const labels = new Set(pending.card.options.map(option => option.label))
+    const picked = (Array.isArray(answer?.selected) ? answer.selected : []).filter(label => typeof label === 'string' && labels.has(label))
+    const selected = pending.card.multiSelect === true ? [...new Set(picked)] : picked.slice(0, 1)
+    const custom = typeof answer?.custom === 'string' ? answer.custom.trim() : ''
+    if (selected.length === 0 && custom === '') throw Object.assign(new Error('Nothing to send'), { code: 'bot/invalid' })
+    blockingQuestions.delete(String(sessionId))
+    pending.signal?.removeEventListener?.('abort', pending.abort)
+    delete state.questions[sessionId]
+    try { await rt.save() } catch (error) { pending.reject(error); throw error }
+    pending.resolve({ answers: [{ id: pending.questionId, selected, ...(custom === '' ? {} : { custom }) }] })
+    return true
+  }
+  Object.assign(rt, { answerBlockingQuestion, cancelBlockingQuestion })
+  ctx.effect(() => {
+    const listener = async (request, next) => {
+      const asked = Array.isArray(request?.questions) ? request.questions : []
+      const question = asked.length === 1 && asked[0]?.intent?.kind === 'plan-review' ? asked[0] : undefined
+      const agent = request?.agent
+      const sessionId = String(agent?.session?.id ?? agent?.id ?? '')
+      if (question === undefined || sessionId === '') return next()
+      await rt.load()
+      if (!rt.isBotSession(sessionId) || rt.groupOwners.has(sessionId)) return next()
+      if (blockingQuestions.has(sessionId)) throw new Error('A plan review is already open in this chat.')
+      const options = (Array.isArray(question.options) ? question.options : [])
+        .map(option => typeof option === 'string' ? { label: option } : option ?? {})
+        .map(option => ({ label: String(option.label ?? '').trim(), ...(option.description ? { description: String(option.description).trim() } : {}) }))
+        .filter(option => option.label !== '')
+      if (options.length === 0) throw new Error('The plan review has no answers.')
+      const previous = state.questions[sessionId]
+      const callId = typeof question.intent.callId === 'string' ? question.intent.callId : undefined
+      const same = previous?.blockingKind === 'plan-review' && previous?.blockingQuestionId === question.id && previous?.callId === callId
+      if (previous !== undefined && !same) throw new Error('Another question is already open in this chat.')
+      const card = same ? previous : {
+        id: randomUUID(),
+        ...(callId === undefined ? {} : { callId }),
+        blockingKind: 'plan-review',
+        blockingQuestionId: String(question.id),
+        ...(question.header ? { header: String(question.header).trim() } : {}),
+        question: String(question.question ?? '').trim(),
+        ...(question.detail ? { detail: String(question.detail) } : {}),
+        options,
+        multiSelect: question.multiSelect === true,
+        allowCustom: true,
+        askedAt: Date.now(),
+      }
+      let settle
+      const answer = new Promise((resolve, reject) => { settle = { resolve, reject } })
+      void answer.catch(() => undefined)
+      const abort = () => {
+        if (!cancelBlockingQuestion(sessionId)) return
+        if (state.questions[sessionId]?.id === card.id) delete state.questions[sessionId]
+        void rt.save().catch(() => undefined)
+      }
+      blockingQuestions.set(sessionId, { ...settle, card, questionId: String(question.id), signal: request.signal, abort })
+      state.questions[sessionId] = card
+      request.signal?.addEventListener?.('abort', abort, { once: true })
+      if (request.signal?.aborted) abort()
+      await rt.save()
+      return answer
+    }
+    const off = ctx.on('user-questions/request', listener)
+    return () => {
+      off()
+      for (const sessionId of [...blockingQuestions.keys()]) cancelBlockingQuestion(sessionId)
+    }
+  }, 'ds-bot: plan review questions')
 
   const callerBot = (exec) => rt.botOf(rt.selfOf(exec.agent?.id))
   const callerRoom = (exec) => {

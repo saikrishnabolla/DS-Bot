@@ -927,6 +927,7 @@ export function install(rt) {
           // Any user message answers or supersedes the open question card and view card.
           let dropped = false
           if (state.questions[id] !== undefined) {
+            rt.cancelBlockingQuestion?.(id)
             rt.closeCard(id, state.questions[id], 'replied')
             delete state.questions[id]
             dropped = true

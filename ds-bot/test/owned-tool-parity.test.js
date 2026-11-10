@@ -72,6 +72,90 @@ test('owned Host selects PowerShell instead of bash for Windows', async t => {
   assert.equal(names.has('bash'), false)
 })
 
+test('owned Host guards the Windows pwsh shell with the normal approval', async t => {
+  const { host, faux } = await fixture(t, { platform: 'win32' })
+  const state = await host.runtime.handle('state', { locale: 'en' })
+  const bot = state.value.bots[0]
+  assert.equal((await host.runtime.handle('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  const agent = await host.runtime.resolveAgent(bot.id)
+  await agent.whenIdle()
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('pwsh', { command: 'Write-Output guarded' }, { id: 'guarded-pwsh' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('The command was not run.'),
+  ])
+
+  assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Try the Windows shell.' })).ok, true)
+  const approval = await waitFor(async () => {
+    const current = await host.runtime.handle('state', { locale: 'en' })
+    return current.value.work.approvals.find(item => item.tool === 'pwsh')
+  })
+  assert.match(approval.reason, /run this shell command/)
+  assert.equal((await host.runtime.handle('approval-answer', { id: approval.id, choice: 'reject' })).ok, true)
+  await agent.whenIdle()
+})
+
+test('owned Host carries plan review through the existing question-card API', async t => {
+  const { host, faux } = await fixture(t)
+  const state = await host.runtime.handle('state', { locale: 'en' })
+  const bot = state.value.bots[0]
+  assert.equal((await host.runtime.handle('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  const agent = await host.runtime.resolveAgent(bot.id)
+  await agent.whenIdle()
+  assert.equal(await host.runtime.ctx.get('planMode').set(agent, true), 'committed')
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('exit_plan_mode', { plan: '# Review this plan\n\n1. Keep the existing interface.' }, { id: 'plan-call' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('The approved plan is ready to carry out.'),
+  ])
+
+  assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Make a plan.' })).ok, true)
+  const card = await waitFor(async () => {
+    const current = await host.runtime.handle('state', { locale: 'en' })
+    return Object.values(current.value.questions).find(question => question.blockingKind === 'plan-review')
+  })
+  assert.equal(card.callId, 'plan-call')
+  assert.equal(card.detail, '# Review this plan\n\n1. Keep the existing interface.')
+  assert.deepEqual(card.options.map(option => option.label), ['Approve', 'Keep planning'])
+  assert.equal((await host.runtime.handle('answer-question', {
+    sessionId: bot.id,
+    questionId: card.id,
+    answer: { selected: ['Approve'] },
+  })).ok, true)
+  await agent.whenIdle()
+
+  assert.deepEqual(await host.runtime.ctx.get('planMode').get(agent), { active: false, entered: true })
+  const page = await host.runtime.ctx.sessionController.page({ sessionId: agent.id, maxMessages: 30 })
+  const result = page.records.find(record => record.event.type === 'tool/result' && record.event.data.message.toolCallId === 'plan-call')
+  assert.equal(result.event.data.message.isError, false)
+  assert.match(result.event.data.message.content[0].text, /Plan approved/)
+})
+
+test('owned Host dismisses a plan card without leaving plan mode or a hung turn', async t => {
+  const { host, faux } = await fixture(t)
+  const state = await host.runtime.handle('state', { locale: 'en' })
+  const bot = state.value.bots[0]
+  assert.equal((await host.runtime.handle('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  const agent = await host.runtime.resolveAgent(bot.id)
+  await agent.whenIdle()
+  await host.runtime.ctx.get('planMode').set(agent, true)
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('exit_plan_mode', { plan: '# Dismissed plan\n\n1. Wait for feedback.' }, { id: 'dismissed-plan-call' }), { stopReason: 'toolUse' }),
+  ])
+
+  assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Show the plan.' })).ok, true)
+  const card = await waitFor(async () => {
+    const current = await host.runtime.handle('state', { locale: 'en' })
+    return Object.values(current.value.questions).find(question => question.blockingKind === 'plan-review')
+  })
+  assert.equal((await host.runtime.handle('dismiss-question', { sessionId: agent.id, questionId: card.id })).ok, true)
+  await agent.whenIdle()
+
+  assert.deepEqual(await host.runtime.ctx.get('planMode').get(agent), { active: true, entered: true })
+  const page = await host.runtime.ctx.sessionController.page({ sessionId: agent.id, maxMessages: 30 })
+  const result = page.records.find(record => record.event.type === 'tool/result' && record.event.data.message.toolCallId === 'dismissed-plan-call')
+  assert.equal(result.event.data.message.isError, false)
+  assert.match(result.event.data.message.content[0].text, /plan mode remains active/i)
+})
+
 test('owned desktop tools search files, replace todos, present files, and use the injected web seam', async t => {
   const searches = []
   const { host, workspacePath } = await fixture(t, {

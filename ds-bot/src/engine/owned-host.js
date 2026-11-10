@@ -12,7 +12,7 @@ import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
 
-const GUARDED_CODING_TOOLS = new Set(['bash', 'powershell', 'write', 'edit'])
+const GUARDED_CODING_TOOLS = new Set(['bash', 'pwsh', 'powershell', 'write', 'edit'])
 function installCodingApprovals(context, runtime) {
   context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
     if (exec.ownedNative !== true || !GUARDED_CODING_TOOLS.has(exec.name)) return next()
@@ -29,7 +29,7 @@ function installCodingApprovals(context, runtime) {
       return { kind: 'deny', reason: 'This action needs your approval, but approval is not available.' }
     }
     const name = bot?.name ?? 'this Bot'
-    const shell = exec.name === 'bash' || exec.name === 'powershell'
+    const shell = exec.name === 'bash' || exec.name === 'pwsh' || exec.name === 'powershell'
     const reason = shell ? `Allow ${name} to run this shell command?` : `Allow ${name} to change this file?`
     const outcome = await approval.request({
       agent: exec.agent,

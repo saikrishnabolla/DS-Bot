@@ -598,6 +598,7 @@ export function install(rt) {
         case 'dismiss-question':
           await rt.load()
           if (rt.own(state.questions, body.sessionId) !== undefined) {
+            rt.cancelBlockingQuestion?.(body.sessionId)
             rt.closeCard(body.sessionId, state.questions[body.sessionId], 'dismissed')
             delete state.questions[body.sessionId]
             await rt.save()
@@ -882,6 +883,7 @@ export function install(rt) {
   async function answerQuestion(sessionRef, questionId, answer) {
     const past = rt.pastOwners.get(sessionRef)
     const sessionId = rt.botOf(sessionRef) ? rt.chatOf(sessionRef) : past && past.roomId === undefined ? rt.chatOf(past.botId) : sessionRef
+    if (await rt.answerBlockingQuestion?.(sessionId, questionId, answer)) return true
     const question = rt.own(state.questions, sessionId)
     if (question === undefined || question.id !== questionId) throw Object.assign(new Error('This question is no longer open'), { code: 'bot/stale' })
     const reply = questionReply(question, answer)
