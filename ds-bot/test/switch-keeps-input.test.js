@@ -407,6 +407,61 @@ test('a state write that fails as a switch ends is warned about, not left unhand
   assert.deepEqual(unhandled, [])
 })
 
+test('a failed Pi handoff note is not retried at every turn end', async (t) => {
+  const compaction = {
+    ownedTriggers: true,
+    summarize() {},
+    beforeCompact() {},
+    async compactIfNeeded() { return null },
+    async compactNow() { return null },
+    async compactRegion() { return null },
+  }
+  const host = await start({
+    services: { ...services, compaction, tokenMeter: { measure: () => ({ totalTokens: 85_000 }) } },
+  })
+  t.after(host.stop)
+  const calls = []
+  host.ctx.llm = {
+    listProviders: () => [{ id: 'gateway', name: 'Gateway' }],
+    listModels: async () => [{ id: 'step-5' }],
+    resolveModelInfo: async () => ({ context: { contextWindow: 100_000 }, defaultMaxTokens: 8_000 }),
+    stream(options) {
+      const request = JSON.stringify(options)
+      calls.push(request)
+      const answer = request.includes('You are the context steward of an AI assistant')
+        ? '{"action":"switch","reason":"the turn is complete"}'
+        : 'not a valid handoff note'
+      return (async function* () {
+        yield { type: 'text-delta', index: 0, text: answer }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    },
+  }
+  const agent = host.agentOf('b')
+  agent.session.requestHeader = () => ({ config: { provider: 'gateway', model: 'step-5' } })
+  agent.session.deriveMessages = () => [
+    { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'Finish the report.' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'The report is done.' }] },
+    { role: 'tool', content: [{ type: 'text', text: 'saved' }] },
+  ]
+  agent.session.toolHistory = () => []
+  agent.whenIdle = async () => {}
+  agent.runMaintenance = async work => work(new AbortController().signal)
+  host.ctx.sessions.messageProjections = []
+  const adopt = host.ctx.listeners.get('agent/created').find(listener => /adoptCompaction/.test(String(listener)))
+  adopt({ agent })
+
+  host.ctx.emit('agent/status', { agent, status: 'idle' })
+  await until(() => host.warnings.some(line => line.includes('next try in 60s')))
+  assert.equal(calls.filter(request => request.includes('You are the context steward of an AI assistant')).length, 1)
+  assert.equal(calls.filter(request => request.includes('You are now writing a handoff note to yourself')).length, 2)
+
+  host.ctx.emit('agent/status', { agent, status: 'idle' })
+  await settle()
+  assert.equal(calls.filter(request => request.includes('You are the context steward of an AI assistant')).length, 1)
+  assert.equal(calls.filter(request => request.includes('You are now writing a handoff note to yourself')).length, 2)
+})
+
 // A turn cut off at the output limit with nothing written, twice in a row, is the
 // shape a route whose real window is smaller than configured leaves behind. The part
 // moves on the way an overflow moves it, without a note at the same size (#1104).

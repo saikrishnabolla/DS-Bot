@@ -281,6 +281,7 @@ test('owned Host reaches the production Pi threshold through the DS Bot checkpoi
   faux.models[0].maxTokens = 500
   let stewardCalls = 0
   let checkpointCalls = 0
+  const stewardRequests = []
   const response = async context => {
     const request = JSON.stringify(context)
     const input = request.includes('threshold-turn-') ? Math.ceil(request.length / 4) : 10
@@ -291,6 +292,7 @@ test('owned Host reaches the production Pi threshold through the DS Bot checkpoi
     }
     if (request.includes('You are the context steward of an AI assistant')) {
       stewardCalls += 1
+      stewardRequests.push(request)
       return fauxAssistantMessage('{"action":"compact","reason":"the numbered work is still in progress"}', { usage })
     }
     if (request.includes('You keep the long-term memory of one Bot')) return fauxAssistantMessage('{"changes":[]}', { usage })
@@ -322,6 +324,8 @@ test('owned Host reaches the production Pi threshold through the DS Bot checkpoi
 
   assert.equal(stewardCalls, 1)
   assert.equal(checkpointCalls, 1)
+  assert.match(stewardRequests[0], /the assistant has just finished its turn/)
+  assert.doesNotMatch(stewardRequests[0], /the assistant is in the middle of a turn/)
   const active = await host.runtime.ctx.harness.context(bot.id)
   const text = active.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).join('\n')
   for (const marker of markers) assert.equal(text.split(marker).length - 1, 1)

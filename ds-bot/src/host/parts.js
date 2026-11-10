@@ -345,24 +345,21 @@ export function install(rt) {
           || rt.isLocalAgentRef?.(bot?.model ?? bot?.appliedModel) === true) {
           return input.reason === 'overflow' ? writeCheckpoint(input, agent, signal) : { decline: true }
         }
-        if (input.reason !== 'overflow') {
-          const usages = []
-          const lines = await contextLines(agent.session).catch(() => undefined)
-          const tokens = tokensOf(agent.session)
-          const messages = agent.session.deriveMessages()
-          const handoffOnly = messages.some(message => message.source?.handoff === true)
-            && !messages.some(message => message.role === 'user' && message.source?.kind === 'user')
-          if (switches.has(agent.id) || freshParts.has(agent.id) || settlingParts.has(agent.id)
-            || handoffOnly
-            || (input.reason === 'threshold' && lines !== undefined && tokens !== undefined && !grown(agent.id, tokens, lines))) return { decline: true }
-          if (await decide(agent, { midTurn: agent.status !== 'idle', usages }) === 'switch') {
-            if (await canMakeRoom(agent)) startSwitch(agent, { hard: lines !== undefined && tokens !== undefined && tokens >= lines.hard })
-            return { decline: true, usages }
-          }
-          const checkpoint = await writeCheckpoint(input, agent, signal)
-          return { ...checkpoint, usages: [...usages, ...(checkpoint.usage === undefined ? [] : [{ provider: checkpoint.provider, model: checkpoint.model, usage: checkpoint.usage }])] }
+        if (input.reason === 'overflow' || condensing.has(agent.id)) return writeCheckpoint(input, agent, signal)
+        if (input.reason !== 'manual') return { decline: true }
+        const usages = []
+        const lines = await contextLines(agent.session).catch(() => undefined)
+        const tokens = tokensOf(agent.session)
+        const messages = agent.session.deriveMessages()
+        const handoffOnly = messages.some(message => message.source?.handoff === true)
+          && !messages.some(message => message.role === 'user' && message.source?.kind === 'user')
+        if (switches.has(agent.id) || freshParts.has(agent.id) || settlingParts.has(agent.id) || handoffOnly) return { decline: true }
+        if (await decide(agent, { midTurn: false, usages }) === 'switch') {
+          if (await canMakeRoom(agent)) startSwitch(agent, { hard: lines !== undefined && tokens !== undefined && tokens >= lines.hard })
+          return { decline: true, usages }
         }
-        return writeCheckpoint(input, agent, signal)
+        const checkpoint = await writeCheckpoint(input, agent, signal)
+        return { ...checkpoint, usages: [...usages, ...(checkpoint.usage === undefined ? [] : [{ provider: checkpoint.provider, model: checkpoint.model, usage: checkpoint.usage }])] }
       }
     }
     adoptedEngines.add(engine)
@@ -789,7 +786,7 @@ export function install(rt) {
     const after = tokensOf(agent.session) ?? before
     partBase.set(agent.id, after)
     ctx.logger.info('ds-bot: %s condensed from %d to %d tokens (check line %d, hard line %d)', agent.id, before ?? -1, after ?? -1, lines.check, lines.hard)
-    return after < lines.check
+    return engine.ownedTriggers === true || after < lines.check
   }
 
   // The note a part opened with, as the fresh part shows it. A note DS Bot put
@@ -1508,7 +1505,6 @@ export function install(rt) {
       }
       return
     }
-    if (ctx.get('compaction')?.ownedTriggers === true) return
     const lines = await contextLines(agent.session)
     const tokens = tokensOf(agent.session)
     if (lines === undefined || tokens === undefined || tokens < lines.check || !grown(agent.id, tokens, lines)) return
