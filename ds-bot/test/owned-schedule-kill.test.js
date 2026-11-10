@@ -34,12 +34,14 @@ test('owned schedule delivers once after SIGKILL past due and before delivery co
   const errors = []
 
   const first = child('prepare', dataDir)
+  t.after(() => { if (first.exitCode === null && first.signalCode === null) first.kill('SIGKILL') })
   first.stderr.on('data', chunk => errors.push(String(chunk)))
   const due = await waitForMessage(first, 'due')
   first.kill('SIGKILL')
   assert.deepEqual(await waitForExit(first), { code: null, signal: 'SIGKILL' })
 
   const second = child('recover', dataDir, due.sessionId)
+  t.after(() => { if (second.exitCode === null && second.signalCode === null) second.kill('SIGKILL') })
   second.stderr.on('data', chunk => errors.push(String(chunk)))
   const recovered = await waitForMessage(second, 'recovered')
   assert.deepEqual(await waitForExit(second), { code: 0, signal: null }, errors.join(''))
