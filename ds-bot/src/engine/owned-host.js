@@ -3,6 +3,7 @@ import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createRegistry } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createRuntime } from '../../index.js'
+import { installOwnedApprovals } from './owned-approvals.js'
 import { OwnedContext } from './owned-context.js'
 import { installOwnedComputerUse } from './owned-computer.js'
 import { OwnedModels } from './owned-models.js'
@@ -65,6 +66,7 @@ export class OwnedHost {
     const context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
     let server
     try {
+      installOwnedApprovals(context, { dataDir })
       await installOwnedStorage(context, { dataDir })
       installOwnedComputerUse(context)
       await installOwnedSchedules(context)

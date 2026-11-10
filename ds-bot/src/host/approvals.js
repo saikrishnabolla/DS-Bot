@@ -9,8 +9,15 @@ const OUTCOMES = { allow: 'allowed-once', reject: 'rejected' }
 
 export function install(rt) {
   const { ctx } = rt
+  const durability = ctx.get?.('approvalDurability')
   /** @type {Map<string, {id:string, sessionId:string, botId:string, roomId?:string, tool:string, reason:string, detail:{text?:string, code?:string}, at:number, answer?:(outcome:string)=>void}>} */
   const pending = new Map()
+  const durable = new Set()
+  const live = new Set()
+  for (const record of durability?.pending?.() ?? []) {
+    pending.set(record.entry.id, record.entry)
+    durable.add(record.entry.id)
+  }
   const approvalListeners = new Set()
   const onApproval = (listener) => {
     approvalListeners.add(listener)
@@ -21,35 +28,44 @@ export function install(rt) {
       try { listener(kind, data) } catch (error) { rt.warn('ds-bot: approval listener failed: %s', error) }
     }
   }
+  const settle = (entry, outcome) => {
+    if (!pending.has(entry.id)) return false
+    if (durable.has(entry.id) && !durability.settle(entry.id, outcome)) return false
+    pending.delete(entry.id)
+    live.delete(entry.id)
+    rt.noteApproval?.(entry.sessionId, undefined)
+    emit('settled', { id: entry.id, outcome })
+    return true
+  }
+  for (const entry of pending.values()) entry.answer = () => settle(entry, 'cancelled')
 
   // Ahead of DSH's own answerer, which would hold a hidden Session's request unseen.
   ctx.on('approval/request', (request, next) => {
     const sessionId = request.agent?.session?.id ?? request.agent?.id
     const owner = sessionId === undefined ? undefined : rt.groupOwners.get(sessionId)
     const botId = owner?.botId ?? (sessionId === undefined ? undefined : rt.chatOwners.get(sessionId))
-    if (botId === undefined) return next()
-    const id = randomUUID()
-    const entry = {
-      id,
-      sessionId,
-      botId,
-      ...(owner ? { roomId: owner.roomId } : {}),
-      tool: String(request.toolName ?? ''),
-      reason: String(request.reason ?? '').slice(0, 500),
-      detail: rt.callDetail?.(sessionId, request.callId) ?? {},
-      at: Date.now(),
+    const tool = String(request.toolName ?? '')
+    const candidate = botId === undefined ? undefined : {
+      id: randomUUID(), sessionId, botId, ...(owner ? { roomId: owner.roomId } : {}), tool,
+      reason: String(request.reason ?? '').slice(0, 500), detail: rt.callDetail?.(sessionId, request.callId) ?? {}, at: Date.now(),
     }
+    const record = durability?.open?.({ sessionId, callId: request.callId, tool }, candidate)
+    if (botId === undefined && record === undefined) return next()
+    if (record?.state === 'settled') {
+      rt.noteApproval?.(sessionId, undefined)
+      return 'cancelled'
+    }
+    const entry = record?.entry ?? candidate
+    if (entry === undefined) return next()
+    const id = entry.id
+    const current = pending.get(id)
+    if (current !== undefined && live.has(id)) return 'cancelled'
     pending.set(id, entry)
+    live.add(id)
+    if (record !== undefined) durable.add(id)
     rt.noteApproval?.(sessionId, { tool: entry.tool, reason: entry.reason.slice(0, 200) })
     emit('open', { ...entry, answerable: true })
-    const settle = (outcome) => {
-      if (!pending.has(id)) return false
-      pending.delete(id)
-      rt.noteApproval?.(sessionId, undefined)
-      emit('settled', { id, outcome })
-      return true
-    }
-    if (owner === undefined) {
+    if (entry.roomId === undefined) {
       // An own-chat approval races DSH's card. The card sees `linked`, our own
       // AbortSignal: answering here resolves the request, then withdraws the card;
       // an answer there settles `next()` first and is adopted. An abort of the
@@ -59,14 +75,17 @@ export function install(rt) {
       request.signal = linked.signal
       return new Promise((resolve, reject) => {
         const complete = (outcome) => {
-          if (!settle(outcome)) return
+          if (!settle(entry, outcome)) return
           resolve(outcome)
           linked.abort()
           if (request.signal === linked.signal) request.signal = original
         }
         entry.answer = complete
-        if (original?.aborted) entry.answer('cancelled')
-        else original?.addEventListener('abort', () => entry.answer('cancelled'), { once: true })
+        const cancel = () => {
+          try { entry.answer('cancelled') } catch (error) { rt.warn('ds-bot: approval cancellation was not saved: %s', error) }
+        }
+        if (original?.aborted) cancel()
+        else original?.addEventListener('abort', cancel, { once: true })
         Promise.resolve(next()).then(
           (outcome) => {
             if (!pending.has(id)) return
@@ -75,7 +94,7 @@ export function install(rt) {
           // DSH's answerer threw: close the entry and give the caller the error
           // the way the pre-race code did, instead of hanging forever.
           (error) => {
-            if (!settle('cancelled')) return
+            if (!settle(entry, 'cancelled')) return
             reject(error)
             linked.abort()
             if (request.signal === linked.signal) request.signal = original
@@ -86,11 +105,14 @@ export function install(rt) {
     rt.yieldRoomTurn?.(sessionId)
     return new Promise((resolve) => {
       entry.answer = (outcome) => {
-        if (!settle(outcome)) return
+        if (!settle(entry, outcome)) return
         resolve(outcome)
       }
-      if (request.signal?.aborted) entry.answer('cancelled')
-      request.signal?.addEventListener('abort', () => entry.answer('cancelled'), { once: true })
+      const cancel = () => {
+        try { entry.answer('cancelled') } catch (error) { rt.warn('ds-bot: approval cancellation was not saved: %s', error) }
+      }
+      if (request.signal?.aborted) cancel()
+      request.signal?.addEventListener('abort', cancel, { once: true })
     })
   }, { prepend: true })
 
