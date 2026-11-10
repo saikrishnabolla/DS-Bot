@@ -35,6 +35,7 @@
     "src/server/",
     "src/shared/",
     "src/office/",
+    "src/view/",
     "client.js",
     "office.js",
     "web-search.js",
