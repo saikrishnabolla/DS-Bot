@@ -174,6 +174,17 @@ MIT License, Copyright (c) 2026 xmanrui
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
+@deepseek-ai/dsh-util-time
+(https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/util/time)
+MIT License, DeepSeek AI
+
+  - ds-bot uses dsh-util-time 0.2.2-rc.1 for bounded Cron and RFC 5545
+    recurrence parsing and occurrence arithmetic. It uses rrule.js 2.8.1
+    (BSD-3-Clause, Copyright 2010 Jakub Roztocil and Lars Schöning) and
+    @js-temporal/polyfill 0.5.1 (ISC) under their own licenses.
+
+  MIT license text: see the DeepSeek Harness section above.
+
 No other third-party code is copied into this repository. At run time the
 plugin uses the @deepseek-ai/* packages of the DeepSeek Harness install it
 runs in; they are not bundled. The bundled ds-bot/office.js includes

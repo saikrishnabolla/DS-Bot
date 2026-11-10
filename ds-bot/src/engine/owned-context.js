@@ -1032,6 +1032,7 @@ export class OwnedContext {
           agent: resolved.agent,
           name: definition.name,
           ownedNative: definition.ownedNative === true,
+          ownedSchedule: definition.ownedSchedule === true,
           arguments: args,
           callId: api.callId,
           signal: context.abortSignal,

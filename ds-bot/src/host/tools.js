@@ -1035,7 +1035,7 @@ export function install(rt) {
     if (!rt.isBotSession(exec.agent?.id)) return undefined
     if (exec.name === BLOCKING_QUESTION_TOOL) return `Bots cannot use ${BLOCKING_QUESTION_TOOL}. Ask with ask_user in your own chat, or ask in your reply.`
     const target = exec.arguments?.target
-    if (SCHEDULE_TARGET_TOOLS.includes(exec.name) && target !== undefined && target !== 'this_session') return SCHEDULE_TARGET_REFUSAL
+    if (exec.ownedSchedule !== true && SCHEDULE_TARGET_TOOLS.includes(exec.name) && target !== undefined && target !== 'this_session') return SCHEDULE_TARGET_REFUSAL
     return DELEGATION_TOOLS.includes(exec.name) ? DELEGATION_REFUSAL : undefined
   })
   // Creation waits for this listener, so the Agent's first step already lacks the tool.
