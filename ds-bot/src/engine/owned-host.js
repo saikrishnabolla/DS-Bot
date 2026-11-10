@@ -6,6 +6,7 @@ import { installOwnedApprovals } from './owned-approvals.js'
 import { OwnedContext } from './owned-context.js'
 import { installOwnedComputerUse } from './owned-computer.js'
 import { migrateLegacyTeam } from './legacy-import.js'
+import { prepareLegacyModels } from './legacy-model-import.js'
 import { installOwnedDesktopTools } from './owned-desktop-tools.js'
 import { OwnedModels } from './owned-models.js'
 import { installOwnedSchedules } from './owned-schedules.js'
@@ -63,6 +64,7 @@ export class OwnedHost {
   static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse, platform = process.platform, web } = {}) {
     if (typeof dataDir !== 'string' || dataDir === '') throw new TypeError('dataDir must be a directory')
     if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
+    await prepareLegacyModels({ dataDir, platform })
     const modelRuntime = suppliedModels ?? await ModelRuntime.create({
       authPath: join(dataDir, 'auth.json'),
       modelsPath: join(dataDir, 'models.json'),

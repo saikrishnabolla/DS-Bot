@@ -65,7 +65,7 @@ function modelEntry(model, api, baseUrl) {
   }
 }
 
-function configOf(body) {
+export function customProviderConfig(body) {
   if (!PROTOCOLS.includes(body.api)) throw invalid(`The protocol must be one of ${PROTOCOLS.join(', ')}`)
   const provider = String(body.provider ?? '').trim()
   if (!ROUTE_ID.test(provider)) throw invalid('A provider id is lowercase letters, digits and dashes, starting with a letter')
@@ -215,7 +215,7 @@ export class OwnedModels {
     if (this.#config.enabled.includes(provider) || this.#config.custom[provider] !== undefined) throw invalid(`${provider} is already set up`)
     if (body.custom === true) {
       if (this.#runtime.getProvider(provider) !== undefined) throw invalid(`Pi already offers ${provider}; add it from its list`)
-      const config = configOf(body)
+      const config = customProviderConfig(body)
       this.#config.custom[provider] = config
       this.#registerCustom(provider, config)
     } else {

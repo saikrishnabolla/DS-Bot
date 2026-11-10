@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
-import { AssistantEntry, createRegistry, defineDoc, defineExtension, GenerationTask, Harness, hook, UsageDoc, UserEntry } from '@earendil-works/pi-durable'
+import { AssistantEntry, createRegistry, defineDoc, defineExtension, GenerationTask, Harness, hook, ToolResultEntry, UsageDoc, UserEntry } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { linesFor } from '../host/steward.js'
@@ -44,6 +44,14 @@ const PlanModeDoc = defineDoc({
   history: 'latest',
   fork: 'current',
   initial: () => ({ active: false, entered: false, pending: null }),
+  checkpointWhen: () => true,
+})
+
+const LegacyImportDoc = defineDoc({
+  kind: 'ds-bot.legacy-import',
+  version: 1,
+  scope: 'session',
+  initial: () => ({ sessions: {} }),
   checkpointWhen: () => true,
 })
 
@@ -264,15 +272,57 @@ export class OwnedHarness {
     return String(conversation.id)
   }
 
-  async importConversation({ messages = [] } = {}) {
+  async importConversations(conversations = []) {
     return this.#harness.commit(async tx => {
-      const conversation = await tx.createConversation({ ownership: { kind: 'ownerless' } })
-      for (const message of messages) {
-        if (message?.role === 'user') await tx.appendEntry(UserEntry, conversation.id, { model: [message] })
-        else if (message?.role === 'assistant') await tx.appendEntry(AssistantEntry, conversation.id, { model: [message] })
+      const imports = await tx.doc(LegacyImportDoc)
+      const result = {}
+      const claimed = new Map(Object.entries(imports.sessions).map(([legacyId, id]) => [String(id), legacyId]))
+      for (const item of conversations) {
+        const { legacyId, existingId } = item ?? {}
+        if (typeof legacyId !== 'string' || legacyId === '') throw new TypeError('legacyId must be a non-empty string')
+        const mapped = imports.sessions[legacyId] ?? existingId
+        if (mapped !== undefined) {
+          const id = numericId(mapped)
+          const other = claimed.get(String(id))
+          if (other !== undefined && other !== legacyId) throw new Error(`Pi conversation ${id} is already mapped from ${other}`)
+          if (await tx.conversation(id) === undefined) throw new Error(`Pi import mapping for ${legacyId} points to missing conversation ${mapped}`)
+          imports.sessions[legacyId] = String(id)
+          claimed.set(String(id), legacyId)
+          result[legacyId] = String(id)
+          continue
+        }
+        const conversation = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+        const entries = Array.isArray(item.entries) ? item.entries : (item.messages ?? []).map(message => ({ message }))
+        for (const entry of entries) {
+          const message = entry?.message
+          if (message?.role === 'user') {
+            await tx.appendEntry(UserEntry, conversation.id, { model: [message], ...(entry.data === undefined ? {} : { data: entry.data }) })
+          } else if (message?.role === 'assistant') {
+            await tx.appendEntry(AssistantEntry, conversation.id, { model: [message] })
+          } else if (message?.role === 'toolResult') {
+            await tx.appendEntry(ToolResultEntry, conversation.id, { model: [message], data: { diagnostics: entry.data?.diagnostics ?? [] } })
+          }
+        }
+        const usageModels = (await tx.doc(UsageDoc, conversation.id)).models
+        for (const { message } of entries) {
+          if (message?.role !== 'assistant' || message.usage === undefined) continue
+          const key = `${message.provider}/${message.model}`
+          const current = Object.hasOwn(usageModels, key) ? usageModels[key] : undefined
+          if (current === undefined) usageModels[key] = structuredClone(message.usage)
+          else addUsage(current, message.usage)
+        }
+        imports.sessions[legacyId] = String(conversation.id)
+        claimed.set(String(conversation.id), legacyId)
+        result[legacyId] = String(conversation.id)
       }
-      return String(conversation.id)
+      return result
     }, this.#context)
+  }
+
+  async importConversation(conversation = {}) {
+    const legacyId = conversation.legacyId ?? `standalone:${crypto.randomUUID()}`
+    const result = await this.importConversations([{ ...conversation, legacyId }])
+    return result[legacyId]
   }
 
   async conversation(id) {
