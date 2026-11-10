@@ -1,9 +1,9 @@
-// Scheduled tasks. DSH's schedule service stores each task with the Session it belongs
+// Scheduled tasks. Cue's schedule service stores each task with the Session it belongs
 // to and, when it is due, sends its prompt to that Session as a new message. This
 // module lists the team's tasks for Settings, creates and removes them there, and moves
 // a Bot's tasks along when its chat goes on in a fresh part, so the Bot keeps seeing
 // them. A group chat's task lives on the group's own Session, so the reminder reaches
-// the group like a message from the user (see reminderText). DSH 0.2.0 mounts the service only with its Automation tasks bundle on, so
+// the group like a message from the user (see reminderText). the runtime mounts the service only with its Automation tasks bundle on, so
 // the service is optional and every endpoint reports whether it is there.
 
 import { defineTool } from '../engine/tool-definition.js'
@@ -13,7 +13,7 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 
 const invalid = message => Object.assign(new Error(message), { code: 'bot/invalid' })
 
-// What a group sees of a due reminder: DSH frames it for one Session's model
+// What a group sees of a due reminder: Cue frames it for one Session's model
 // ("[SCHEDULE REMINDER]" with JSON fields); the group gets each prompt as one line.
 export function reminderText(text) {
   const prompts = []
@@ -41,14 +41,14 @@ function requestOf(record) {
   return null
 }
 
-// DSH 0.2.2 keeps tasks Host-wide, each with a delivery target, and changes them through
-// edit(); DSH 0.2.1 keeps them by Session. Both are served.
+// the runtime keeps tasks Host-wide, each with a delivery target, and changes them through
+// edit(); the runtime keeps them by Session. Both are served.
 const hostWide = service => typeof service.edit === 'function'
 // The existing Session a task delivers to; a task that opens new Sessions has none.
 const sessionOf = entry => entry.target === undefined ? entry.sessionId : entry.target.kind === 'session' ? entry.target.sessionId : undefined
 const TIMING_KINDS = { at: 'at', every_seconds: 'every', daily: 'daily', weekly: 'weekly' }
 const OWN_TASK_TOOLS = ['schedule_edit', 'schedule_view']
-// DSH 0.2.2's list page: 100 by default, at most 500.
+// the runtime's list page: 100 by default, at most 500.
 const LIST_PAGE = 100
 const LIST_READ_LIMIT = 500
 const OTHER_TASK_REFUSAL = 'This task belongs to another chat. A Bot reads and changes only the tasks of its own chat.'
@@ -171,7 +171,7 @@ export function install(rt) {
           title: { type: 'string', required: true, description: TITLE_HELP },
           prompt: { type: 'string', required: true, description: 'Instruction delivered at each occurrence.' },
           rrule: { type: 'string', required: true, description: RRULE_HELP },
-          target: { type: 'string', required: true, enum: ['this_session'], description: 'Use this_session. DS Bot keeps scheduled work in the Bot chat.' },
+          target: { type: 'string', required: true, enum: ['this_session'], description: 'Use this_session. Cue keeps scheduled work in the Bot chat.' },
         },
         output: { render: renderSchedule },
         execute: (args, exec) => runSchedule(async () => {
@@ -281,7 +281,7 @@ export function install(rt) {
       const sessionId = sessionOf(entry)
       const owner = sessionId === undefined ? undefined : ownerOf(sessionId)
       if (!known(owner)) continue
-      // The state DSH derives for its own view: a task past its next firing reads
+      // The state Cue derives for its own view: a task past its next firing reads
       // overdue; a paused one stays paused; any other is finished. catalog() carries
       // the status but not this state, so it is derived the same way here.
       const state = entry.status === 'active' ? (now >= Date.parse(entry.scheduledAt) ? 'overdue' : 'scheduled')
@@ -353,7 +353,7 @@ export function install(rt) {
     }
   }
 
-  // DSH 0.2.2's task ids are Host-wide, so a Bot's schedule tools reach only the tasks
+  // the runtime's task ids are Host-wide, so a Bot's schedule tools reach only the tasks
   // that deliver to its own chat, or to the same group place, in any of its parts.
   ctx.on('tools/pre-execute', async (exec, next) => {
     const decision = await next()
@@ -362,7 +362,7 @@ export function install(rt) {
     const caller = exec.agent?.id
     if (!rt.isBotSession(caller)) return decision
     const entry = (await service.catalog()).find(task => task.id === exec.arguments?.id)
-    // An unknown id gets DSH's own not-found result.
+    // An unknown id gets Cue's own not-found result.
     if (entry === undefined) return decision
     const target = sessionOf(entry)
     if (target !== undefined && sameOwner(ownerOf(caller), ownerOf(target))) return decision
@@ -386,7 +386,7 @@ export function install(rt) {
       const target = sessionOf(entry)
       return target !== undefined && sameOwner(own, ownerOf(target))
     }
-    // An invalid page gets DSH's own input error; a page it accepts anyway is still narrowed.
+    // An invalid page gets Cue's own input error; a page it accepts anyway is still narrowed.
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > LIST_READ_LIMIT || !Number.isSafeInteger(offset) || offset < 0) {
       const result = await next()
       if (result.isError || !Array.isArray(result.value?.items)) return result

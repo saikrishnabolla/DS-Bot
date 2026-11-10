@@ -3,11 +3,12 @@ import { test } from 'node:test'
 import * as plugin from '../index.js'
 import { COLORS, EXTRA_COLORS, LEGACY_COLORS, ROOM_MODES } from '../src/host/constants.js'
 
-test('the plugin entry re-exports the shared colors', () => {
-  assert.equal(plugin.name, 'ds-bot')
+test('the standalone runtime re-exports the shared colors', () => {
   assert.equal(plugin.COLORS, COLORS)
   assert.equal('LABS' in plugin, false)
-  assert.equal(typeof plugin.apply, 'function')
+  assert.equal(typeof plugin.createRuntime, 'function')
+  assert.equal('apply' in plugin, false)
+  assert.equal('inject' in plugin, false)
 })
 
 test('colors and their legacy names agree', () => {

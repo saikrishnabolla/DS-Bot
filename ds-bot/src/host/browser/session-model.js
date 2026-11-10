@@ -4,8 +4,8 @@ import {
   createSystemMessage,
   createToolResultMessage,
   createUserMessage,
+  parseToolArguments,
 } from '../../engine/messages.js'
-import { parseToolCallArguments } from '@earendil-works/pi-ai/utils/json-parse'
 
 const NO_SESSION_MODEL = 'browser_task needs a Bot session model'
 const OMITTED_IMAGE = '[Browser screenshot omitted.]'
@@ -32,7 +32,7 @@ function textParts(content) {
 
 function toolArguments(value) {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) return { arguments: value }
-  return parseToolCallArguments(typeof value === 'string' ? value : JSON.stringify(value ?? {}))
+  return parseToolArguments(value)
 }
 
 function imageInput(part) {
@@ -120,7 +120,7 @@ function assistantContent(message, config) {
   })
 }
 
-async function dshMessages(messages, attachments, config, readsImages) {
+async function cueMessages(messages, attachments, config, readsImages) {
   const output = []
   let sawImage = false
   let rejectedImage = false
@@ -175,7 +175,7 @@ export function sessionComplete(ctx, exec, rt) {
       Array.isArray(message.content) && message.content.some(part => part?.type === 'image_url')
     ))
     const readsImages = hasImages ? await routeReadsImages(ctx, header.config, rt) : true
-    const converted = await dshMessages(messages, attachmentsOf(ctx), header.config, readsImages)
+    const converted = await cueMessages(messages, attachmentsOf(ctx), header.config, readsImages)
     const requestMessages = typeof rt?.tagUsage === 'function'
       ? rt.tagUsage(converted.messages, { sessionId, kind: 'browser-task' })
       : converted.messages

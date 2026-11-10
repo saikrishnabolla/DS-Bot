@@ -11,7 +11,7 @@ export function freshBotName(roster, base = 'New Bot') {
 }
 
 // The form starts on the team default model from settings when it is served, then
-// the DSH default, else the first one. A local agent is never a start: it is chosen.
+// the Cue default, else the first one. A local agent is never a start: it is chosen.
 export function startModel(roster) {
   const usable = modelsFor(roster.models).filter(model => model.needsKey !== true)
   return (usable.find(model => model.ref === roster.prefs?.defaultBotModel) ?? usable.find(model => model.ref === roster.defaultModel) ?? usable[0])?.ref ?? ''

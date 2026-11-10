@@ -1,7 +1,7 @@
 // The loopback MCP server: one per CLI session, Streamable HTTP on 127.0.0.1
 // with a random port and a per-session bearer token. It serves only the DS
 // Bot team tools; every call is handed to the adapter, which emits it as a
-// DSH tool call and answers here once the result arrives.
+// Cue tool call and answers here once the result arrives.
 import { createServer } from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
 
@@ -29,7 +29,7 @@ export function flattenSchema(node) {
 
 export class LoopbackMcp {
   // onCall(name, args) -> Promise<{text, isError}> runs while the adapter waits
-  // for the DSH result; it resolves when the tool call settles.
+  // for the Cue result; it resolves when the tool call settles.
   constructor(tools, onCall) {
     this.token = randomBytes(32).toString('hex')
     this.tools = tools
@@ -100,7 +100,7 @@ export class LoopbackMcp {
   }
 
   // tools/call answers on an SSE stream: progress notifications keep the agent
-  // patient while DSH runs the call, then the result arrives on the same stream.
+  // patient while Cue runs the call, then the result arrives on the same stream.
   serveCall({ id, params }, response) {
     const callId = `mcp-${randomUUID()}`
     const progressToken = params?._meta?.progressToken ?? callId

@@ -13,7 +13,7 @@ const roster = indexRoster({
 })
 const names = rows => rows.map(row => row.bot?.name ?? 'everyone')
 const readSessionMention = (value) => {
-  const match = /^@\[([\s\S]*)\]\(dsh-session:([A-Za-z0-9_-]*)\)$/.exec(value)
+  const match = /^@\[([\s\S]*)\]\(cue-session:([A-Za-z0-9_-]*)\)$/.exec(value)
   assert.ok(match)
   return {
     sessionId: JSON.parse(Buffer.from(match[2], 'base64url').toString('utf8')),

@@ -3,7 +3,7 @@
 // the chat's earlier finished pairs to the model.
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import { call } from './api.js'
-import { MarkdownText } from './dsh-primitives.js'
+import { MarkdownText } from './ui-primitives.js'
 import { hostText, t } from './i18n.js'
 import { failureText, mdLabels } from './btw.js'
 import { ArrowUpIcon } from './icons.js'

@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { copyFileSync, createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LEGACY_ARTIFACT_PREFIX, PREVIOUS_ARTIFACT_PREFIX } from '../src/legacy.mjs'
 
 export const REPO = 'Fei2411/DS-Bot'
 // The order of the table: Windows first, where most downloads are.
@@ -23,8 +24,12 @@ export const SUMS = 'SHA256SUMS.txt'
 const START = '<!-- downloads -->'
 const END = '<!-- /downloads -->'
 
-export const packageName = (version, entry) => `DS-Bot-${version}-${entry.file}`
-export const copyName = entry => `DS-Bot-${entry.file}`
+export const packageName = (version, entry) => `Cue-${version}-${entry.file}`
+export const copyName = entry => `Cue-${entry.file}`
+export const previousCopyName = entry => `DS-Bot-${entry.file}`
+export const compatibilityNames = (version, entry) => /^(?:mac-(?:arm64|x64)\.zip|linux-amd64\.deb)$/u.test(entry.file)
+  ? [PREVIOUS_ARTIFACT_PREFIX, LEGACY_ARTIFACT_PREFIX].map(prefix => `${prefix}-${version}-${entry.file}`)
+  : []
 
 /** @returns {string[]} the packages of `version` that are not among `names` */
 export function missingPackages(version, names) {
@@ -64,20 +69,21 @@ export function downloadBlock({ version, sizes, repo = REPO, mirror }) {
     '|---|---|---|',
     ...rows,
     '',
-    'The `.blockmap`, `latest*.yml` and `ds-bot-*.tgz` files and the source code archives are for updates and the plugin: you do not need to download them.',
+    'The `.blockmap`, `latest*.yml`, `ds-bot-*.tgz` and source code archives are for updates and package distribution. You do not need to download them.',
     '',
-    '`.blockmap`、`latest*.yml`、`ds-bot-*.tgz` 和源代码是给自动更新和插件用的，不用下载。',
+    '`.blockmap`、`latest*.yml`、`ds-bot-*.tgz` 和源代码用于自动更新和软件包分发，不用下载。',
     '',
     `To check a download, compare its SHA-256 with [${SUMS}](${sums}). / 下载后可以用 [${SUMS}](${sums}) 核对 SHA-256。`,
     END,
   ].join('\n')
 }
 
-/** `hashes`: SHA-256 hex by package name. Each package is listed under both of its names. */
+/** `hashes`: SHA-256 hex by package name. Each package is listed under all public download names. */
 export function checksums(version, hashes) {
   const lines = PACKAGES.flatMap((entry) => {
     const hash = hashes[packageName(version, entry)]
-    return [`${hash}  ${packageName(version, entry)}`, `${hash}  ${copyName(entry)}`]
+    return [packageName(version, entry), copyName(entry), previousCopyName(entry), ...compatibilityNames(version, entry)]
+      .map(name => `${hash}  ${name}`)
   })
   return `${lines.join('\n')}\n`
 }
@@ -115,6 +121,7 @@ async function main([version, from, to, notesFile]) {
     sizes[name] = statSync(join(from, name)).size
     hashes[name] = await sha256(join(from, name))
     copyFileSync(join(from, name), join(to, copyName(entry)))
+    copyFileSync(join(from, name), join(to, previousCopyName(entry)))
   }
   writeFileSync(join(to, SUMS), checksums(version, hashes))
   const block = downloadBlock({ version, sizes, repo: process.env.GITHUB_REPOSITORY || REPO, mirror: process.env.MIRROR_BASE || undefined })

@@ -47,7 +47,7 @@ class FakeObserver {
   observe() {}
   disconnect() { this.off = true }
 }
-// The markdown the host's renderer is given, and what DS Bot's copy controls write.
+// The markdown the host's renderer is given, and what Cue's copy controls write.
 const markdownTexts = []
 const copiedTexts = []
 const clipboard = { writeText: text => { copiedTexts.push(text); return Promise.resolve() } }
@@ -606,7 +606,7 @@ const docks = (store, roster, options) => {
 }
 
 test('a secret request refused on a read-only window says so in one line', () => {
-  const refused = 'No card can be shown now. The Bot team in /somewhere is open in another dsh (Web or Desktop, pid 4 on host-a). This window shows the team but cannot change it; close the other one and reload.'
+  const refused = 'No card can be shown now. The Bot team in /somewhere is open in another Cue instance (Web or Desktop, pid 4 on host-a). This window shows the team but cannot change it; close the other one and reload.'
   const root = program([call('request_secret', 'program:ro', { args: { name: 'DEMO_TOKEN' }, content: refused })])
   assert.match(shown(root), /Chief could not ask for a key: this window can only view the team/)
   // Other refusals stay silent: they are written for the model.
@@ -833,7 +833,7 @@ test('PTC secret and question cards show at their sub-calls and act on their own
   assert.equal(shown(program([call('ask_user', 'call-1-2:ptc:1')]), { roster: team() }), '')
 })
 
-// #133: a DSH goal round showed its raw <goal_round> prompt as an event line.
+// #133: a Cue goal round showed its raw <goal_round> prompt as an event line.
 test('a goal round draws nothing, while another unknown trigger keeps its event line', () => {
   const trigger = source => expand(TriggerCell({
     node: { key: 'node', data: { source, turn: 2, content: text$('<goal_round>Keep going</goal_round>') }, location: { turn: { turn: 2 } } },
@@ -968,7 +968,7 @@ test('a show_view call the host refused draws nothing; a display-only card draws
 })
 
 test('a display-only call still draws when the args come through the value accessor', () => {
-  // DSH's PartialArguments reads strings through text() — value() returns
+  // Cue's PartialArguments reads strings through text() — value() returns
   // undefined for them — so the title has to go through the string accessor.
   const data = { title: 'Status', view: { type: 'metric', label: 'Done', value: '3' } }
   const callNode = {
@@ -1069,8 +1069,8 @@ test('a Retry after a failed turn shows as one event line', () => {
   assert.equal(text(out), 'Went on after the failed turn')
 })
 
-// #718: a folded message's cut code block is drawn by DS Bot, so no copy control
-// exists that holds only the part shown; DS Bot's own is bound to the whole
+// #718: a folded message's cut code block is drawn by Cue, so no copy control
+// exists that holds only the part shown; Cue's own is bound to the whole
 // block, and a short block keeps the host's normal rendering and copy.
 test('a folded code block leaves no copy of only its shown part', async () => {
   const inner = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join('\n')
@@ -1085,7 +1085,7 @@ test('a folded code block leaves no copy of only its shown part', async () => {
   const out = bubble([`Here:\n\`\`\`js\n${inner}\n\`\`\``])
   // The markdown the host renders holds no fence, so it can draw no copy of the part.
   assert.ok(markdownTexts.length > 0 && markdownTexts.every(given => !given.includes('```')))
-  // DS Bot draws the part the preview keeps, and its copy holds the whole block.
+  // Cue draws the part the preview keeps, and its copy holds the whole block.
   assert.equal(text(find(out, item => item.type === 'pre')), 'line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8')
   const [copy] = copyOf(out)
   assert.equal(copyOf(out).length, 1)

@@ -1,7 +1,7 @@
 // Connectors: outside services every Bot can use. One engine mounts each
 // connected service's MCP server on the plugin context through the local
 // gateway (gateway.js), so every Bot gets mcp__<id>__* tools while credentials
-// stay DS Bot secrets that never reach the mcp-client config. OAuth sign-in is
+// stay Cue secrets that never reach the mcp-client config. OAuth sign-in is
 // in oauth.js, the service list in catalog.js, mail in mail/.
 import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
@@ -18,10 +18,9 @@ import { output } from '../tools.js'
 
 export const GITHUB = 'github'
 export const GITHUB_SECRET = 'GITHUB_TOKEN'
-const MCP_CLIENT = '@earendil-works/pi-mcp'
 const CHECK_TIMEOUT_MS = 15_000
 const SIGN_IN_TIMEOUT_MS = 10 * 60_000
-const SECRET_REF = /\$DSH_SECRET_([A-Z][A-Z0-9_]*)/g
+const SECRET_REF = /\$CUE_SECRET_([A-Z][A-Z0-9_]*)/g
 const MAX_REQUESTS = 20
 
 // Asks GitHub who the token belongs to. Any token GitHub accepts passes.
@@ -54,7 +53,6 @@ export function install(rt) {
   const pendings = new Map()
   const refreshes = new Map()
   const gateways = { gw: null }
-  const pluginP = { p: null }
 
   const entries = () => {
     const list = [...CATALOG.filter(entry => entry.id !== 'github' || options !== null)]
@@ -141,16 +139,6 @@ export function install(rt) {
     return gateways.gw
   }
 
-  const loadMcpPlugin = async () => {
-    pluginP.p ??= (async () => {
-      const loader = ctx.get?.('loader')
-      if (typeof loader?.import !== 'function') throw new Error('This host cannot load connectors')
-      const mod = await loader.import(MCP_CLIENT)
-      return loader.unwrapExports?.(mod) ?? mod?.default ?? mod
-    })()
-    return pluginP.p
-  }
-
   const resolveRefs = (value) => String(value).replace(SECRET_REF, (_m, name) => rt.secretValue(name) ?? '')
 
   async function configFor(id) {
@@ -185,9 +173,7 @@ export function install(rt) {
     try {
       if (stopped) return
       const config = { ...(await configFor(id)), failOnStartupError: true }
-      const fiber = typeof ctx.mountMcp === 'function'
-        ? await ctx.mountMcp(config)
-        : ctx.plugin(await loadMcpPlugin(), config)
+      const fiber = await ctx.mountMcp(config)
       const mount = { fp, fiber }
       mounts.set(id, mount)
       await fiber.await()
@@ -277,7 +263,7 @@ export function install(rt) {
       try { url = new URL(req.url ?? '/', 'http://127.0.0.1') } catch { res.writeHead(400); res.end(); return }
       if (url.pathname !== '/callback') { res.writeHead(404); res.end(); return }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      res.end('<!doctype html><title>Signed in</title><p style="font-family:sans-serif;margin:3em;text-align:center">Signed in — you can close this tab and go back to DS Bot.</p>')
+      res.end('<!doctype html><title>Signed in</title><p style="font-family:sans-serif;margin:3em;text-align:center">Signed in — you can close this tab and go back to Cue.</p>')
       void ready({ code: url.searchParams.get('code'), state: url.searchParams.get('state'), iss: url.searchParams.get('iss'), error: url.searchParams.get('error'), errorDescription: url.searchParams.get('error_description') }).catch(error => rt.warn('ds-bot: connector sign-in callback failed: %s', reason(error)))
     })
     listener.on('error', error => {
@@ -782,7 +768,7 @@ export function install(rt) {
           for (const [header, raw] of Object.entries(spec.headers ?? {})) {
             const secretName = envSecretOf(id, `HEAD_${header}`)
             await writeSecret(secretName, String(raw), `${name} connector`)
-            custom.headers[header] = `$DSH_SECRET_${secretName}`
+            custom.headers[header] = `$CUE_SECRET_${secretName}`
           }
         } else if (typeof spec.command === 'string') {
           custom.command = spec.command
@@ -791,7 +777,7 @@ export function install(rt) {
           for (const [envName, raw] of Object.entries(spec.env ?? {})) {
             const secretName = envSecretOf(id, envName)
             await writeSecret(secretName, String(raw), `${name} connector`)
-            custom.env[envName] = `$DSH_SECRET_${secretName}`
+            custom.env[envName] = `$CUE_SECRET_${secretName}`
           }
         } else continue
         await saveState(id, { custom, connectedAt: Date.now() })

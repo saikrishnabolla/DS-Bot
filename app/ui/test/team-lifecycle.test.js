@@ -190,6 +190,94 @@ test('createTeam follows the desktop updater from initial state through cleanup'
   await act(async () => { root.unmount() })
 })
 
+test('createTeam owns every Agent sidebar action without duplicate Session creates', async t => {
+  const container = installWindow(t)
+  installTimers(t)
+  const previousFetch = globalThis.fetch
+  const previousApp = globalThis.dsBotApp
+  t.after(() => { globalThis.fetch = previousFetch; globalThis.dsBotApp = previousApp })
+  globalThis.dsBotApp = undefined
+  let current = state()
+  current.agents = [{ id: 'a1', name: 'Agent', sessions: ['s1'], createdAt: 1 }]
+  let revision = current.revision
+  const calls = []
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === 'api/bot/feed') return feed(options.signal)
+    const request = JSON.parse(options.body)
+    calls.push(request)
+    if (request.endpoint === 'state') return reply({ ...current, revision })
+    if (request.endpoint === 'update-check') return reply({ available: false, phase: 'idle' })
+    if (request.endpoint === 'agent-session') {
+      current = { ...current, agents: [{ ...current.agents[0], sessions: [...current.agents[0].sessions, 's2'] }] }
+      revision += 1
+      return reply({ sessionId: 's2' })
+    }
+    if (request.endpoint === 'agent-preset-start') return reply({ sessionId: 'creator-1' })
+    if (request.endpoint === 'agent-archive') {
+      current = { ...current, agents: [{ ...current.agents[0], sessions: current.agents[0].sessions.filter(id => id !== request.payload.sessionId) }] }
+      revision += 1
+      return reply(true)
+    }
+    if (request.endpoint === 'remove-agent') {
+      current = { ...current, agents: [] }
+      revision += 1
+      return reply(current)
+    }
+    return reply(true)
+  }
+
+  const team = createTeam()
+  const shown = []
+  const interfaceStates = []
+  function Probe() {
+    shown.push(team.hooks.useShown(value => value))
+    interfaceStates.push(team.hooks.useUi(value => value))
+    return null
+  }
+  const root = createRoot(container)
+  let stop
+  await act(async () => {
+    root.render(createElement(Probe))
+    stop = team.start()
+    await drain()
+  })
+  for (const name of ['isAgentSession', 'openAgentSession', 'addAgent', 'openAgent', 'newAgentSession', 'archiveAgentSession', 'renameAgentSession', 'beginAgentRename', 'endAgentRename', 'removeAgent']) {
+    assert.equal(typeof team.actions[name], 'function', name)
+  }
+
+  await act(async () => { await team.actions.openAgent('a1'); await drain() })
+  assert.equal(shown.at(-1), 's1')
+  await act(async () => {
+    await Promise.all([team.actions.newAgentSession('a1'), team.actions.newAgentSession('a1')])
+    await drain()
+  })
+  assert.equal(calls.filter(call => call.endpoint === 'agent-session').length, 1)
+  assert.equal(shown.at(-1), 's2')
+  await team.actions.renameAgentSession('a1', 's2', 'Scratch')
+  assert.deepEqual(calls.findLast(call => call.endpoint === 'agent-rename').payload, { agentId: 'a1', sessionId: 's2', title: 'Scratch' })
+
+  await act(async () => { await team.actions.archiveAgentSession('a1', 's2'); await drain() })
+  assert.equal(shown.at(-1), 's1')
+  await act(async () => { await team.actions.removeAgent('a1'); await drain() })
+  assert.equal(shown.at(-1), 'b1')
+
+  await act(async () => {
+    team.actions.openSettings('agent-presets')
+    await drain()
+  })
+  assert.deepEqual(interfaceStates.at(-1).settings, { page: 'agent-presets', id: null })
+  await act(async () => {
+    await team.actions.startAgentPresetCreator()
+    await drain()
+  })
+  assert.deepEqual(calls.findLast(call => call.endpoint === 'agent-preset-start').payload, { id: 'creator' })
+  assert.equal(shown.at(-1), 'creator-1')
+  assert.equal(interfaceStates.at(-1).settings, null)
+
+  stop()
+  await act(async () => { root.unmount() })
+})
+
 test('createTeam drives and cleans up the desktop computer indicator, cursor and idle bridge', async t => {
   installWindow(t)
   const timers = installTimers(t)

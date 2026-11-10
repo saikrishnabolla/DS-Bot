@@ -121,7 +121,7 @@ export function SecretCard({ sessionId, bot, request, roster, actions, inline = 
       h('label', { className: 'bt-q-field bt-secret-field' }, h(MaskedInput, { value, onChange: next => { hold(); setValue(next) }, onEnter: save, label: t('Value of {name}', { name: request.name }), autoFocus: replacing })),
       request.kind === 'fill' ? h(ScopeSwitch, { value: scope, onChange: next => { hold(); setScope(next) }, bot }) : null) : null,
     h('div', { className: 'bt-secret-note', id: noteId },
-      t("{bot} never sees the value. It reaches {bot}'s shell as ", { bot: bot.name }), h('code', null, `$DSH_SECRET_${request.name}`), '.',
+      t("{bot} never sees the value. It reaches {bot}'s shell as ", { bot: bot.name }), h('code', null, `$CUE_SECRET_${request.name}`), '.',
       filling && value !== '' && !long ? t(' At least {count} characters.', { count: MIN_VALUE }) : ''),
     warn,
     error ? h('div', { className: 'bt-secret-error', role: 'alert' }, error) : null,
@@ -288,7 +288,7 @@ export function SecretsPage({ roster, actions, run, Section }) {
   const secrets = roster.secrets ?? []
   return [
     h('p', { key: 'about', className: 'bt-secret-about' },
-      t('Keys your Bots asked for. Bots never see the values: they use them as '), h('code', null, '$DSH_SECRET_NAME'),
+      t('Keys your Bots asked for. Bots never see the values: they use them as '), h('code', null, '$CUE_SECRET_NAME'),
       t(' in their shell, and every value is replaced by '), h('code', null, '[secret:NAME]'), t(' before anything goes to a model.')),
     h(Section, { key: 'list', title: t('Secrets · {count}', { count: secrets.length }) },
       secrets.length === 0 && !adding ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('No keys yet. When a Bot needs one, it shows a card in its chat.'))) : null,

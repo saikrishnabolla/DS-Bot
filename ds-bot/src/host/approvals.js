@@ -1,6 +1,6 @@
-// Approvals. A member's group Session is hidden, so DSH's approval card never shows
-// there and the turn would wait forever: DS Bot answers those requests itself, from
-// the group chat. A Bot's own chat keeps DSH's card, but DS Bot can answer those too
+// Approvals. A member's group Session is hidden, so Cue's approval card never shows
+// there and the turn would wait forever: Cue answers those requests itself, from
+// the group chat. A Bot's own chat keeps Cue's card, but Cue can answer those too
 // (IM chats, the phone app): the request is raced — whichever side answers first wins,
 // and the other card withdraws.
 import { randomUUID } from 'node:crypto'
@@ -39,11 +39,11 @@ export function install(rt) {
   }
   for (const entry of pending.values()) entry.answer = () => settle(entry, 'cancelled')
 
-  // Ahead of DSH's own answerer, which would hold a hidden Session's request unseen.
+  // Ahead of Cue's own answerer, which would hold a hidden Session's request unseen.
   ctx.on('approval/request', (request, next) => {
     const sessionId = request.agent?.session?.id ?? request.agent?.id
     const owner = sessionId === undefined ? undefined : rt.groupOwners.get(sessionId)
-    const botId = owner?.botId ?? (sessionId === undefined ? undefined : rt.chatOwners.get(sessionId))
+    const botId = owner?.botId ?? (sessionId === undefined ? undefined : rt.chatOwners.get(sessionId) ?? rt.agentOf?.(sessionId)?.id)
     const tool = String(request.toolName ?? '')
     const candidate = botId === undefined ? undefined : {
       id: randomUUID(), sessionId, botId, ...(owner ? { roomId: owner.roomId } : {}), tool,
@@ -66,7 +66,7 @@ export function install(rt) {
     rt.noteApproval?.(sessionId, { tool: entry.tool, reason: entry.reason.slice(0, 200) })
     emit('open', { ...entry, answerable: true })
     if (entry.roomId === undefined) {
-      // An own-chat approval races DSH's card. The card sees `linked`, our own
+      // An own-chat approval races Cue's card. The card sees `linked`, our own
       // AbortSignal: answering here resolves the request, then withdraws the card;
       // an answer there settles `next()` first and is adopted. An abort of the
       // original signal cancels either way.
@@ -91,7 +91,7 @@ export function install(rt) {
             if (!pending.has(id)) return
             complete(outcome)
           },
-          // DSH's answerer threw: close the entry and give the caller the error
+          // Cue's answerer threw: close the entry and give the caller the error
           // the way the pre-race code did, instead of hanging forever.
           (error) => {
             if (!settle(entry, 'cancelled')) return

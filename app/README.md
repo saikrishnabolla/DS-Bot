@@ -1,6 +1,6 @@
-# DS Bot desktop app
+# Cue desktop app
 
-The Electron app runs DS Bot through its owned Pi Durable host. It packages the React UI from `ui/` and starts the host in a child process.
+The Electron app runs Cue through its owned Pi Durable host. It packages the React UI from `ui/` and starts the host in a child process.
 
 ## Run
 
@@ -22,7 +22,7 @@ Model providers and keys are configured in the Models page or through the enviro
 
 ## Data
 
-The default data folder is `~/.ds-bot`. Bot workspaces default to `~/DS Bot`.
+The default data folder is `~/.ds-bot`. Bot workspaces default to `~/Cue`.
 
 Set these variables for an isolated run:
 

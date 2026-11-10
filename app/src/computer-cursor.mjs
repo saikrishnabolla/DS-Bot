@@ -32,7 +32,7 @@ function warn(log, message) {
  */
 export function createComputerCursor({ BrowserWindow, screen, platform, ownPid = process.pid, spawn = realSpawn, log = console }) {
   const windows = new Map()
-  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `DS Bot: cursor diagnostic: ${message}`) }
+  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `Cue: cursor diagnostic: ${message}`) }
   const checker = createPointChecker({ platform, ownPid, spawn, log, screen })
   const destroy = (botId) => {
     const held = windows.get(botId)
@@ -76,7 +76,7 @@ export function createComputerCursor({ BrowserWindow, screen, platform, ownPid =
       if (!seen) { destroy(botId); return }
       const held = overlay(botId)
       const page = cursorHtml({ color: event.color, avatar: event.avatar, ripple: event.ripple === true })
-      try { held.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`) } catch (error) { warn(log, `DS Bot: the cursor did not load: ${error instanceof Error ? error.message : String(error)}`) }
+      try { held.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`) } catch (error) { warn(log, `Cue: the cursor did not load: ${error instanceof Error ? error.message : String(error)}`) }
       try { held.win.setBounds({ x: Math.round(event.x - TIP.x), y: Math.round(event.y - TIP.y), width: SIZE, height: SIZE }) } catch {}
       try { if (!held.win.isVisible?.()) held.win.showInactive?.() } catch {}
       clearTimeout(held.fadeAt)
@@ -127,7 +127,7 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
   let pending = null
   let nextId = 1
   let queue = Promise.resolve()
-  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `DS Bot: cursor diagnostic: ${message}`) }
+  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `Cue: cursor diagnostic: ${message}`) }
   const ensure = () => {
     if (child !== null) return { child, ready: startup.promise }
     const script = platform === 'darwin' ? JXA_CHECKER : PS_CHECKER
@@ -180,9 +180,9 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
           }
         }
       })
-      child.on('error', (error) => { warn(log, `DS Bot: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); reset() })
+      child.on('error', (error) => { warn(log, `Cue: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); reset() })
       child.on('exit', reset)
-    } catch (error) { warn(log, `DS Bot: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
+    } catch (error) { warn(log, `Cue: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
     return child === null ? null : { child, ready: startup.promise }
   }
   const check = (x, y, pid, windowId) => {

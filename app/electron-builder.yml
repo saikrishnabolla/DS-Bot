@@ -1,7 +1,7 @@
 appId: io.github.fei2411.dsbot
-productName: DS Bot
-copyright: Copyright 2026 Fei2411 and the DS Bot contributors
-artifactName: DS-Bot-${version}-${os}-${arch}.${ext}
+productName: Cue
+copyright: Copyright 2026 Fei2411 and the Cue contributors
+artifactName: Cue-${version}-${os}-${arch}.${ext}
 directories:
   output: dist-pack
 files:
@@ -48,7 +48,7 @@ mac:
   # Without this key macOS registers no Local Network entry for the app and
   # blocks LAN connections from tool processes outright ("No route to host").
   extendInfo:
-    NSLocalNetworkUsageDescription: DS Bot runs commands that connect to devices on your local network.
+    NSLocalNetworkUsageDescription: Cue runs commands that connect to devices on your local network.
 linux:
   # Keep the owned Host and its dependencies readable by plain Node.
   asar: false

@@ -57,6 +57,7 @@ test('the owned catalog preserves the UI shape without exposing Pi models', asyn
   assert.deepEqual(catalog[0].input, ['text', 'image'])
   assert.ok(catalog[0].reasoning.efforts.some(entry => entry.id === 'high'))
   assert.equal(owned.defaultModel(), 'local/small')
+  assert.deepEqual([...owned.keyRefs()], [['anthropic', 'ANTHROPIC_API_KEY']])
 })
 
 test('provider setup and credentials persist independently of the Pi runtime', async () => {

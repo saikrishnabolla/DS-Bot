@@ -1,69 +1,60 @@
-# DS Bot security model
-
-The threat model that security reviews and scans of this repository start from. Infrastructure is `docker/` and `docker-compose.yml` in this repository.
+# Cue security model
 
 ## System overview and trust boundaries
 
-DS Bot is a team of long-lived LLM Bots built as a plugin on DeepSeek Harness (DSH). It runs in three ways:
-
-- **DSH Desktop / DSH Web** with the `ds-bot` plugin, on the user's own computer.
-- **Desktop app** (`app/`, Electron) that runs a pinned DSH with the plugin in its own `DSH_HOME`, and imports a team from `~/.dsh` (read only).
-- **Docker** (`docker/`, `docker-compose.yml`): `dsh web` on `0.0.0.0:3080` (published as `0.0.0.0:13080`), `DSH_PERMISSION_MODE=danger-full-access`, approval `never`. The container is the sandbox boundary.
+Cue runs its own Pi Durable host in the desktop app or Docker.
 
 Trust boundaries:
-1. Untrusted content -> model -> Bot tools. Web pages, files, search results, connector/MCP results and messages from other Bots reach the model; the model's tool calls run with the Bot's permission preset.
-2. Ordinary Bot -> Main Bot rights (create/change/stop Bots, groups, folders), enforced in `ds-bot/src/host/tools.js` via `rt.isMain`.
-3. Model/tool output -> outbound model requests (secret redaction in `ds-bot/src/host/secrets.js`).
-4. Browser renderer -> host: `POST /api/bot` channel (`ds-bot/src/host/channel.js`, `ROUTE` in `constants.js`) and Electron IPC (`app/src/main.mjs`, `preload.cjs`).
-5. Bot-produced HTML widgets -> app page (`ds-bot/src/client/widget-html.js`, `sandbox="allow-scripts"` iframe without same-origin).
-6. Bot browser pages -> app (`app/src/bot-browser.mjs`, `bot-views.mjs`: sandboxed, contextIsolation, own partition).
+
+1. Web pages, files, search results, connector results, and Bot messages enter model context as untrusted content.
+2. Ordinary Bots cannot use Main Bot operations unless the host authorizes them.
+3. Tool results pass through secret redaction before model requests.
+4. The renderer reaches the host through the authenticated owned HTTP server and restricted Electron IPC.
+5. Bot HTML widgets run in sandboxed iframes. Bot browser pages use isolated Electron partitions.
 
 ## Components
 
-- **host** — plugin server side: `ds-bot/index.js`, `ds-bot/src/host/` (roster, tools, turns/delivery, groups, goals, parts, memory, schedules, permissions, privacy, folders, connectors, providers).
-- **secrets** — `ds-bot/src/host/secrets.js` (secrets.json mode 600, `$DSH_SECRET_<NAME>`, redactor) and API keys/providers (`providers.js`, `models.js`).
-- **client** — browser UI: `ds-bot/src/client/` (incl. widget-html, read-page, connectors UI) and generated `ds-bot/client.js`.
-- **browser** — Bot browser bridge and browser plugins: `ds-bot/src/host/browser.js`, `browser-plugins.js`, `src/host/browser/`, `browser-plugins/`.
-- **desktop-app** — Electron app: `app/src/` (main, start-window, preload, IPC, cookie import, updates, import from `~/.dsh`, move-data), `app/engine/`.
-- **web-search** — `ds-bot/web-search.js`.
-- **docker** — `docker/Dockerfile`, `entrypoint.sh`, `docker.patch.yml`, `docker-compose.yml`.
+- `ds-bot/src/engine/`: Pi Durable adapter and owned host
+- `ds-bot/src/host/`: team behavior, tools, permissions, privacy, and secrets
+- `ds-bot/src/server/owned-server.js`: authenticated HTTP boundary
+- `ds-bot/src/client/` and `app/ui/`: interface
+- `app/src/`: Electron main process, IPC, browser views, updates, and computer use
+- `docker/`: standalone owned host
 
 ## Entry points and who reaches them
 
-- Chat input from the user (trusted).
-- Content the Bot reads: web pages (Bot browser, `read_browser`, web search), files in the work folder, connector/MCP tool results, messages from other Bots and group chats, scheduled-task prompts. **Attacker-controlled.**
-- `/api/bot` HTTP endpoints and DSH Web UI: the local user; in Docker, anyone who can reach port 13080 (DSH trusted-host list + launch token).
-- Electron IPC from the app window.
+- User chat input
+- Untrusted content read by a Bot
+- Owned-host HTTP endpoints
+- Electron IPC from the Cue window
+- Connected MCP servers, mail accounts, and chat platforms
 
-## Assets (maintainer-ranked)
+## Assets
 
-1. **Critical: API keys and Bot secrets** — provider keys, `secrets.json`, `$DSH_SECRET_*`, connector tokens. Must not leak to the model, logs, tool results, other Bots outside the secret's scope, or outbound requests.
-2. **Critical: files on the user's computer** — outside the Bot's work folder; `~/.dsh` must never be written by the app.
-3. Other: imported cookies / browser login state, conversations and memory.
+1. Provider keys, connector tokens, and Bot secrets
+2. Files on the user's computer
+3. Browser cookies, conversations, and memory
 
 ## Attacker profiles
 
-- **Primary (maintainer-confirmed): prompt injection** in web pages, files or messages that makes a Bot exceed its rights — exfiltrate keys/secrets, read or write user files outside its scope, gain Main Bot rights, change other Bots, bypass the permission preset or redaction.
-- Lower concern (not chosen by the maintainer): LAN users reaching the Docker web UI, malicious browser plugins or connectors, a rogue ordinary Bot acting by itself.
+The primary threat is prompt injection that tries to read secrets, exceed folder or permission limits, gain Main Bot rights, or trigger an external action without approval.
 
 ## Existing controls
 
-- Main-Bot checks in `tools.js` (`rt.isMain`, `rt.isAdminOf`).
-- Working folders, the team workspace and Bot photos stay out of DSH's data and the team's data (`folders.js` `guarded`/`inData`).
-- Private Bots (`privacy.js`): user-only switch; other Bots cannot read a private Bot's working folder, memory or Sessions, and a private Bot's outbound sharing (`message_bot`, shared capabilities, writes outside its folder) requires user approval; protection stays after deletion until the user releases it in Settings.
-- Per-Bot permission presets (`permissions.js`), set on every Session.
-- Secrets: scoped per Bot (`canUse`), redacted from tool results and outbound model requests (`redactor`, JSON/URL-encoded forms).
-- Connectors refuse non-HTTPS addresses (`connectors.js`).
-- HTML widgets in `sandbox="allow-scripts"` iframes; Electron webviews sandboxed with contextIsolation and own partitions; IPC handlers call `assertWindow(event)`.
-- Cookie values stay in the Electron main process (`cookie-import.mjs`).
-- Launch token redacted from host logs (`host-process.mjs`).
+- Main Bot and group-admin checks
+- Per-Bot permission presets and approval gates
+- Private Bot folder, memory, and sharing rules
+- Scoped secrets and outbound redaction
+- HTTPS requirements for remote connectors
+- Sandboxed widgets and browser views
+- IPC sender checks
+- One-time launch links, HTTP-only cookies, and `Host` and `Origin` checks
 
-## Out of scope / accepted risk (maintainer)
+## Accepted risk
 
-- **Docker edition: Bots have full access inside the container by design** (`danger-full-access`, approval `never`). A Bot changing or reading files inside the container is not a finding; escaping the container or leaking keys/secrets still is.
-- DSH itself is upstream; not explicitly ruled out, but fixes belong upstream (hard rule: never patch DSH).
+Bots can read, write, run commands, and use the network within the permissions the user grants. Docker treats the container and its mounted folders as the execution boundary. Computer use is available only in the desktop app and requires operating-system permissions.
 
 ## Open questions
 
-- Is the Docker web UI expected to be reachable only on a trusted LAN?
-- Should a secret scoped to one Bot be treated as hidden from Main Bots too?
+- Should a secret scoped to one Bot be hidden from Main Bots?
+- Which Docker reverse-proxy setups should receive first-party deployment examples?

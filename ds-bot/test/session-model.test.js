@@ -40,7 +40,7 @@ function fixture(chunks, { attachments, inputModalities, textOnlyModels } = {}) 
 
 const stop = { type: 'finish', reason: { kind: 'stop' } }
 
-test('session completion converts DSH text to an OpenAI chat response', async () => {
+test('session completion converts Cue text to an OpenAI chat response', async () => {
   const setup = fixture([
     { type: 'text-delta', index: 0, text: 'The page title is Example.' },
     stop,
@@ -56,7 +56,7 @@ test('session completion converts DSH text to an OpenAI chat response', async ()
   assert.equal(setup.modelInfoCalls(), 0)
 })
 
-test('session completion preserves DSH tool-call identity, name, and JSON arguments', async () => {
+test('session completion preserves Cue tool-call identity, name, and JSON arguments', async () => {
   const setup = fixture([
     { type: 'tool-call-delta', index: 0, id: 'call-browser-1', name: 'browser_open', argumentsDelta: '{"url":"https://example.com"}' },
     { type: 'finish', reason: { kind: 'stop' } },
@@ -190,7 +190,7 @@ test('configured text-only models omit screenshots without attachment saves', as
   assert.equal(setup.modelInfoCalls(), 0)
 })
 
-test('browser screenshots become DSH image blocks when the route supports images', async () => {
+test('browser screenshots become Cue image blocks when the route supports images', async () => {
   const saved = []
   const attachments = {
     async saveImages(inputs) {

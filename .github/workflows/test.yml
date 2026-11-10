@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.os }} · Node ${{ matrix.node }} · DSH ${{ matrix.dsh }}
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
     # The suite takes a few minutes; a test that never settles used to hold the job for the
     # runner's six-hour limit.
@@ -24,10 +24,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, node: 24, dsh: 0.2.2-rc.1 }
-          - { os: windows-latest, node: 24, dsh: 0.2.2-rc.1 }
-          - { os: ubuntu-latest, node: 22, dsh: 0.2.2-rc.1 }
-          - { os: ubuntu-latest, node: 24, dsh: 0.2.0-rc.2 }
+          - { os: ubuntu-latest, node: 24 }
+          - { os: windows-latest, node: 24 }
+          - { os: ubuntu-latest, node: 22 }
     defaults:
       run:
         shell: bash
@@ -38,12 +37,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci --no-fund --no-audit
-      - name: Install DSH ${{ matrix.dsh }}
-        # The testkit pins the DSH packages it was built with; at another version it would
-        # bring a second, mismatched set.
-        run: npm run harness -- --no-save "@deepseek-ai/dsh@${{ matrix.dsh }}" "@deepseek-ai/dsh-agent-loop-testkit@${{ matrix.dsh }}"
       - run: npm test
-      - run: node scripts/build-client.mjs --check
+      - run: npm run build
       - run: npm run lint
 
   scan:
@@ -61,7 +56,7 @@ jobs:
           SCAN_EXTRA_PATTERNS: ${{ secrets.SCAN_EXTRA_PATTERNS }}
 
   app:
-    name: Desktop app profile
+    name: Desktop app
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -72,7 +67,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # The test composes the profile and starts no window, so it needs no Electron binary.
       - run: npm ci --no-fund --no-audit
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -154,12 +148,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           function Find-Entry($root) {
             Get-ChildItem "$root\Software\Microsoft\Windows\CurrentVersion\Uninstall" |
-              Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like 'DS Bot*' }
+              Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like 'Cue*' }
           }
-          $installer = Get-Item dist-pack/DS-Bot-*-win-x64.exe
+          $installer = Get-Item dist-pack/Cue-*-win-x64.exe
           Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\DS Bot'
-          $exe = Join-Path $dir 'DS Bot.exe'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Cue'
+          $exe = Join-Path $dir 'Cue.exe'
           if (-not (Test-Path $exe)) { throw "The installer did not put the app in $dir" }
           $entry = Find-Entry 'HKCU:'
           if (-not $entry) { throw 'No uninstall entry for the current user' }
@@ -187,14 +181,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = Join-Path $env:LOCALAPPDATA 'Programs\DS Bot\DS Bot.exe'
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Cue\Cue.exe'
           node scripts/check-update.mjs $exe dist-next
           if ($LASTEXITCODE -ne 0) { throw 'The installed app did not take the update' }
           # The installer goes on after the app has quit.
           function Installed-Version {
             Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
               ForEach-Object { Get-ItemProperty $_.PSPath } |
-              Where-Object { $_.DisplayName -like 'DS Bot*' } |
+              Where-Object { $_.DisplayName -like 'Cue*' } |
               Select-Object -ExpandProperty DisplayVersion
           }
           $deadline = (Get-Date).AddSeconds(240)
@@ -210,18 +204,18 @@ jobs:
           $ErrorActionPreference = 'Stop'
           function Find-Entry($root) {
             Get-ChildItem "$root\Software\Microsoft\Windows\CurrentVersion\Uninstall" |
-              Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like 'DS Bot*' }
+              Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like 'Cue*' }
           }
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\DS Bot'
-          $exe = Join-Path $dir 'DS Bot.exe'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Cue'
+          $exe = Join-Path $dir 'Cue.exe'
           # The uninstaller removes the program only: the data location and the app's own data stay.
-          $kept = foreach ($folder in (Join-Path $HOME '.ds-bot'), (Join-Path $env:APPDATA 'DS Bot')) {
+          $kept = foreach ($folder in (Join-Path $HOME '.ds-bot'), (Join-Path $env:APPDATA 'Cue')) {
             New-Item -ItemType Directory -Force $folder | Out-Null
             $file = Join-Path $folder 'kept.txt'
             Set-Content $file 'kept'
             $file
           }
-          $uninstaller = Join-Path $dir 'Uninstall DS Bot.exe'
+          $uninstaller = Join-Path $dir 'Uninstall Cue.exe'
           Start-Process -FilePath $uninstaller -ArgumentList '/currentuser', '/S' -Wait
           # The uninstaller goes on from a copy in the temp folder, so wait for its result.
           $deadline = (Get-Date).AddSeconds(120)
@@ -289,16 +283,16 @@ jobs:
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       - name: Check the zip
         run: |
-          zip="dist-pack/DS-Bot-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
+          zip="dist-pack/Cue-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
           test -f "$zip"
       - name: Check the packaged app
         run: node scripts/check-packed.mjs
       - name: Install from the zip and check
         run: |
-          zip="dist-pack/DS-Bot-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
+          zip="dist-pack/Cue-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
           ditto -x -k "$zip" /Applications
-          app="/Applications/DS Bot.app"
-          exe="$app/Contents/MacOS/DS Bot"
+          app="/Applications/Cue.app"
+          exe="$app/Contents/MacOS/Cue"
           codesign --verify --deep --strict "$app"
           file "$exe"
           expected="${{ matrix.arch }}"
@@ -358,8 +352,8 @@ jobs:
       - name: Check the packages
         run: |
           version="$(node -p "require('./package.json').version")"
-          test -f "dist-pack/DS-Bot-$version-linux-x86_64.AppImage"
-          test -f "dist-pack/DS-Bot-$version-linux-amd64.deb"
+          test -f "dist-pack/Cue-$version-linux-x86_64.AppImage"
+          test -f "dist-pack/Cue-$version-linux-amd64.deb"
           test -f dist-pack/latest-linux.yml
       # An AppImage mounts through FUSE 2, and Ubuntu 24.04's AppArmor blocks the unprivileged
       # user namespaces that Chromium's sandbox needs; a throwaway runner may lift that.
@@ -374,12 +368,12 @@ jobs:
       - name: Install the deb and check
         run: |
           version="$(node -p "require('./package.json').version")"
-          sudo apt-get install -y "./dist-pack/DS-Bot-$version-linux-amd64.deb"
+          sudo apt-get install -y "./dist-pack/Cue-$version-linux-amd64.deb"
           test -f /usr/share/applications/dsbot.desktop
-          xvfb-run -a node scripts/check-packed.mjs "/opt/DS Bot/dsbot"
+          xvfb-run -a node scripts/check-packed.mjs "/opt/Cue/dsbot"
       # A deb cannot update itself: it points at the release page, as on macOS.
       - name: The deb's app hears of a new version
-        run: xvfb-run -a node scripts/check-update.mjs "/opt/DS Bot/dsbot" 99.0.0
+        run: xvfb-run -a node scripts/check-update.mjs "/opt/Cue/dsbot" 99.0.0
       # The update builds the app a second time, so it runs only for changes to the app or the
       # workflows. The AppImage downloads the new one and replaces itself as it quits.
       - name: Does the change touch the app?
@@ -397,19 +391,19 @@ jobs:
         if: steps.scope.outputs.update == 'true'
         run: |
           tmp="$(mktemp -d)"
-          cp dist-pack/DS-Bot-*-linux-x86_64.AppImage "$tmp/dsbot.AppImage"
+          cp dist-pack/Cue-*-linux-x86_64.AppImage "$tmp/dsbot.AppImage"
           chmod +x "$tmp/dsbot.AppImage"
           xvfb-run -a node scripts/check-update.mjs "$tmp/dsbot.AppImage" dist-next
           pkill -f "$tmp/dsbot" || true
-          next="$(ls dist-next/DS-Bot-*-linux-x86_64.AppImage)"
+          next="$(ls dist-next/Cue-*-linux-x86_64.AppImage)"
           test "$(sha512sum "$tmp/dsbot.AppImage" | cut -d' ' -f1)" = "$(sha512sum "$next" | cut -d' ' -f1)"
       - name: Uninstall
         run: |
           sudo apt-get remove -y dsbot
-          test ! -e "/opt/DS Bot/dsbot"
+          test ! -e "/opt/Cue/dsbot"
 
   docker:
-    name: Docker startup and data migration
+    name: Docker build and startup
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [test, scan]
@@ -423,11 +417,16 @@ jobs:
           node-version: 24
       - run: docker compose -f docker-compose.yml config --quiet
       - run: docker compose -f docker/compose.yml config --quiet
-      - run: docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
       - run: docker build -f docker/Dockerfile -t ds-bot:test .
-      - run: node docker/test.mjs ds-bot:test
-      - run: docker build -f docker/Dockerfile.dev -t ds-bot:dev-test .
-      - run: node docker/test-dev.mjs ds-bot:dev-test ds-bot:test
+      - name: Start the owned host
+        run: |
+          id="$(docker run -d -p 3080:3080 ds-bot:test)"
+          trap 'docker logs "$id"; docker rm -f "$id"' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:3080/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
       - name: Publish the tested image
         if: github.event_name == 'push' && github.repository == 'Fei2411/DS-Bot'
         env:

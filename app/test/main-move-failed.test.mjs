@@ -1,6 +1,6 @@
 // A move whose copy fails says why on a card on the moving page instead of a message box:
 // 〔重试〕 copies again, 〔用原来的位置启动〕 starts again on the old folder (start-window §5). The
-// Electron parts are test doubles: no display, no DSH, no data of the user.
+// Electron parts are test doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

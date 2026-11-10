@@ -1,7 +1,7 @@
 // In a Bot's private chat a user steer must reach the Bot at once, not at the
-// next DSH step boundary. Two mechanisms:
+// next Cue step boundary. Two mechanisms:
 //  - a foreground shell call detaches into the jobs registry on a steer and
-//    returns DSH's promoted result, so the step ends while the command runs on;
+//    returns Cue's promoted result, so the step ends while the command runs on;
 //  - a running model call is cancelled (hook reason) and the steer is moved to
 //    the front of next-turn, so a fresh turn claims it at once.
 import { isAbsolute, resolve } from 'node:path'
@@ -78,8 +78,8 @@ export function install(rt) {
 
   const noticeOf = (name, command, text) => createUserMessage({
     content: [{ type: 'text', text }],
-    // Same source as DSH's job-completion notice so every chat renders it the
-    // same way, and DS Bot's routing ignores it.
+    // Same source as Cue's job-completion notice so every chat renders it the
+    // same way, and Cue's routing ignores it.
     source: { kind: 'tool-jobs', form: 'notice', summary: boundContextSummary(`${name} ${command} …`) },
   })
 

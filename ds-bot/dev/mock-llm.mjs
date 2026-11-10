@@ -61,7 +61,7 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PORT = Number(process.env.MOCK_PORT ?? 8765)
-const LOG = process.env.MOCK_LOG ?? fileURLToPath(new URL('../../.dsh-test/mock.jsonl', import.meta.url))
+const LOG = process.env.MOCK_LOG ?? fileURLToPath(new URL('../../.cue-test/mock.jsonl', import.meta.url))
 mkdirSync(dirname(LOG), { recursive: true })
 const DELAY = Number(process.env.MOCK_DELAY_MS ?? 600)
 // Random extra latency per call, to shake out ordering assumptions.
@@ -219,7 +219,7 @@ function decide(body) {
       const note = textBlocks(last.content).find(value => value.trim().startsWith('[Secret card]'))
       return note ? secretNote(note.trim(), tools) : [text('')]
     }
-    if ((used?.name === 'bash' || used?.name === 'pwsh') && /DSH_SECRET_/.test(used.input?.command ?? '')) {
+    if ((used?.name === 'bash' || used?.name === 'pwsh') && /CUE_SECRET_/.test(used.input?.command ?? '')) {
       return [text(`终端输出里我看到的是：${resultText.replace(/\s+/g, ' ').trim().slice(0, 200)}`)]
     }
     if (used?.input?.justification === ESCALATION) return [text(result.is_error ? `没跑成：${resultText.slice(0, 80)}` : '命令跑完了，文件已经写好。')]
@@ -287,8 +287,8 @@ function decide(body) {
   const userText = textOf(last?.content).trim()
   // "撑爆": the provider rejects the request as past its window.
   if (userText.startsWith('撑爆')) return 'overflow'
-  // A file in the message (a long Bot message, a file the user sent): DSH gives its saved
-  // path, and the Bot reads it first.
+  // A file in the message (a long Bot message or a file the user sent) reaches the
+  // model through its saved path, and the Bot reads it first.
   const saved = /verbatim read-only copy saved at ("(?:[^"\\]|\\.)*")/.exec(userText)
   if (saved) return [tool('read', { file_path: JSON.parse(saved[1]) })]
   // "长任务" keeps stepping when a Bot message splices into its turn (a relayed
@@ -666,7 +666,7 @@ function secretNote(note, tools) {
 }
 // Prints a secret's variable in whichever shell the profile offers.
 function echoSecret(name, tools) {
-  const key = `DSH_SECRET_${String(name).toUpperCase()}`
+  const key = `CUE_SECRET_${String(name).toUpperCase()}`
   return tools.has('pwsh') && !tools.has('bash')
     ? tool('pwsh', { description: 'Print the secret variable', command: `Write-Output "value=$env:${key}"` })
     : tool('bash', { description: 'Print the secret variable', command: `echo "value=$${key}"` })
@@ -754,13 +754,13 @@ const server = createServer((req, res) => {
     }
     // Usage follows the model input's size (about three characters per token, all but
     // the newest tenth cached), so context meters and lines see real growth. Sibling
-    // fields such as dsh_session_log are not model input.
+    // Transport-only fields are not model input.
     const tokens = Math.ceil(JSON.stringify([body.system, body.tools, body.messages]).length / 3)
     const cached = Math.floor(tokens * 0.9)
     // Hashes of the system prompt and tools show whether two Sessions share a cacheable prefix.
     const digest = value => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex').slice(0, 12)
     const watch = WATCH ? { watchHit: JSON.stringify([body.system, body.tools, body.messages]).includes(WATCH) } : {}
-    appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), id, tokens, images, session: req.headers['x-deepseek-harness-session-id'] ?? null, ...watch, ...LOG_TOOLS ? { toolNames: (body.tools ?? []).map(entry => entry.name ?? entry.type) } : {}, ...search ? { nativeSearch: { model: body.model, tools: body.tools, auth: [req.headers['x-api-key'] ? 'x-api-key' : '', req.headers.authorization ? 'bearer' : ''].filter(Boolean) } } : {}, system: digest(body.system), tools: digest(body.tools), messages: body.messages?.length ?? 0, first: textOf(body.messages?.[0]?.content).slice(0, 60), last: textOf(body.messages?.at(-1)?.content).slice(0, LOG_CHARS), out: out.map(block => (block.type === 'text' && block.text.length > 200 ? { ...block, text: `${block.text.slice(0, 200)}…(${block.text.length})` } : block)) }) + '\n')
+    appendFileSync(LOG, JSON.stringify({ t: new Date().toISOString(), id, tokens, images, ...watch, ...LOG_TOOLS ? { toolNames: (body.tools ?? []).map(entry => entry.name ?? entry.type) } : {}, ...search ? { nativeSearch: { model: body.model, tools: body.tools, auth: [req.headers['x-api-key'] ? 'x-api-key' : '', req.headers.authorization ? 'bearer' : ''].filter(Boolean) } } : {}, system: digest(body.system), tools: digest(body.tools), messages: body.messages?.length ?? 0, first: textOf(body.messages?.[0]?.content).slice(0, 60), last: textOf(body.messages?.at(-1)?.content).slice(0, LOG_CHARS), out: out.map(block => (block.type === 'text' && block.text.length > 200 ? { ...block, text: `${block.text.slice(0, 200)}…(${block.text.length})` } : block)) }) + '\n')
     if (search) {
       setTimeout(() => {
         res.writeHead(200, { 'content-type': 'application/json' })

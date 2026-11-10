@@ -1,6 +1,6 @@
 // The first close of the team window tells, once, that the app stays in the tray: on a card in
 // the window's page, not in a message box. Only the card's answer lets the window go, and the
-// answer is kept. The Electron parts are test doubles: no display, no DSH, no data of the user.
+// answer is kept. The Electron parts are test doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'

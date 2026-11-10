@@ -1,4 +1,4 @@
-// The LlmAdapter that serves every local-agent route. A DS Bot Bot whose model
+// The LlmAdapter that serves every local-agent route. A Cue Bot whose model
 // is one of these routes answers through a local agent CLI instead of a model
 // API: the loop, Sessions, tools and approvals are the ordinary ones; this
 // adapter turns each request into a prompt for the CLI session the Session is
@@ -83,8 +83,8 @@ export class LocalAgentAdapter extends LlmAdapter {
     return driver
   }
 
-  // What DS Bot knows of a route without starting its CLI: the CLI's default, what a
-  // probe found, and what a Bot runs on. DSH and the catalog ask this for every route.
+  // What Cue knows of a route without starting its CLI: the CLI's default, what a
+  // probe found, and what a Bot runs on. Cue and the catalog ask this for every route.
   async listModels(route) {
     if (engineOf(route, this.deps.customAgents()) === undefined) return []
     const listed = [{ provider: route, id: 'default', name: 'CLI default' }, ...(this.modelCache.get(route) ?? [])]
@@ -136,7 +136,7 @@ export class LocalAgentAdapter extends LlmAdapter {
   }
 
   // ---------------------------------------------------------------------------
-  // The live bridge for one DS Bot Session.
+  // The live bridge for one Cue Session.
   async liveFor(options) {
     const sessionId = String(options.sessionId)
     let live = this.live.get(sessionId)
@@ -172,7 +172,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       mcp: undefined,
       events: [],
       waiters: [],
-      pending: new Map(),   // dshCallId -> {name, mcpCallId?, reply?}
+      pending: new Map(),   // cueCallId -> {name, mcpCallId?, reply?}
       started: false,
       // 'idle': no CLI turn. 'running': a prompt is in flight. 'suspended': the
       // turn waits on a bridged tool call or a permission answer.
@@ -261,10 +261,10 @@ export class LocalAgentAdapter extends LlmAdapter {
     live.tools = tools
     if (live.mcp !== undefined) return live.mcp
     const mcp = new LoopbackMcp(() => live.tools(), ({ name, arguments: args, callId }) => {
-      const dshCallId = `dsbot-${callId}`
+      const cueCallId = `dsbot-${callId}`
       return new Promise((resolve) => {
-        live.pending.set(dshCallId, { name, mcpCallId: callId, resolve })
-        live.push({ type: 'call', name, args, dshCallId })
+        live.pending.set(cueCallId, { name, mcpCallId: callId, resolve })
+        live.push({ type: 'call', name, args, cueCallId })
       })
     })
     await mcp.listen()
@@ -299,7 +299,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // Results of the calls the last step emitted answer the suspended CLI calls.
     // A user message never resolves an approve_agent_action pending: only that
     // tool's own result may. User text may answer a pending bridged MCP call
-    // whose DSH tool concluded the turn (a question-type card).
+    // whose Cue tool concluded the turn (a question-type card).
     for (const message of delta) {
       if (message.role !== 'tool') continue
       const pending = live.pending.get(message.toolCallId)
@@ -412,7 +412,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.promptHash = promptHash
     }
 
-    // The last DSH message is handed now; a later call sends only what follows.
+    // The last Cue message is handed now; a later call sends only what follows.
     // The marker before it is kept: a start that fails before the CLI reads
     // anything must not count that message as delivered.
     const last = messages.at(-1)
@@ -483,8 +483,8 @@ export class LocalAgentAdapter extends LlmAdapter {
         const at = index + offset
         chunks.push(
           { type: 'block-start', index: at, blockType: 'tool-call' },
-          { type: 'tool-call-delta', index: at, id: call.dshCallId, name: call.name, argumentsDelta: JSON.stringify(call.args ?? {}) },
-          { type: 'block-end', index: at, block: { type: 'tool-call', id: call.dshCallId, name: call.name, arguments: JSON.stringify(call.args ?? {}) } },
+          { type: 'tool-call-delta', index: at, id: call.cueCallId, name: call.name, argumentsDelta: JSON.stringify(call.args ?? {}) },
+          { type: 'block-end', index: at, block: { type: 'tool-call', id: call.cueCallId, name: call.name, arguments: JSON.stringify(call.args ?? {}) } },
         )
       })
       index += calls.length
@@ -535,7 +535,7 @@ export class LocalAgentAdapter extends LlmAdapter {
           yield* closeBlocks()
           live.state = 'suspended'
           // A team tool the CLI invoked over the loopback MCP server.
-          for (const chunk of emitCalls([{ name: event.name, args: event.args, dshCallId: event.dshCallId }])) yield chunk
+          for (const chunk of emitCalls([{ name: event.name, args: event.args, cueCallId: event.cueCallId }])) yield chunk
           yield { type: 'finish', reason: { kind: 'tool-calls' } }
           return
         }
@@ -547,7 +547,7 @@ export class LocalAgentAdapter extends LlmAdapter {
           yield* closeBlocks()
           live.state = 'suspended'
           // The CLI's own permission prompt, bridged as an approval tool call.
-          const call = { name: APPROVE_TOOL, args: { action: event.action, ...(event.detail ? { detail: event.detail } : {}) }, dshCallId: event.id }
+          const call = { name: APPROVE_TOOL, args: { action: event.action, ...(event.detail ? { detail: event.detail } : {}) }, cueCallId: event.id }
           live.pending.set(event.id, { name: APPROVE_TOOL, resolve: (result) => event.reply(pickAllowOption(event.options, result)) })
           for (const chunk of emitCalls([call])) yield chunk
           yield { type: 'finish', reason: { kind: 'tool-calls' } }
@@ -587,7 +587,7 @@ export class LocalAgentAdapter extends LlmAdapter {
   }
 }
 
-// The result DSH gives approve_agent_action decides the agent's option: only
+// The result Cue gives approve_agent_action decides the agent's option: only
 // the structured {"decision":"allow"} the tool returns on approval counts;
 // free text, a parse failure, an error or a denial rejects the action.
 function pickAllowOption(options, result) {

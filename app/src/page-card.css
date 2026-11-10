@@ -1,4 +1,4 @@
-/* DS Bot's own questions and pickers: one card over the page in place of a message box
+/* Cue's own questions and pickers: one card over the page in place of a message box
    or a system picker (main.mjs askInWindow and askPicker, preload.cjs showCard and showPicker).
    The main process inserts this sheet into the team window and the start window; the
    colors and springs are the start window's, scoped to the card's layer so that the page's own
@@ -103,7 +103,7 @@
   .dsb-card-btn,.dsb-card-btn:active{transition:background-color .12s,color .12s;scale:none}
   .dsb-picker-up,.dsb-picker-up:active{transition:background-color .12s;scale:none}
 }
-/* The corners DSH gives every element (dsh-client-ui-theme corner-shape.css), which all:unset
+/* The corners Cue gives every element (Cue-client-ui-theme corner-shape.css), which all:unset
    above takes off the card's controls, and which the start window does not have; last, so it
    wins over all:unset. The up button stays a circle, as the plugin's icon buttons do. */
 @supports (corner-shape:superellipse(1.5)){

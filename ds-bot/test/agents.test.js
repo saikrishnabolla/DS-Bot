@@ -9,7 +9,7 @@ import { fakeContext } from './fake-ctx.js'
 
 const flush = async () => { for (let index = 0; index < 8; index += 1) await Promise.resolve() }
 
-// Enough of the dsh services for the roster and the agents module; tool restrict
+// Enough of the Cue services for the roster and the agents module; tool restrict
 // calls and archived Sessions are recorded for the assertions.
 let rt
 function start(team, { config = {} } = {}) {
@@ -93,7 +93,7 @@ const TEAM = {
   questions: {},
 }
 
-test('add-agent creates one record with a first Session in the DS Bot workspace', async (t) => {
+test('add-agent creates one record with a first Session in the Cue workspace', async (t) => {
   const { call, stop, created } = start(TEAM)
   t.after(stop)
   await call('state', {})
@@ -266,7 +266,7 @@ test('a Bot Session gets the team tools in its own scope; an Agent Session gets 
   assert.deepEqual(scoped.filter(entry => entry.sessionId === 'm1').map(entry => entry.name).sort(),
     [...TEAM_TOOLS].filter(name => name !== 'read_browser').sort())
   assert.equal(restricted.length, 0)
-  // An Agent Session is a plain dsh conversation: nothing is scoped onto it and
+  // An Agent Session is a plain Cue conversation: nothing is scoped onto it and
   // nothing is masked, because the team tools never reach the global layer.
   const agent = (await call('add-agent')).value
   createdAgents({

@@ -139,7 +139,7 @@ test('a state from a newer version remains untouched', async (t) => {
   const original = JSON.stringify({ version: 999, revision: 77, recoveryMarker: 'keep' })
   const { rt, statePath } = runtime(t, original)
   await rt.load()
-  assert.match(rt.readOnly(), /saved by a newer DS Bot; update DS Bot/)
+  assert.match(rt.readOnly(), /saved by a newer Cue; update Cue/)
   rt.state.prefs.marker = 'not saved'
   await rt.save()
   assert.equal(fs.readFileSync(statePath, 'utf8'), original)
@@ -319,7 +319,7 @@ test('a save writes the unsaved change when the lock went away but the file did 
   }
 })
 
-test('a save writes nothing after adopting a file from a newer DS Bot', async (t) => {
+test('a save writes nothing after adopting a file from a newer Cue', async (t) => {
   const { rt, home, statePath } = runtime(t)
   await rt.load()
   rt.state.prefs.marker = 'ours'
@@ -329,7 +329,7 @@ test('a save writes nothing after adopting a file from a newer DS Bot', async (t
   fs.rmSync(join(home, 'state.lock'))
   rt.state.prefs.after = 'not saved'
   await rt.save()
-  assert.match(rt.readOnly(), /saved by a newer DS Bot/)
+  assert.match(rt.readOnly(), /saved by a newer Cue/)
   assert.equal(fs.readFileSync(statePath, 'utf8'), future)
   // The outside edit was still kept aside before it was adopted.
   const backups = fs.readdirSync(home).filter(name => name.startsWith('state.json.replaced-'))
@@ -391,12 +391,12 @@ test('a save paused while another host held the team does not overwrite its fina
     rt.state.prefs.after = 'stale snapshot'
     const saving = rt.save()
     await atMkdir
-    // Another dsh takes the lock and writes; this host turns read-only and adopts.
+    // Another Cue takes the lock and writes; this host turns read-only and adopts.
     fs.writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other-host', since: Date.now() }))
     fs.writeFileSync(statePath, JSON.stringify({ version: 1, revision: 900, prefs: { marker: 'other write' } }))
     await rt.refresh()
-    assert.match(rt.readOnly(), /another dsh/)
-    // The other dsh writes its final state and exits; this host takes over.
+    assert.match(rt.readOnly(), /another Cue instance/)
+    // The other Cue writes its final state and exits; this host takes over.
     fs.writeFileSync(statePath, JSON.stringify({ version: 1, revision: 901, prefs: { marker: 'final' } }))
     fs.rmSync(join(home, 'state.lock'))
     const refreshing = rt.refresh()
@@ -416,7 +416,7 @@ test('a changed file is adopted when another host left its lock behind', async (
   await rt.load()
   rt.state.prefs.marker = 'before'
   await rt.save()
-  // A dsh that took over and is gone leaves its lock beside the file it wrote.
+  // A Cue that took over and is gone leaves its lock beside the file it wrote.
   fs.writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: 99999999, host: hostname(), token: 'other-host', since: Date.now() }))
   fs.writeFileSync(statePath, JSON.stringify({ version: 1, revision: 900, prefs: { marker: 'taken over' } }))
   await rt.refresh()
@@ -429,12 +429,12 @@ test('a changed file is adopted when another host left its lock behind', async (
   assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).prefs.marker, 'taken over')
 })
 
-test('a reading host takes over the team once the dsh that held it is gone', async (t) => {
+test('a reading host takes over the team once the Cue that held it is gone', async (t) => {
   const { rt, home, statePath, warnings } = runtime(t, { version: 1, revision: 4, prefs: { marker: 'first write' } })
   fs.writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other-host', since: Date.now() }))
   await rt.load()
-  assert.match(rt.readOnly(), /another dsh/)
-  // The other dsh wrote its last state and closed, releasing the lock.
+  assert.match(rt.readOnly(), /another Cue instance/)
+  // The other Cue wrote its last state and closed, releasing the lock.
   fs.writeFileSync(statePath, JSON.stringify({ version: 1, revision: 5, prefs: { marker: 'handed over' } }))
   fs.rmSync(join(home, 'state.lock'))
   await rt.refresh()
@@ -512,7 +512,7 @@ test('a read-only host resolves awaited saves without writing', async (t) => {
   const ownerState = JSON.stringify({ version: 1, revision: 900, prefs: { marker: 'new owner' } })
   fs.writeFileSync(statePath, ownerState)
   await rt.refresh()
-  assert.match(rt.readOnly(), /another dsh/)
+  assert.match(rt.readOnly(), /another Cue instance/)
   rt.state.prefs.marker = 'not saved'
   await rt.save()
   assert.equal(fs.readFileSync(statePath, 'utf8'), ownerState)

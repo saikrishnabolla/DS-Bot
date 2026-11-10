@@ -82,7 +82,7 @@ export function foldView(text, limit = FOLD_AT, markdown = true) {
   if (!markdown) return { head }
   let opened = openedFence(head.split('\n'))
   if (opened !== null && head.split('\n').slice(opened.line + 1).join('').trim() === '') {
-    // The cut kept only the fence marker (a card opening like ```dsh-ui on
+    // The cut kept only the fence marker (a card opening like ```Cue-ui on
     // its own line): an empty fence renders nothing, so pull the start of
     // the fenced text in as the preview instead.
     head = cutAt(body, PREVIEW_CHARS)
@@ -90,7 +90,7 @@ export function foldView(text, limit = FOLD_AT, markdown = true) {
   }
   if (opened === null) return { head }
   // A fence the preview cut open loses its language tag: a downstream
-  // renderer (dsh-ui cards) would otherwise claim the half message and the
+  // renderer (Cue-ui cards) would otherwise claim the half message and the
   // expansion remounts its subtree looking like a no-op.
   const lines = head.split('\n')
   lines[opened.line] = opened.marker

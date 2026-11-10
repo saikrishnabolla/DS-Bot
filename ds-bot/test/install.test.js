@@ -39,7 +39,6 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'effect ds-bot: state lock',
     'on llm/adapters-updated',
     'on credentials/reference-updated',
-    'on credentials/record-updated',
     'on settings/document-updated',
     'on subagent/start',
     'on subagent/end',
@@ -104,18 +103,8 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'effect ds-bot: learning',
     'on tools/pre-execute',
     'on tools/execute',
-    'on agent/created',
-    'on agent/disposed',
-    'on user-questions/request (prepend)',
-    'on tools/pre-execute',
-    'on tools/execute',
-    'on session/event',
-    'effect ds-bot: computer use section',
-    'prompt computer-use:ds-bot 0',
-    'effect ds-bot: computer use',
     'effect ds-bot: usage ledger',
     'on llm/stream',
-    'effect ds-bot: update check',
     'on agent/status',
     'on session/event',
     'on agent/assistant-stream',
@@ -211,8 +200,11 @@ const TEAM = {
   questions: {},
 }
 
-test('in the Desktop profile read_browser is the last tool and reads through the window', async (t) => {
-  const { ctx, call, stop } = start(TEAM, { services: { profileContext: { name: 'desktop' } } })
+test('in the desktop app read_browser is the last tool and reads through the window', async (t) => {
+  const previous = process.env.DS_BOT_APP
+  process.env.DS_BOT_APP = '1'
+  t.after(() => { if (previous === undefined) delete process.env.DS_BOT_APP; else process.env.DS_BOT_APP = previous })
+  const { ctx, call, stop } = start(TEAM)
   t.after(stop)
   assert.equal(rt.teamTools.at(-1).name, 'read_browser')
   assert.ok(ctx.calls.indexOf('effect ds-bot: browser channel') < ctx.calls.indexOf('effect ds-bot: api route'))
@@ -239,7 +231,7 @@ test('browser takeover and give-back are user-only and publish hold state', asyn
   const previous = process.env.DS_BOT_APP
   process.env.DS_BOT_APP = '1'
   t.after(() => { if (previous === undefined) delete process.env.DS_BOT_APP; else process.env.DS_BOT_APP = previous })
-  const { call, stop } = start(TEAM, { services: { profileContext: { name: 'ds-bot' } } })
+  const { call, stop } = start(TEAM)
   t.after(stop)
   await call('state')
   assert.equal((await call('browser-takeover', { botId: 'b2' })).value, true)
@@ -249,20 +241,22 @@ test('browser takeover and give-back are user-only and publish hold state', asyn
   assert.deepEqual((await call('browser-wait', { clientId: 'hold-window', open: {} })).value.holds, {})
 })
 
-test('the desktop app has read_browser too; DSH Web does not', (t) => {
+test('the desktop app has read_browser; the standalone host does not', (t) => {
   process.env.DS_BOT_APP = '1'
   t.after(() => { delete process.env.DS_BOT_APP })
-  const app = start(TEAM, { services: { profileContext: { name: 'ds-bot' } } })
+  const app = start(TEAM)
   t.after(app.stop)
   assert.ok(app.rt.teamTools.some(d => d.name === 'read_browser'))
   delete process.env.DS_BOT_APP
-  const web = start(TEAM, { services: { profileContext: { name: 'web' } } })
+  const web = start(TEAM)
   t.after(web.stop)
   assert.ok(!web.rt.teamTools.some(d => d.name === 'read_browser'))
 })
 
-test('config.browser turns Bot browsers off even in the Desktop profile', (t) => {
-  const { stop } = start(TEAM, { config: { browser: false }, services: { profileContext: { name: 'desktop' } } })
+test('config.browser turns Bot browsers off in the desktop app', (t) => {
+  process.env.DS_BOT_APP = '1'
+  t.after(() => { delete process.env.DS_BOT_APP })
+  const { stop } = start(TEAM, { config: { browser: false } })
   t.after(stop)
   assert.ok(!rt.teamTools.some(d => d.name === 'read_browser'))
 })
@@ -276,9 +270,9 @@ test('a custom agent keeps the local agents adapter live after install', async (
   assert.equal(entry.adapter.disposed, false, 'the adapter survives install')
 })
 
-// Local-agent routes have their own prefix (#1059): a Bot on DSH's own OpenCode
-// provider stays there, and DS Bot never registers a name another provider has.
-test('a Bot on DSH\'s opencode provider is not taken for a local agent', async (t) => {
+// Local-agent routes have their own prefix (#1059): a Bot on Cue's own OpenCode
+// provider stays there, and Cue never registers a name another provider has.
+test('a Bot on Cue\'s opencode provider is not taken for a local agent', async (t) => {
   const bot = { id: 'b1', name: 'Zen', model: 'opencode/glm-5', appliedModel: 'opencode/glm-5' }
   const { ctx, stop, rt } = start({ version: 1, bots: { b1: bot }, localAgents: { custom: [], sessions: {} } })
   t.after(stop)
@@ -286,7 +280,7 @@ test('a Bot on DSH\'s opencode provider is not taken for a local agent', async (
   assert.equal(rt.state.bots.b1.model, 'opencode/glm-5')
   assert.equal(rt.isLocalAgentRef('opencode/glm-5'), false)
   const routes = (ctx.adapters ?? []).flatMap(entry => entry.routes)
-  assert.ok(!routes.includes('opencode'), 'DS Bot does not register the name DSH\'s provider uses')
+  assert.ok(!routes.includes('opencode'), 'Cue does not register the name Cue\'s provider uses')
 })
 
 test('a Bot saved on an old local-agent route moves to the prefixed one', async (t) => {

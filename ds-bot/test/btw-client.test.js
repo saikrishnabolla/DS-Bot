@@ -6,7 +6,7 @@ import {
 import { matchSideEnter } from '../src/client/side-model.js'
 import { createSource } from '../src/client/sources.js'
 
-// DSH sends the line on when matchEnter returns undefined. A claim or a throw
+// Cue sends the line on when matchEnter returns undefined. A claim or a throw
 // must leave session.prompt alone.
 function sessionFor(id) {
   return { id, sent: [], prompt(line) { this.sent.push(line) } }

@@ -62,7 +62,7 @@ runInNewContext(outputFiles[0].text, {
   btoa,
   document: dom.window.document,
   navigator: nav,
-  window: { matchMedia: () => ({ matches: false }), dshDesktop: {}, open: () => null },
+  window: { matchMedia: () => ({ matches: false }), cueDesktop: {}, open: () => null },
   require: name => (name === 'react' ? react : name === 'react-dom' ? { createPortal: node => node } : {}),
 })
 const { AgentSignInRow, shortVersion } = module.exports

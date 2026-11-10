@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
+import { CONVERSATION_CSS, SHELL_CSS } from '../src/client/styles.js'
 import { flatWidthOf, layoutOf, widthOf } from '../src/client/themes.js'
+import { USER_MESSAGE_CSS } from '../src/client/user-message.js'
 
-const bundle = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+const bundle = `${SHELL_CSS}\n${CONVERSATION_CSS}\n${USER_MESSAGE_CSS}`
 // The declarations of the rule whose whole selector is `selector`.
 const ruleOf = (selector) => {
   const start = bundle.search(new RegExp(`(^|[\\n}\`])${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{`))

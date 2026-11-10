@@ -1,5 +1,5 @@
 // Runs the Host in plain Node on Linux, Electron's Node mode elsewhere, and owns its lifetime.
-// Follows DeepSeek Harness apps/desktop/src/host-process.ts (MIT); see NOTICE.
+// Follows Cue apps/desktop/src/host-process.ts (MIT); see NOTICE.
 import { spawn } from 'node:child_process'
 
 const STDERR_TAIL_CHARS = 8 * 1024
@@ -63,7 +63,7 @@ export class HostProcess {
       child.once('error', (error) => { this.#fail(error, reject) })
       this.#exit = new Promise((done) => {
         child.once('close', (code) => {
-          this.#fail(new Error(withLogTail(`The DS Bot Host stopped (exit ${String(code)})`, this.#stderr)), reject)
+          this.#fail(new Error(withLogTail(`The Cue Host stopped (exit ${String(code)})`, this.#stderr)), reject)
           done()
         })
       })
@@ -74,7 +74,7 @@ export class HostProcess {
   onMessage(listener) { this.#messageListeners.add(listener); return () => this.#messageListeners.delete(listener) }
 
   send(message) {
-    if (!this.#child?.connected) throw new Error('The DS Bot Host IPC channel is closed')
+    if (!this.#child?.connected) throw new Error('The Cue Host IPC channel is closed')
     this.#child.send(message)
   }
 

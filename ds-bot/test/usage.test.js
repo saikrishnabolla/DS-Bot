@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { apply } from '../index.js'
+import { createRuntime } from '../index.js'
 import { foldCalls } from '../src/host/usage.js'
 import { fakeContext } from './fake-ctx.js'
 
@@ -75,7 +75,7 @@ function start(home, { listedExtra, logsExtra, subagentsExtra } = {}) {
     ...logsExtra,
   }
   for (const log of Object.values(logs)) log.forEach((event, seq) => { event.seq = seq })
-  // Child Session → the parent its header names, as DSH checks a page address.
+  // Child Session → the parent its header names, as Cue checks a page address.
   const subagents = { 's-sub': 's-b1', ...subagentsExtra }
   const pages = []
   const warnings = []
@@ -101,7 +101,7 @@ function start(home, { listedExtra, logsExtra, subagentsExtra } = {}) {
   }
   let route
   ctx.connection.fetch.register = (options) => { route = options; return () => {} }
-  apply(ctx, { home })
+  createRuntime(ctx, { home })
   const call = async (endpoint, payload) => {
     const response = await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
@@ -150,7 +150,7 @@ test('the usage view counts every Session under its owner, by hour in the asked 
   t.after(stop)
   const view = (await call('usage', { timeZone: 'Asia/Shanghai' })).value
   // Chief: both parts of its own chat and its subagent; its group Session counts as group use.
-  // The DSH Agent's Sessions count beside the Bots, not with the other sessions.
+  // The Cue Agent's Sessions count beside the Bots, not with the other sessions.
   assert.deepEqual(totals(view), { 'Chief/chat': 160 + 220 + 10, 'Chief/group': 330, 'Agent/chat': 77, 'other/chat': 44 })
   assert.deepEqual(view.rows.map(row => row[0]), ['1970-01-01 08', '1970-01-01 09', '1970-01-01 09', '1970-01-01 09', '1970-01-01 10'])
   assert.deepEqual(view.models.map(model => model.key).sort(), ['deepseek/v4-flash', 'deepseek/v4-pro', 'kimi/k3'])

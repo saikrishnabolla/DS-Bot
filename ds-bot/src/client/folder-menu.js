@@ -25,7 +25,7 @@ export function FolderMenu({ value, group = false, team = false, actions, run, o
     if (isOpen) { close(); return }
     setView('list')
     setProblem('')
-    // Projects added in DSH meanwhile show up, so opening asks again.
+    // Projects added in Cue meanwhile show up, so opening asks again.
     void Promise.resolve(actions.folders()).then(setInfo).catch(() => setInfo(last => last ?? { team: null, picker: null, folders: [] }))
     open()
   }

@@ -1,4 +1,4 @@
-// Store: the saved team (state.json), its migrations, the lock that keeps a second dsh
+// Store: the saved team (state.json), its migrations, the lock that keeps a second Cue
 // host on the same data from writing it, and the indexes that map a Session to the Bot
 // or group chat it belongs to.
 import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs'
@@ -26,7 +26,7 @@ export function install(rt) {
   const { warn } = rt
 
   const EMPTY = JSON.stringify(state)
-  // The other dsh host that holds state.lock while this one only reads (see home-lock.js);
+  // The other Cue host that holds state.lock while this one only reads (see home-lock.js);
   // undefined while this host may write.
   let holder
   let lockBroken = false
@@ -57,14 +57,14 @@ export function install(rt) {
       // save that then cannot write still rejects.
       lockBroken = true
       holder = undefined
-      warn('ds-bot: cannot lock %s, so another dsh on the same data could undo changes: %s', home, error)
+      warn('cue: cannot lock %s, so another Cue instance on the same data could undo changes: %s', home, error)
     }
   }
   const readOnly = () => {
-    if (stuck !== undefined) return `The Bot team file ${statePath} could not be read (${stuck}). DS Bot does not change it; fix or move the file and reload.`
+    if (stuck !== undefined) return `The Bot team file ${statePath} could not be read (${stuck}). Cue does not change it; fix or move the file and reload.`
     if (holder === undefined) return undefined
     const where = holder.pid ? `pid ${holder.pid}${holder.host ? ` on ${holder.host}` : ''}` : 'unknown process'
-    return `The Bot team in ${home} is open in another dsh (Web or Desktop, ${where}). This window shows the team but cannot change it; close the other one and reload.`
+    return `The Bot team in ${home} is open in another Cue instance (${where}). This window shows the team but cannot change it; close the other one and reload.`
   }
 
   // Synchronous on purpose: the saved team and the session indexes built from it
@@ -103,7 +103,7 @@ export function install(rt) {
       stuck = undefined
       return parsed
     }
-    stuck = 'saved by a newer DS Bot; update DS Bot'
+    stuck = 'saved by a newer Cue; update Cue'
     return undefined
   }
 
@@ -322,14 +322,14 @@ export function install(rt) {
     if (hadHolder) {
       claimLock()
       if (holder === undefined) {
-        warn('ds-bot: the other dsh has closed; this one now saves the Bot team')
+        warn('cue: the other Cue instance has closed; this one now saves the Bot team')
         warnedReadOnly = false
         adopt(readFileState())
         return
       }
     } else if (!lockBroken && !lock.owns()) {
       // A cached "writer" is stale once the lock file no longer names this host:
-      // another dsh may have taken it over, or the file may just be gone. Re-claim
+      // another Cue instance may have taken it over, or the file may just be gone. Re-claim
       // and re-check instead of trusting the flag.
       claimLock()
       if (lockBroken) return
@@ -375,7 +375,7 @@ export function install(rt) {
     if (!writable()) return required ? Promise.reject(new Error(`This host cannot save the Bot team: ${readOnly()}`)) : writing
     const run = writing.then(async () => {
       // Re-check writability once the queued write runs: an adopt queued before
-      // it may have made this host read-only (e.g. a file a newer DS Bot wrote).
+      // it may have made this host read-only (e.g. a file a newer Cue wrote).
       if (stuck !== undefined || holder !== undefined) {
         if (required) throw new Error(`This host cannot save the Bot team: ${readOnly()}`)
         warnReadOnly()
@@ -400,7 +400,7 @@ export function install(rt) {
           // A different epoch means an adopt replaced the state this snapshot was
           // taken from — another host's writes, or an outside edit it adopted.
           if (!owned || changed || lockEpoch !== epoch) {
-            const error = new Error(changed ? 'ds-bot: the Bot team file changed under this host\'s lock' : 'ds-bot lost the state lock to another dsh')
+            const error = new Error(changed ? 'cue: the Bot team file changed under this host\'s lock' : 'cue lost the state lock to another Cue instance')
             error.code = 'ELOCKLOST'
             throw error
           }
@@ -461,9 +461,9 @@ export function install(rt) {
   const pastOwners = new Map()
   const chatOf = botId => botOf(botId)?.sessionId ?? botId
   const sessionOfRoom = room => (room === undefined ? undefined : room.sessionId ?? room.id)
-  // DSH turns away every step of an archived Session and every task aimed at it, so a
+  // Cue turns away every step of an archived Session and every task aimed at it, so a
   // Session the team speaks from now leaves the archive: an earlier open of an old part
-  // could leave one there, and DSH's own Session list can archive one. Earlier parts
+  // could leave one there, and Cue's own Session list can archive one. Earlier parts
   // stay archived.
   let restoring
   const restoreCurrent = () => {
@@ -480,8 +480,8 @@ export function install(rt) {
     restoring = (async () => {
       for (const sessionId of held) {
         await registry.unarchiveSession(sessionId)
-          .then(() => warn('ds-bot: current Session %s was archived in DSH; taken back out', sessionId))
-          .catch(error => warn('ds-bot: current Session %s is archived in DSH and could not be taken out: %s', sessionId, error))
+          .then(() => warn('cue: current conversation %s was archived; taken back out', sessionId))
+          .catch(error => warn('cue: current conversation %s is archived and could not be taken out: %s', sessionId, error))
       }
     })().finally(() => { restoring = undefined })
   }
@@ -530,7 +530,7 @@ export function install(rt) {
     // that no longer has it.
     void ctx.workspaceRegistry.archiveSession(sessionId, { stopActivity: true }).catch(() => {})
   }
-  // A group Session DSH can no longer open is set aside; the member's earlier parts in
+  // A group Session Cue can no longer open is set aside; the member's earlier parts in
   // the group stay, and its next turn there starts a new Session.
   const retireGroupSession = (room, botId) => {
     const sessionId = room.sessions?.[botId]
@@ -589,7 +589,7 @@ export function install(rt) {
 // LEGACY: local-agent routes moved under the `local-` prefix (see engines.js).
 // The CLI records and each Bot's model follow. The applied model is dropped, so
 // the Bot's Sessions are selected again on the new route. An old `opencode/...`
-// ref is also DSH's own OpenCode provider: it moves only for a Bot that ran on
+// ref is also Cue's own OpenCode provider: it moves only for a Bot that ran on
 // the local CLI (a CLI record for one of its Sessions) or on its "CLI default".
 // Returns whether anything changed.
 export function migrateLocalRoutes(state) {

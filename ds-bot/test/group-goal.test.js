@@ -326,7 +326,7 @@ test('an idle round wakes the admin for a goal check; [PASS] waits for the user'
   await settle(() => host.agentOf('ga').calls.length === 2)
   const prompt = text(host.agentOf('ga').calls[1])
   assert.match(prompt, /goal check/)
-  assert.match(prompt, /Goal check from DS Bot/)
+  assert.match(prompt, /Goal check from Cue/)
   host.begin('ga')
   host.finish('ga', '[PASS]')
   await settle(() => check() !== undefined)
@@ -666,7 +666,7 @@ test('a room on its second part relays on the current Session and blocks /goal t
   // The group's own Session moved on: r1 is an earlier part, r1p2 the current one.
   const blocked = []
   const goals = {
-    get: agent => agent.session?.id === 'r1p2' ? { id: 'g-dsh', revision: 3, phase: 'active' } : undefined,
+    get: agent => agent.session?.id === 'r1p2' ? { id: 'g-Cue', revision: 3, phase: 'active' } : undefined,
     block(agent, ref, reason) { blocked.push({ sessionId: agent.session?.id ?? agent.id, ref, reason }) },
   }
   const host = await start(t, { sessionId: 'r1p2', parts: [{ sessionId: 'r1', endedAt: 1 }] }, { goals })
@@ -676,7 +676,7 @@ test('a room on its second part relays on the current Session and blocks /goal t
   // The resume relay goes to the current part, never to the earlier one.
   await settle(() => host.agentOf('r1p2').calls.some(call => call.source?.role === 'goal'))
   assert.equal(host.agentOf('r1').calls.length, 0)
-  // A DSH /goal in the current part reads as the room's and is blocked.
+  // A Cue /goal in the current part reads as the room's and is blocked.
   host.emit('r1p2', 'goal/change', { goal: { phase: 'active' } })
   await settle(() => blocked.length === 1)
   assert.equal(blocked[0].sessionId, 'r1p2')

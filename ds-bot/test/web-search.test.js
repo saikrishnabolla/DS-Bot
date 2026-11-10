@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { HarnessError } from '../src/engine/messages.js'
 import {
   createAutoSearchProvider, decodeBingUrl, findSources, parseBing, parseDuckDuckGo, planNative,
-  readDeclared, readGemini, readMessages, readResponses, resolveConfig, routeOf, SEARCH_APIS,
+  readDeclared, readGemini, readMessages, readResponses, resolveConfig, SEARCH_APIS,
 } from '../web-search.js'
 
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -15,12 +15,11 @@ const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 
 /** A provider over recorded fakes; `keys` is the whole credential store, `fetch` answers by URL. */
-function harness({ route, keys = {}, fetch, webFetch, token, now, config } = {}) {
+function harness({ route, keys = {}, fetch, webFetch, now, config } = {}) {
   const calls = { fetch: [], webFetch: [], keys: [] }
   const provider = createAutoSearchProvider({
     route: () => route,
     resolveKey: async (ref) => { calls.keys.push(ref); return keys[ref] },
-    resolveAccountToken: async () => token,
     fetch: async (url, init) => { calls.fetch.push({ url, init }); return fetch ? fetch(url, init) : json({}, 500) },
     webFetch: async (request, signal) => { calls.webFetch.push(request.url); return webFetch ? webFetch(request, signal) : page(fixture('bing.html')) },
     ...now ? { now } : {},
@@ -77,59 +76,11 @@ test('planNative explains when there is nothing to try', () => {
   assert.deepEqual(planNative({ provider: 'r', baseURL: 'https://api.xiaomimimo.com/v1', api: 'openai-completions' }).candidates, [])
 })
 
-test('routeOf reads the asking Session route: protocol, endpoint, key name, and headers', () => {
-  const settings = [
-    { ns: 'llm-pi-ai', value: { providers: { mimo: { api: 'openai-completions', apiKeyEnv: 'MIMO_KEY', baseURL: 'https://token-plan-cn.xiaomimimo.com/v1', headers: { 'x-team': 'bots', bad: 1 } } } } },
-    { ns: 'llm-deepseek-api-key', value: { apiKeyEnv: 'DEEPSEEK_API_KEY' } },
-  ]
-  const directory = [
-    { provider: 'mimo', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'mimo'] },
-    { provider: 'moonshotai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'moonshotai'] },
-    { provider: 'deepseek-official', settingsNs: 'llm-deepseek-api-key', settingsPath: [] },
-  ]
-  const ctxFor = (provider, env = {}, id) => ({
-    get: name => ({
-      agents: { currentInitiator: () => ({ session: { id, requestContext: () => ({ provider, model: 'x' }) } }) },
-      llm: { listConfigurableProviders: () => directory },
-      settings: { describe: () => settings },
-      launchEnvironment: { get: key => (env[key] === undefined ? undefined : { value: env[key] }) },
-    })[name],
-  })
-  assert.deepEqual(routeOf(ctxFor('mimo')), {
-    provider: 'mimo', model: 'x', api: 'openai-completions', baseURL: 'https://token-plan-cn.xiaomimimo.com/v1', apiKeyEnv: 'MIMO_KEY', account: false, headers: { 'x-team': 'bots' },
-  })
-  assert.deepEqual(routeOf(ctxFor('moonshotai')), {
-    provider: 'moonshotai', model: 'x', api: 'openai-completions', baseURL: 'https://api.moonshot.ai/v1', apiKeyEnv: 'MOONSHOT_API_KEY', account: false, headers: {},
-  })
-  assert.equal(routeOf(ctxFor('deepseek-official', { DEEPSEEK_BASE_URL: 'http://127.0.0.1:8795' })).baseURL, 'http://127.0.0.1:8795')
-  assert.equal(routeOf(ctxFor('deepseek-official')).api, 'anthropic-messages')
-  assert.deepEqual(routeOf(ctxFor('deepseek-account')), {
-    provider: 'deepseek-account', model: 'x', api: 'anthropic-messages', baseURL: 'https://api.deepseek.com/anthropic', apiKeyEnv: undefined, account: true, headers: {},
-  })
-  assert.equal(routeOf(ctxFor('openrouter')).api, undefined)
-  assert.equal(routeOf({ get: () => undefined }), undefined)
-  // 公开#184: OpenCode's gateways answered HTTP 400 "missing x-opencode-session" to every
-  // native search, so web_search always fell back to the keyless results page.
-  assert.deepEqual(routeOf(ctxFor('opencode-go', {}, 'sess-184')).headers, { 'x-opencode-session': 'sess-184' })
-  assert.deepEqual(routeOf(ctxFor('opencode', {}, 'sess-184')).headers, { 'x-opencode-session': 'sess-184' })
-  assert.deepEqual(routeOf(ctxFor('mimo', {}, 'sess-184')).headers, { 'x-team': 'bots' })
-  settings.push({ ns: 'llm-pi-ai-oc', value: { headers: { 'X-OpenCode-Session': 'mine' } } })
-  directory.push({ provider: 'opencode', settingsNs: 'llm-pi-ai-oc', settingsPath: [] })
-  assert.deepEqual(routeOf(ctxFor('opencode', {}, 'sess-184')).headers, { 'X-OpenCode-Session': 'mine' })
-})
-
 // ---------------------------------------------------------------------------
 // Native search: own key, own origin, found by trying
 
-test('a native search on an OpenCode route names the asking Session, as the gateway requires', async () => {
-  const ctx = {
-    get: name => ({
-      agents: { currentInitiator: () => ({ session: { id: 'sess-184', requestContext: () => ({ provider: 'opencode-go', model: 'glm-5' }) } }) },
-      llm: { listConfigurableProviders: () => [] },
-      settings: { describe: () => [] },
-    })[name],
-  }
-  const route = { ...routeOf(ctx), api: 'openai-responses' }
+test('a native search sends route headers required by its gateway', async () => {
+  const route = { provider: 'opencode-go', model: 'glm-5', api: 'openai-responses', baseURL: 'https://opencode.ai/zen/go/v1', apiKeyEnv: 'OPENCODE_API_KEY', headers: { 'x-opencode-session': 'sess-184' } }
   const { provider, calls } = harness({
     route,
     keys: { OPENCODE_API_KEY: 'sk-oc' },
@@ -224,30 +175,12 @@ test('Zhipu queries are cut to the 70 characters its API accepts', async () => {
 
 test('a route without its own key never borrows another one and falls back', async () => {
   const { provider, calls } = harness({ route: KIMI, keys: { DEEPSEEK_API_KEY: 'sk-deepseek', OPENAI_API_KEY: 'sk-openai' } })
-  const result = await provider.search({ query: 'deepseek harness', maxResults: 8 })
+  const result = await provider.search({ query: 'agent runtime', maxResults: 8 })
   assert.deepEqual(calls.keys, ['MOONSHOT_API_KEY'])
   assert.equal(calls.fetch.length, 0)
-  assert.equal(result.sources[0].url, 'https://github.com/deepseek-ai/deepseek-harness/tree/master')
+  assert.equal(result.sources[0].url, 'https://github.com/example-org/agent-runtime/tree/master')
   assert.match(result.content, /keyless fallback, parsed from the public Bing results page at www\.bing\.com/)
   assert.match(result.content, /route "moonshotai-cn" could not search natively: no API key is stored for MOONSHOT_API_KEY/)
-})
-
-test('a DeepSeek account route sends only the account token, with the Session model', async () => {
-  const { provider, calls } = harness({
-    route: { provider: 'deepseek-account', model: 'deepseek-v4-pro', api: 'anthropic-messages', baseURL: 'https://api.deepseek.com/anthropic', account: true, headers: {} },
-    keys: { DEEPSEEK_API_KEY: 'sk-should-not-be-used' },
-    token: 'acct-token',
-    fetch: () => json(MESSAGES_HIT),
-  })
-  const result = await provider.search({ query: 'q' })
-  assert.deepEqual(calls.keys, [])
-  const { url, init } = calls.fetch[0]
-  assert.equal(url, 'https://api.deepseek.com/anthropic/v1/messages')
-  assert.equal(init.headers['x-dsh-auth-token'], 'acct-token')
-  assert.equal(init.headers['x-api-key'], undefined)
-  assert.equal(init.headers.authorization, undefined)
-  assert.equal(JSON.parse(init.body).model, 'deepseek-v4-pro')
-  assert.match(result.content, /billed to the DeepSeek account sign-in/)
 })
 
 test('profile headers go with the request, but cannot replace the credential', async () => {
@@ -366,8 +299,8 @@ test('the fallback follows a Bing regional redirect once, and only to bing.com',
       return page(fixture('duckduckgo.html'), 200, url)
     },
   })
-  const other = await elsewhere.provider.search({ query: 'deepseek harness' })
-  assert.deepEqual(elsewhere.calls.webFetch, ['https://www.bing.com/search?q=deepseek%20harness', 'https://html.duckduckgo.com/html/?q=deepseek%20harness'])
+  const other = await elsewhere.provider.search({ query: 'agent runtime' })
+  assert.deepEqual(elsewhere.calls.webFetch, ['https://www.bing.com/search?q=agent%20runtime', 'https://html.duckduckgo.com/html/?q=agent%20runtime'])
   assert.match(other.content, /public DuckDuckGo results page at html\.duckduckgo\.com/)
   assert.match(other.content, /no conversation model route is known/)
 })
@@ -377,8 +310,8 @@ test('the fallback walks engines in order and reports each failure', async () =>
     route: undefined,
     webFetch: ({ url }) => (url.startsWith('https://www.bing.com/') ? page('<html><body>Please solve this challenge</body></html>') : page(fixture('duckduckgo.html'), 200, url)),
   })
-  const result = await provider.search({ query: 'deepseek harness' })
-  assert.deepEqual(calls.webFetch, ['https://www.bing.com/search?q=deepseek%20harness', 'https://html.duckduckgo.com/html/?q=deepseek%20harness'])
+  const result = await provider.search({ query: 'agent runtime' })
+  assert.deepEqual(calls.webFetch, ['https://www.bing.com/search?q=agent%20runtime', 'https://html.duckduckgo.com/html/?q=agent%20runtime'])
   assert.equal(result.sources.length, 2)
 })
 
@@ -443,9 +376,9 @@ test('parseBing reads real result pages and decodes Bing redirect links', () => 
   const en = parseBing(fixture('bing.html'))
   assert.equal(en.sources.length, 4)
   assert.deepEqual(en.sources[1], {
-    url: 'https://github.com/deepseek-ai/deepseek-harness/releases',
-    title: 'Releases · deepseek-ai/deepseek-harness - GitHub',
-    snippet: 'DeepSeek Harness: Everything is a Plugin. Contribute to deepseek-ai/deepseek-harness development by creating an account on …',
+    url: 'https://github.com/example-org/agent-runtime/releases',
+    title: 'Releases · example-org/agent-runtime - GitHub',
+    snippet: 'Example Agent Runtime. Contribute to example-org/agent-runtime development by creating an account on …',
   })
   const zh = parseBing(fixture('bing-zh.html'))
   assert.equal(zh.sources[0].title, '上海市 - 维基百科，自由的百科全书')
@@ -466,7 +399,7 @@ test('decodeBingUrl keeps direct links and drops undecodable Bing links', () => 
 test('parseDuckDuckGo skips ads and recognizes the bot check', () => {
   const { sources } = parseDuckDuckGo(fixture('duckduckgo.html'))
   assert.deepEqual(sources, [
-    { url: 'https://github.com/deepseek-ai/deepseek-harness', title: 'DeepSeek Harness · GitHub', snippet: 'Everything is a plugin: an agent harness & runtime.' },
+    { url: 'https://github.com/example-org/agent-runtime', title: 'Agent Runtime · GitHub', snippet: 'A sample agent runtime repository.' },
     { url: 'https://api-docs.deepseek.com/zh-cn/', title: 'DeepSeek API 文档', snippet: 'DeepSeek API 使用与 OpenAI/Anthropic 兼容的格式…' },
   ])
   assert.deepEqual(parseDuckDuckGo('<p>Unfortunately, bots use DuckDuckGo too.</p>'), { error: 'bot check page' })

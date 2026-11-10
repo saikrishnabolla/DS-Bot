@@ -31,7 +31,7 @@ const TEAM = {
   prefs: {},
 }
 
-// An in-memory stand-in for DSH's schedule service, so schedule-create reaches the
+// An in-memory stand-in for Cue's schedule service, so schedule-create reaches the
 // Bot/group lookup it does.
 function scheduleService() {
   return {

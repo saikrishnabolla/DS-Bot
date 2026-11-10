@@ -74,7 +74,7 @@ test('owned Host preserves the desktop API, feed and transcript across restart',
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({
     authPath: join(dataDir, 'auth.json'),
@@ -93,7 +93,7 @@ test('owned Host preserves the desktop API, feed and transcript across restart',
   let first = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
   const cookie = await authenticate(first)
   const call = api(first, cookie)
-  assert.match(await (await fetch(`${first.origin}/`, { headers: { cookie } })).text(), /DS Bot/)
+  assert.match(await (await fetch(`${first.origin}/`, { headers: { cookie } })).text(), /Cue/)
 
   const feed = []
   const feedAbort = new AbortController()
@@ -143,7 +143,7 @@ test('owned Host references private and group chats from bounded durable snapsho
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -211,12 +211,12 @@ test('owned Host references private and group chats from bounded durable snapsho
   assert.ok(restored.value.items.some(item => item.kind === 'user' && item.referenceLabels?.includes('Chat with Researcher')))
 })
 
-test('owned Host lets Pi persist DS Bot checkpoints without losing earlier chat', async t => {
+test('owned Host lets Pi persist Cue checkpoints without losing earlier chat', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-compaction-'))
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -268,12 +268,12 @@ test('owned Host lets Pi persist DS Bot checkpoints without losing earlier chat'
   assert.ok(chat.value.items.some(item => item.kind === 'user' && item.text === prompt))
 })
 
-test('owned Host reaches the production Pi threshold through the DS Bot checkpoint hook', async t => {
+test('owned Host reaches the production Pi threshold through the Cue checkpoint hook', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-threshold-'))
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -336,7 +336,7 @@ test('a production Pi threshold switch waits for the running turn and keeps its 
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
   faux.models[0].contextWindow = 128_000
@@ -391,7 +391,7 @@ test('owned Host uploads image and file attachments, sends their real content to
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -474,7 +474,7 @@ test('owned Host redacts saved secrets from durable model requests', async t => 
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-secrets-'))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -494,15 +494,18 @@ test('owned Host redacts saved secrets from durable model requests', async t => 
   assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
   await waitFor(() => faux.state.callCount >= 1)
 
-  const secret = 'owned-secret-782341'
+  const secret = 'test-secret-782341'
   assert.equal((await call('secret-set', { name: 'OWNED_TOKEN', value: secret, scope: 'all' })).ok, true)
-  let requestText = ''
-  faux.setResponses([async context => {
-    requestText = JSON.stringify(context)
+  const requests = []
+  faux.setResponses(Array.from({ length: 10 }, () => async context => {
+    requests.push(JSON.stringify(context))
     return fauxAssistantMessage('Redacted.')
-  }])
+  }))
+  const agent = await host.runtime.resolveAgent(bot.id)
   assert.equal((await call('send', { sessionId: bot.id, text: `Do not leak ${secret}` })).ok, true)
-  await waitFor(() => requestText !== '')
+  await agent.whenIdle()
+  const requestText = requests.find(request => request.includes('Do not leak')) ?? ''
+  assert.notEqual(requestText, '')
   assert.doesNotMatch(requestText, new RegExp(secret))
   assert.match(requestText, /\[secret:OWNED_TOKEN\]/)
   assert.match(requestText, /Current time:/)
@@ -513,7 +516,7 @@ test('owned Host runs Pi coding tools with a Bot-scoped saved secret', async t =
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -530,10 +533,10 @@ test('owned Host runs Pi coding tools with a Bot-scoped saved secret', async t =
   assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
   await waitFor(() => faux.state.callCount >= 1)
 
-  const secret = 'owned-shell-secret-24591'
+  const secret = 'test-shell-secret-24591'
   assert.equal((await call('secret-set', { name: 'OWNED_TOKEN', value: secret, scope: 'all' })).ok, true)
   faux.setResponses([
-    fauxAssistantMessage(fauxToolCall('bash', { command: 'printf %s "$DSH_SECRET_OWNED_TOKEN" > secret-output.txt' }, { id: 'call-bash' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('bash', { command: 'printf %s "$CUE_SECRET_OWNED_TOKEN" > secret-output.txt' }, { id: 'call-bash' }), { stopReason: 'toolUse' }),
     fauxAssistantMessage('Saved without exposing it.'),
   ])
   assert.equal((await call('send', { sessionId: bot.id, text: 'Use the saved token.' })).ok, true)
@@ -596,7 +599,7 @@ test('owned Host relays room work, stops it, and restores the room transcript', 
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()

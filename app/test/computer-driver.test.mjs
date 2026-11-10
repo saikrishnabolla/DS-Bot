@@ -3,10 +3,10 @@ import test from 'node:test'
 import { ComputerDriverHost, packagedComputerModule } from '../src/computer-driver.mjs'
 
 test('packaged computer modules resolve from the unpacked dependency', () => {
-  assert.match(packagedComputerModule('/Applications/DS Bot.app/Contents/Resources', 'index.js'),
-    /^file:\/\/\/Applications\/DS%20Bot\.app\/Contents\/Resources\/app\.asar\.unpacked\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)
-  assert.match(packagedComputerModule('/opt/DS Bot/resources', 'index.js', 'linux'),
-    /^file:\/\/\/opt\/DS%20Bot\/resources\/app\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)
+  assert.match(packagedComputerModule('/Applications/Cue.app/Contents/Resources', 'index.js'),
+    /^file:\/\/\/Applications\/Cue\.app\/Contents\/Resources\/app\.asar\.unpacked\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)
+  assert.match(packagedComputerModule('/opt/Cue/resources', 'index.js', 'linux'),
+    /^file:\/\/\/opt\/Cue\/resources\/app\/node_modules\/@trycua\/cua-driver\/dist\/index\.js$/u)
 })
 
 test('Electron owns macOS permission checks and the embedded computer driver lifecycle', async () => {

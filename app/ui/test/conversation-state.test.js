@@ -96,7 +96,6 @@ test('voice adapter exposes an optional speech bridge and preparation', async ()
     cancel: id => { calls.push(['cancel', id]) },
   }
   const adapter = createVoiceAdapter(speech)
-  assert.equal(adapter.speech().owned, true)
   assert.equal(typeof adapter.speech().transcribe, 'function')
   assert.equal(await adapter.voiceSetup('local').prepare(), true)
   const controller = new AbortController()

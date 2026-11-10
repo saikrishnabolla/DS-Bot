@@ -93,7 +93,7 @@ test('a failed stop is reported and never answers the approval', async () => {
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(reported, [['connection lost', 'stop']])
 })
-// #592: DSH's own stop reaches only the round; a member the round moved on from kept working.
+// #592: Cue's own stop reaches only the round; a member the round moved on from kept working.
 test('the stop button of a group\'s details stops all work there, and shows only while work is here', async () => {
   const stopped = []
   const room = team.roomsById.r1

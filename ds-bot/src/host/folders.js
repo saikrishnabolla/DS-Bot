@@ -13,9 +13,8 @@ export const within = (inner, outer) => inner === outer || inner.startsWith(oute
 
 const expandHome = text => (text === '~' ? homedir() : /^~[\\/]/.test(text) ? join(homedir(), text.slice(2)) : text)
 
-// Read as DSH reads it, so the team's data and the guarded folder are where DSH keeps
-// its own: a blank value counts as unset.
-export const dshHomeOf = value => resolve(expandHome(value?.trim() ? value : join(homedir(), '.dsh')))
+// A blank value uses Cue's default data directory.
+export const dataRootOf = value => resolve(expandHome(value?.trim() ? value : join(homedir(), '.cue')))
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -49,10 +48,10 @@ export function install(rt) {
     const team = teamFolder()
     return team === undefined ? undefined : real(team)
   }
-  // Where `input` leads from `base`, as a real path, the way DSH's working_directory resolves
+  // Where `input` leads from `base`, as a real path, the way Cue's working_directory resolves
   // a change; undefined when nothing is there.
   const folderAt = (base, input) => realpath(resolve(base, input)).catch(() => undefined)
-  // Where a Session works: the folder DSH has for it, else the one DS Bot made it for.
+  // Where a Session works: the folder Cue has for it, else the one Cue made it for.
   const sessionFolder = (session) => {
     const reported = session?.header === undefined ? undefined : ctx.get?.('workingDirectory')?.get?.(session) ?? session.header.cwd
     if (reported !== undefined) return reported
@@ -61,10 +60,9 @@ export function install(rt) {
     if (room !== undefined) return workDirOf({ roomId: room.id }) ?? teamFolder()
     return workDirOf({ botId: rt.selfOf?.(id), roomId: rt.groupOwners?.get(id)?.roomId }) ?? teamFolder()
   }
-  // The desktop app owns its host and names the user's old DSH data, which Bots must not write either.
-  const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
+  const dataRoots = () => [rt.dataDir, rt.home].filter(Boolean)
 
-  // A Bot that could write where DSH or the team keeps its data could change its own
+  // A Bot that could write where Cue or the team keeps its data could change its own
   // permissions or the team, so neither those folders nor one that holds them is allowed.
   // The workspace exception covers only a workspace lying inside the data root (the
   // plugin's default does): one that holds or is a data root does not open it up.
@@ -78,7 +76,7 @@ export function install(rt) {
     return false
   }
 
-  // A file a Bot names to read into the team, such as a photo, may not come from DSH's or
+  // A file a Bot names to read into the team, such as a photo, may not come from Cue's or
   // the team's data; the team workspace, which can lie in it, is the exception, for the
   // same reason as in guarded().
   async function inData(path) {
@@ -120,7 +118,7 @@ export function install(rt) {
     const text = unquote(input)
     const expanded = expandHome(text)
     if (text === '' || !isAbsolute(expanded)) throw new Error(`Give the full path of the folder, not ${text}`)
-    // The plugin's own default lies in DSH's data, and going back to it stays possible: that
+    // The plugin's own default lies in Cue's data, and going back to it stays possible: that
     // folder itself, not where a link put in its place leads.
     const fallback = resolve(defaultTeamFolder())
     const own = join(await realBeyond(dirname(fallback)), basename(fallback))
@@ -139,7 +137,7 @@ export function install(rt) {
     if (path === await realTeam()) return path
     const clash = await rt.privateClash(path)
     if (clash) throw new Error(`${text} is in or around the folder of ${clash.name}, a private Bot, so it cannot be the team workspace`)
-    const workspace = await ctx.workspaceRegistry.resolveByPath(path) ?? await ctx.workspaceRegistry.create(path, 'DS Bot')
+    const workspace = await ctx.workspaceRegistry.resolveByPath(path) ?? await ctx.workspaceRegistry.create(path, 'Cue')
     state.workspaceId = workspace.id
     await rt.save()
     return path

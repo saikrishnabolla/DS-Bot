@@ -3,7 +3,7 @@
 // asked on the start page's cards instead of message boxes: the folder picker, then 「这里放不了」
 // or 「搬到这个文件夹？」 〔移动并重启〕; the start window becomes the move's, the Host stops, the
 // data is copied and the app starts again on the new folder. The Electron parts are test
-// doubles: no display, no DSH, no data of the user.
+// doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'

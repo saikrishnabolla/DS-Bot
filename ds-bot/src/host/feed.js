@@ -44,6 +44,17 @@ export function install(rt) {
       if (!active()) writing.clear()
     }
   }
+  const offOwnedFeed = typeof ctx.subscribeFeed === 'function'
+    ? ctx.subscribeFeed((event, data) => {
+        const sessionId = String(data?.sessionId ?? '')
+        const plainAgent = rt.agentOf?.(sessionId) !== undefined
+        const visibleChat = rt.chatOwners.has(sessionId) || rt.roomOwners.has(sessionId)
+        if ((event === 'message' || event === 'stream' || event === 'status') && !plainAgent) return
+        if (event === 'queue' && !plainAgent && !visibleChat) return
+        if (!['message', 'stream', 'status', 'queue', 'plugins'].includes(event)) return
+        publish(event, data)
+      })
+    : () => {}
 
   const offSaved = rt.onSaved(() => {
     if (active()) publish('revision', { revision: state.revision })
@@ -135,6 +146,7 @@ export function install(rt) {
       clearInterval(keepalive)
       clearTimeout(liveTimer)
       offSaved()
+      offOwnedFeed()
       listeners.clear()
       for (const controller of clients) leave(controller)
     }

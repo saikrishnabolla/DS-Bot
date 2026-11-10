@@ -5,8 +5,6 @@ import { createRuntime } from '../../index.js'
 import { installOwnedApprovals } from './owned-approvals.js'
 import { OwnedContext } from './owned-context.js'
 import { installOwnedComputerUse } from './owned-computer.js'
-import { migrateLegacyTeam } from './legacy-import.js'
-import { prepareLegacyModels } from './legacy-model-import.js'
 import { installOwnedDesktopTools } from './owned-desktop-tools.js'
 import { OwnedModels } from './owned-models.js'
 import { clearedModelProxyEnvironment, installProxyFromEnvironment } from './owned-proxy.js'
@@ -14,10 +12,12 @@ import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
 
-const GUARDED_CODING_TOOLS = new Set(['bash', 'pwsh', 'powershell', 'write', 'edit'])
+const GUARDED_CODING_TOOLS = new Set(['bash', 'pwsh', 'powershell', 'write', 'edit', 'manage_agent_preset', 'manage_cue_plugin'])
 function installCodingApprovals(context, runtime) {
   context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
     if (exec.ownedNative !== true || !GUARDED_CODING_TOOLS.has(exec.name)) return next()
+    if (exec.name === 'manage_agent_preset' && (exec.arguments?.action === 'list' || exec.arguments?.action === 'read')) return next()
+    if (exec.name === 'manage_cue_plugin' && ['list', 'search', 'read'].includes(exec.arguments?.action)) return next()
     const presets = context.get('permissionPresets')
     const botId = runtime.selfOf(exec.agent?.id)
     const bot = runtime.botOf(botId)
@@ -32,7 +32,15 @@ function installCodingApprovals(context, runtime) {
     }
     const name = bot?.name ?? 'this Bot'
     const shell = exec.name === 'bash' || exec.name === 'pwsh' || exec.name === 'powershell'
-    const reason = shell ? `Allow ${name} to run this shell command?` : `Allow ${name} to change this file?`
+    const presetChange = exec.name === 'manage_agent_preset'
+    const pluginChange = exec.name === 'manage_cue_plugin'
+    const reason = shell
+      ? `Allow ${name} to run this shell command?`
+      : presetChange
+        ? `Allow ${name} to change Cue's Agent presets?`
+        : pluginChange
+          ? `Allow ${name} to change Cue plugins? Plugin packages and install scripts run with Cue's access to this computer.`
+          : `Allow ${name} to change this file?`
     const outcome = await approval.request({
       agent: exec.agent,
       toolName: exec.name,
@@ -40,7 +48,13 @@ function installCodingApprovals(context, runtime) {
       reason,
       displayReason: {
         en: reason,
-        zh: shell ? `允许${name}运行这条 shell 命令吗？` : `允许${name}修改这个文件吗？`,
+        zh: shell
+          ? `允许${name}运行这条 shell 命令吗？`
+          : presetChange
+            ? `允许${name}更改 Cue 的 Agent 预设吗？`
+            : pluginChange
+              ? `允许${name}更改 Cue 插件吗？插件包和安装脚本会以 Cue 对这台电脑的访问权限运行。`
+              : `允许${name}修改这个文件吗？`,
       },
       ...(exec.signal === undefined ? {} : { signal: exec.signal }),
     })
@@ -64,14 +78,13 @@ export class OwnedHost {
     this.#stopProxy = stopProxy
   }
 
-  static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse, platform = process.platform, web } = {}) {
+  static async open({ dataDir, uiDir, workspacePath, host, port, publicOrigin, settings, env, models: suppliedModels, registry = createRegistry(), computerUse, platform = process.platform, web } = {}) {
     if (typeof dataDir !== 'string' || dataDir === '') throw new TypeError('dataDir must be a directory')
     if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
-    const stopProxy = await installProxyFromEnvironment(process.env, message => console.warn(`DS Bot proxy: ${message}`))
+    const stopProxy = await installProxyFromEnvironment(process.env, message => console.warn(`Cue proxy: ${message}`))
     let context
     let server
     try {
-      await prepareLegacyModels({ dataDir, platform })
       const modelRuntime = suppliedModels ?? await ModelRuntime.create({
         authPath: join(dataDir, 'auth.json'),
         modelsPath: join(dataDir, 'models.json'),
@@ -79,24 +92,29 @@ export class OwnedHost {
       })
       const models = await OwnedModels.open(modelRuntime, { configPath: join(dataDir, 'providers.json') })
       context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
-      await migrateLegacyTeam({ dataDir, harness: context.harness })
       installOwnedApprovals(context, { dataDir })
       await installOwnedStorage(context, { dataDir })
       installOwnedComputerUse(context, computerUse)
       await installOwnedSchedules(context)
       context.get('shellEnv').register({ resolve: clearedModelProxyEnvironment })
       const ownedWorkspace = context.workspaceRegistry.get('default').path
-      const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot'), workspace: ownedWorkspace })
-      installModelBoundary(runtime, models)
-      runtime.teamTools.push(...installOwnedDesktopTools(context, runtime, {
+      const runtime = createRuntime(context, {
+        dataDir,
+        home: join(dataDir, 'bot'),
+        workspace: ownedWorkspace,
+        modelBoundary: runtime => modelBoundary(models, runtime),
+      })
+      const desktopTools = installOwnedDesktopTools(context, runtime, {
         platform,
         workspacePath: ownedWorkspace,
         models,
         web,
-      }))
+      })
+      runtime.teamTools.push(...desktopTools)
       installCodingApprovals(context, runtime)
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)
+      context.installAgentTools(desktopTools)
       await runtime.load()
       if (runtime.computerEnabled?.()) {
         await runtime.computerEndpoint('provider-retry', {})
@@ -104,6 +122,7 @@ export class OwnedHost {
       }
       context.resume()
       const attachments = context.get('attachments')
+      const pluginClient = context.get('pluginClient')
       server = await startOwnedServer({
         dispatch: runtime.handle,
         upload: (input, signal) => {
@@ -111,11 +130,13 @@ export class OwnedHost {
           return attachments.saveFile(input)
         },
         attachment: reference => attachments.load(reference),
+        pluginAsset: input => pluginClient.asset(input),
         subscribe: runtime.subscribeFeed,
         revision: () => runtime.state.revision,
         uiDir,
         ...(host === undefined ? {} : { host }),
         ...(port === undefined ? {} : { port }),
+        ...(publicOrigin === undefined ? {} : { publicOrigin }),
       })
       return new OwnedHost(context, runtime, models, server, stopProxy)
     } catch (error) {
@@ -141,12 +162,23 @@ export class OwnedHost {
   }
 }
 
-function installModelBoundary(runtime, models) {
-  runtime.missingKeys = async providers => new Set(providers.filter(provider => !models.runtime.hasConfiguredAuth(provider)))
-  runtime.providersView = () => models.providersView()
-  runtime.setProviderKey = (...args) => models.setProviderKey(...args).finally(() => runtime.dropCatalog?.())
-  runtime.clearProviderKey = (...args) => models.clearProviderKey(...args).finally(() => runtime.dropCatalog?.())
-  runtime.addProvider = (...args) => models.addProvider(...args).finally(() => runtime.dropCatalog?.())
-  runtime.discoverModels = (...args) => models.discoverModels(...args)
-  runtime.removeProvider = (...args) => models.removeProvider(...args).finally(() => runtime.dropCatalog?.())
+function modelBoundary(models, runtime) {
+  return {
+    keyRefs: () => models.keyRefs(),
+    missingKeys: async providers => new Set(providers.filter(provider => !models.runtime.hasConfiguredAuth(provider))),
+    providersView: () => models.providersView(),
+    setProviderKey: async (provider, value) => {
+      try {
+        const result = await models.setProviderKey(provider, value)
+        runtime.unblockBots?.({ ref: models.keyRefs().get(provider) })
+        return result
+      } finally {
+        runtime.dropCatalog?.()
+      }
+    },
+    clearProviderKey: (...args) => models.clearProviderKey(...args).finally(() => runtime.dropCatalog?.()),
+    addProvider: (...args) => models.addProvider(...args).finally(() => runtime.dropCatalog?.()),
+    discoverModels: (...args) => models.discoverModels(...args),
+    removeProvider: (...args) => models.removeProvider(...args).finally(() => runtime.dropCatalog?.()),
+  }
 }

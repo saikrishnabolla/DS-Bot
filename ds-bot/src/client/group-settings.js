@@ -22,7 +22,7 @@ export function roomSubtitle(room, roster) {
 }
 
 // One preset for every member in the group, or each member's own. Turning it on starts
-// from DSH's default preset.
+// from Cue's default preset.
 function GroupPermission({ room, catalog, update }) {
   if (!catalog?.options?.length) return null
   const shared = room.permission !== undefined

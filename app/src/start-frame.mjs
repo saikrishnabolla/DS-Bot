@@ -1,6 +1,5 @@
 // What the start window needs before the team view has loaded: the theme source and the motion
 // tier the team view reported last. Kept in the app's own userData, outside the Bot data folder.
-// (docs/plans/2026-10-26-start-window.md §3, §10).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -36,7 +35,7 @@ export function writeStartFrame(file, change) {
     renameSync(`${file}.tmp`, file)
     return true
   } catch (error) {
-    console.error('DS Bot: the start window\'s theme was not saved:', error)
+    console.error('Cue: the start window\'s theme was not saved:', error)
     return false
   }
 }

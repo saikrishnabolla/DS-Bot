@@ -27,7 +27,7 @@ async function fixture(t, options = {}) {
   const uiDir = join(root, 'ui')
   const workspacePath = join(root, 'workspace')
   await Promise.all([mkdir(dataDir), mkdir(uiDir), mkdir(workspacePath)])
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   await writeFile(join(workspacePath, 'AGENTS.md'), '# Project rules\n\nKeep parity marker 4815 in every answer.\n')
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
@@ -320,7 +320,7 @@ test('owned background jobs bound memory, retain complete output, and stop proce
   })
 })
 
-test('a private-chat steer promotes a running shell and reaches the next model request', async t => {
+test('an explicit private-chat steer promotes a running shell and reaches the next model request', async t => {
   const { host, faux } = await fixture(t)
   const state = await host.runtime.handle('state', { locale: 'en' })
   const bot = state.value.bots[0]
@@ -341,6 +341,15 @@ test('a private-chat steer promotes a running shell and reaches the next model r
   const running = await waitFor(() => jobs.list(agent.id).find(job => job.status === 'running'))
   const sentAt = Date.now()
   assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Change course now.' })).ok, true)
+  const queued = await host.runtime.handle('queue', { sessionId: bot.id })
+  assert.equal(queued.ok, true)
+  const row = queued.value['next-turn'].find(item => item.source.kind === 'user' && item.content.some(block => block.text === 'Change course now.'))
+  assert.ok(row)
+  assert.equal((await host.runtime.handle('queue-update', {
+    sessionId: bot.id,
+    itemId: row.id,
+    action: { kind: 'steer' },
+  })).ok, true)
   await waitFor(() => steeredAt, 2_500)
 
   assert.ok(steeredAt - sentAt < 2_000)

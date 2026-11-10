@@ -2,7 +2,7 @@
 // went there shows no place line (start-window §5). That free space stays with the data's folder
 // when the team workspace changes, and the move from Settings (ds-bot:move-data) still asks,
 // copies and starts again on the new folder, which keeps its own. The Electron parts are test
-// doubles: no display, no DSH, no data of the user.
+// doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'

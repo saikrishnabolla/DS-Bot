@@ -1,15 +1,15 @@
-// Usage ledger: the tokens each model call in this DSH spent, for the Usage page.
+// Usage ledger: the tokens each model call in this Cue spent, for the Usage page.
 //
 // A call that a Session logs (one assistant settlement per attempt) is read from that
 // log, so calls made before this ledger existed count too. A call outside every log (a
-// checkpoint, a handoff note, the steward, an image reading, DSH titles and compaction)
-// is metered while it streams, from the time DS Bot runs. Rows go to usage.sqlite; like
+// checkpoint, a handoff note, the steward, an image reading, Cue titles and compaction)
+// is metered while it streams, from the time Cue runs. Rows go to usage.sqlite; like
 // the chat index it is derived from the logs, and deleting it loses only the metered
 // calls and the names of deleted Bots.
 //
 // A call belongs to a Bot (its own chat, its group Sessions, their earlier parts, and
 // any Session forked or spawned under them), to a group chat's own Session, or to the
-// rest of DSH ("other").
+// rest of Cue ("other").
 import { randomUUID } from 'node:crypto'
 import { mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -45,7 +45,7 @@ const tokensOf = usage => ({
   output: count(usage.outputTokens),
 })
 
-// Folds Session events, oldest first, into one row per billed attempt, as DSH's own
+// Folds Session events, oldest first, into one row per billed attempt, as Cue's own
 // tokenUsage projection counts them: a later sample of one attempt replaces the earlier
 // one, and `llm/retry-started` begins a new attempt. The model is the one the latest
 // request header named. A fork's events up to its inherited cut are the parent's, so
@@ -139,7 +139,7 @@ function memoryLedger() {
 function sqliteLedger(DatabaseSync, path) {
   const db = new DatabaseSync(path)
   try {
-    // Desktop and Web may share one DSH home; the other writer holds the lock
+    // Desktop and Web may share one Cue home; the other writer holds the lock
     // briefly, and the timeout must be armed before the WAL pragma can block.
     db.exec('PRAGMA busy_timeout = 5000')
     db.exec('PRAGMA journal_mode = WAL')
@@ -340,7 +340,7 @@ export function install(rt) {
     ...Object.values(room.segments ?? {}).flat().map(segment => segment.sessionId),
   ]))
 
-  // DSH reads a subagent Session only through its parent's address; the parent
+  // Cue reads a subagent Session only through its parent's address; the parent
   // need not exist any more. One with no parent on record cannot be read.
   const addressOf = item => (item.origin !== 'subagent'
     ? { kind: 'session', sessionId: item.sessionId }
@@ -434,7 +434,7 @@ export function install(rt) {
       // Session's exact cursor is read below when no hint is usable.
       const listedCursor = item => (item.projections?.kind === 'sequenced' ? item.projections.asOfSeq : undefined)
       // A Session with no Agent attached is cold. Its listing carries the watermark of its
-      // checkpoint, which DSH rewrites at each turn end and when the Session is detached, so
+      // checkpoint, which Cue rewrites at each turn end and when the Session is detached, so
       // the watermark moves when the log does. A cold Session seals at that watermark only:
       // the watermark is compared with an earlier listing, never with a log sequence.
       const coldWatermarks = new Map(listed
@@ -569,7 +569,7 @@ export function install(rt) {
     }
   }
 
-  // DS Bot tags the requests it makes outside a Session with the Session they serve.
+  // Cue tags the requests it makes outside a Session with the Session they serve.
   const tags = new WeakMap()
   const tagUsage = (messages, tag) => {
     if (messages !== null && typeof messages === 'object') tags.set(messages, tag)
@@ -579,7 +579,7 @@ export function install(rt) {
     const tag = from !== null && typeof from === 'object' ? tags.get(from) : undefined
     if (tag !== undefined) tagUsage(to, tag)
   }
-  // DS Bot's own requests name the Session they serve, as some routes require, so
+  // Cue's own requests name the Session they serve, as some routes require, so
   // `sessionId` alone does not make a request that Session's own round; the tag does.
   const ownRequest = options => tags.has(options?.messages)
   // Owner and group use are journaled with the call itself: a Bot or room that

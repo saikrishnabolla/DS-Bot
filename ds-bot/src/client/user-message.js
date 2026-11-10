@@ -1,5 +1,5 @@
 import { createElement as h, Fragment, useEffect, useRef, useState } from 'react'
-import * as ui from './dsh-primitives.js'
+import * as ui from './ui-primitives.js'
 import { imPlatform } from '../shared/im-platforms.js'
 import { mentionSpans } from '../shared/mentions.js'
 import { BotMark } from './mark.js'
@@ -10,12 +10,12 @@ import { clockLabel, messageClock } from './text.js'
 import { useFold } from './fold.js'
 
 // -------------------------------------------------------------------------
-// The user's own messages. DSH draws every "@word" in them as a file reference, and
+// The user's own messages. Cue draws every "@word" in them as a file reference, and
 // cuts it at the first space, so "@新 Bot" showed as a file "新". Here the Bot mentions
-// are cut out first, by the rule the group host calls them with; DSH's own drawing
+// are cut out first, by the rule the group host calls them with; Cue's own drawing
 // keeps everything else (files, conversation references, skills).
 
-// DSH releases without the text projection keep their own bubble.
+// Cue releases without the text projection keep their own bubble.
 export const canDrawUserMessages = () => typeof ui.projectUserText === 'function'
 
 export function contentParts(content) {
@@ -128,7 +128,7 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
 export const USER_MESSAGE_CSS = `
 .bt-umsg{display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-start;gap:4px}
 .bt-ustack{min-width:0;max-width:calc(var(--bt-msg-w) * 100%);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.bt-ubody{max-width:100%;box-sizing:border-box;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:var(--dsh-content-font-size,14px);line-height:calc(var(--dsh-content-font-size,14px) + 10px);white-space:pre-wrap;word-break:break-word;text-wrap:pretty;text-autospace:normal}
+.bt-ubody{max-width:100%;box-sizing:border-box;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:var(--cue-content-font-size,14px);line-height:calc(var(--cue-content-font-size,14px) + 10px);white-space:pre-wrap;word-break:break-word;text-wrap:pretty;text-autospace:normal}
 .bt-ubody a{color:inherit}
 .bt-umention{display:inline-flex;align-items:center;gap:3px;vertical-align:-3px;max-width:100%;padding:0 1px;border:0;background:none;color:inherit;font:inherit;font-weight:600;line-height:inherit;cursor:pointer;border-radius:6px;white-space:nowrap}
 .bt-umention:hover{text-decoration:underline;text-underline-offset:2px}

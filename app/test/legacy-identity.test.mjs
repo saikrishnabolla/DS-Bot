@@ -7,12 +7,20 @@ import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { UUID } from 'builder-util-runtime'
-import { APP_ID, configureIdentity, LEGACY_ARTIFACT_PREFIX, LEGACY_PRODUCT_NAME } from '../src/legacy.mjs'
+import {
+  APP_ID,
+  configureIdentity,
+  LEGACY_ARTIFACT_PREFIX,
+  LEGACY_PRODUCT_NAME,
+  PREVIOUS_ARTIFACT_PREFIX,
+  PREVIOUS_PRODUCT_NAME,
+} from '../src/legacy.mjs'
 
 function fixture({ saved = [], packaged = true } = {}) {
   const app = new EventEmitter()
   const appData = join(tmpdir(), 'dsbot-identity-fixture')
-  const current = join(appData, 'DS Bot')
+  const current = join(appData, 'Cue')
+  const previous = join(appData, PREVIOUS_PRODUCT_NAME)
   const legacy = join(appData, LEGACY_PRODUCT_NAME)
   const paths = { appData, userData: current }
   const names = []
@@ -24,26 +32,29 @@ function fixture({ saved = [], packaged = true } = {}) {
     setAppUserModelId: id => { app.id = id },
   })
   const exists = path => saved.includes(path)
-  return { app, paths, names, current, legacy, exists }
+  return { app, paths, names, current, previous, legacy, exists }
 }
 
-for (const platform of ['win32', 'darwin', 'linux']) {
-  test(`${platform}: an existing installation keeps its shell data and encryption identity`, () => {
-    const f = fixture()
-    let created
-    const options = { env: {}, platform, mkdir: path => { created = path }, exists: path => path === f.legacy }
-    assert.deepEqual(configureIdentity(f.app, options), { userData: f.legacy, legacy: true })
-    assert.equal(f.paths.sessionData, f.legacy)
-    assert.equal(created, f.legacy)
-    if (platform === 'win32') {
-      assert.equal(f.app.id, APP_ID)
-      assert.deepEqual(f.names, [])
-    } else {
-      assert.deepEqual(f.names, [LEGACY_PRODUCT_NAME])
-      f.app.emit('ready')
-      assert.deepEqual(f.names, [LEGACY_PRODUCT_NAME, 'DS Bot'])
-    }
-  })
+for (const [priorName, priorKey] of [[PREVIOUS_PRODUCT_NAME, 'previous'], [LEGACY_PRODUCT_NAME, 'legacy']]) {
+  for (const platform of ['win32', 'darwin', 'linux']) {
+    test(`${platform}: an existing ${priorName} installation keeps its shell data and encryption identity`, () => {
+      const f = fixture()
+      const prior = f[priorKey]
+      let created
+      const options = { env: {}, platform, mkdir: path => { created = path }, exists: path => path === prior }
+      assert.deepEqual(configureIdentity(f.app, options), { userData: prior, legacy: true })
+      assert.equal(f.paths.sessionData, prior)
+      assert.equal(created, prior)
+      if (platform === 'win32') {
+        assert.equal(f.app.id, APP_ID)
+        assert.deepEqual(f.names, [])
+      } else {
+        assert.deepEqual(f.names, [priorName])
+        f.app.emit('ready')
+        assert.deepEqual(f.names, [priorName, 'Cue'])
+      }
+    })
+  }
 }
 
 test('a fresh installation uses the new shell directory', () => {
@@ -54,8 +65,14 @@ test('a fresh installation uses the new shell directory', () => {
 
 test('an already configured new installation wins when both directories exist', () => {
   const f = fixture()
-  const existing = [f.legacy, join(f.current, 'locations.json')]
+  const existing = [f.previous, f.legacy, join(f.current, 'locations.json')]
   assert.equal(configureIdentity(f.app, { env: {}, mkdir: () => {}, exists: path => existing.includes(path) }).userData, f.current)
+})
+
+test('the configured DS Bot installation wins over the older DeepSeek Bot directory', () => {
+  const f = fixture()
+  const existing = [f.previous, join(f.previous, 'locations.json'), f.legacy, join(f.legacy, 'locations.json')]
+  assert.equal(configureIdentity(f.app, { env: {}, mkdir: () => {}, exists: path => existing.includes(path) }).userData, f.previous)
 })
 
 test('an explicit shell directory never probes installed user data', () => {
@@ -70,22 +87,23 @@ test('an isolated data run never probes an installed application', () => {
   assert.equal(configureIdentity(f.app, { env: { DS_BOT_HOME: '/tmp/dsbot-test-data' }, mkdir: () => {}, exists: () => { throw new Error('must not probe') } }).userData, f.current)
 })
 
-test('a source installation also keeps its existing shell data', () => {
+test('a source installation also keeps its existing DS Bot shell data', () => {
   const f = fixture({ packaged: false })
-  assert.equal(configureIdentity(f.app, { env: {}, mkdir: () => {}, exists: path => path === f.legacy }).userData, f.legacy)
+  assert.equal(configureIdentity(f.app, { env: {}, mkdir: () => {}, exists: path => path === f.previous }).userData, f.previous)
 })
 
 for (const suffix of ['mac-arm64.zip', 'mac-x64.zip', 'linux-amd64.deb']) {
-  test(`old update clients receive the identical DS Bot payload: ${suffix}`, () => {
+  test(`old update clients receive the identical Cue payload: ${suffix}`, () => {
     const root = mkdtempSync(join(tmpdir(), 'dsbot-release-alias-'))
     try {
-      const source = join(root, `DS-Bot-1.2.3-${suffix}`)
-      const payload = Buffer.from('new DS Bot package')
+      const source = join(root, `Cue-1.2.3-${suffix}`)
+      const payload = Buffer.from('new Cue package')
       writeFileSync(source, payload)
       const result = spawnSync(process.execPath, ['scripts/legacy-release-assets.mjs', source], { cwd: new URL('../', import.meta.url), encoding: 'utf8' })
       assert.equal(result.status, 0, result.stderr)
-      const alias = join(root, `${LEGACY_ARTIFACT_PREFIX}-1.2.3-${suffix}`)
-      assert.deepEqual(readFileSync(alias), payload)
+      const aliases = [PREVIOUS_ARTIFACT_PREFIX, LEGACY_ARTIFACT_PREFIX].map(prefix => join(root, `${prefix}-1.2.3-${suffix}`))
+      for (const alias of aliases) assert.deepEqual(readFileSync(alias), payload)
+      assert.deepEqual(result.stdout.trim().split(/\r?\n/u), aliases)
       assert.equal(existsSync(source), true)
     } finally { rmSync(root, { recursive: true, force: true }) }
   })

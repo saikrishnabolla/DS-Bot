@@ -14,7 +14,7 @@ const send = message => new Promise((resolve, reject) => {
 
 async function main() {
   const dataDir = process.env.DS_BOT_DATA_DIR
-  if (!dataDir) throw new Error('DS Bot data directory is not set')
+  if (!dataDir) throw new Error('Cue data directory is not set')
   const computer = new ComputerRemote(send)
   const remote = (action, payload, options) => computer.request(action, payload, options)
   const driverFactory = async () => ({

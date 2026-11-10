@@ -1,5 +1,5 @@
 // Secrets: keys the user types into a card for a Bot. A value lives only in
-// secrets.json (mode 600) and in this process; Bots use it as $DSH_SECRET_<NAME> in
+// secrets.json (mode 600) and in this process; Bots use it as $CUE_SECRET_<NAME> in
 // their shell, tool results lose it before they are saved, and every model request
 // has it replaced by [secret:<NAME>] before it leaves.
 import { randomUUID } from 'node:crypto'
@@ -11,7 +11,7 @@ import { replaceFile } from './files.js'
 import { output } from './tools.js'
 
 export const SECRET_NAME = /^[A-Z][A-Z0-9_]{0,63}$/
-export const ENV_PREFIX = 'DSH_SECRET_'
+export const ENV_PREFIX = 'CUE_SECRET_'
 // A short value (a PIN, a short password) would also hit ordinary words if it were
 // replaced wherever it appears, so below WHOLE_VALUE it is replaced only where it
 // stands alone: no letter or digit right before or after it.
@@ -26,7 +26,7 @@ export const canUse = (secret, botId) => secret !== undefined && botId !== undef
   && (secret.scope === 'all' || (Array.isArray(secret.scope) && secret.scope.includes(botId)))
 
 export function normalizeName(raw) {
-  return String(raw ?? '').trim().replace(/^\$(env:)?/i, '').replace(/^DSH_SECRET_/i, '').replace(/[\s-]+/g, '_').toUpperCase()
+  return String(raw ?? '').trim().replace(/^\$(env:)?/i, '').replace(/^CUE_SECRET_/i, '').replace(/[\s-]+/g, '_').toUpperCase()
 }
 
 // encodeURIComponent leaves ' as is, but new URL() turns it into %27 in a query, so the
@@ -107,7 +107,7 @@ export function install(rt) {
   // Error messages from JSON.parse quote the file, so only the code or name is logged.
   const reason = error => error?.code ?? error?.name ?? 'error'
 
-  // While another dsh holds the team, that host writes secrets.json, so a reading host
+  // While another Cue instance holds the team, that host writes secrets.json, so a reading host
   // reads it again each time; a copy read then is also read again after taking over,
   // before this host saves anything.
   let loadedReadOnly = false
@@ -180,7 +180,7 @@ export function install(rt) {
 
   // Resolves once secrets.json holds the current map; rejects when the write failed.
   const persist = () => {
-    if (blocked !== undefined) return Promise.reject(new Error(`The secrets file ${path} could not be read (${blocked}). DS Bot does not change it; fix or move the file and reload.`))
+    if (blocked !== undefined) return Promise.reject(new Error(`The secrets file ${path} could not be read (${blocked}). Cue does not change it; fix or move the file and reload.`))
     const readOnly = rt.readOnly()
     if (readOnly !== undefined) return Promise.reject(new Error(readOnly))
     const snapshot = JSON.stringify({ version: 1, secrets: [...secrets.values()] }, null, 2)
@@ -556,7 +556,7 @@ export function install(rt) {
       try {
         unregister = sub.shellEnv.register({
           name: 'ds-bot-secrets',
-          variables: Object.fromEntries(list.map(secret => [envName(secret.name), { description: `DS Bot secret ${secret.name}${secret.purpose ? `: ${secret.purpose}` : ''}` }])),
+          variables: Object.fromEntries(list.map(secret => [envName(secret.name), { description: `Cue secret ${secret.name}${secret.purpose ? `: ${secret.purpose}` : ''}` }])),
           resolve: resolveEnv,
         })
       } catch (error) {

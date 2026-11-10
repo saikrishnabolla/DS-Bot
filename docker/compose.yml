@@ -1,17 +1,19 @@
 services:
-  ds-bot:
+  cue:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-      args:
-        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
-        DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.1}
-    image: ds-bot:local
+    image: cue:local
     ports:
-      - "${DSH_PORT:-3080}:3080"
+      - "${CUE_PORT:-3080}:3080"
     env_file:
       - path: .env
         required: false
+    environment:
+      CUE_PORT: "3080"
+      CUE_PUBLIC_ORIGIN: "${CUE_PUBLIC_ORIGIN:-http://localhost:3080}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
     volumes:
       - ${DATA_DIR:-./data}:/data
       - ${WORKSPACE_DIR:-./workspace}:/workspace

@@ -11,7 +11,7 @@ async function openHost(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-channel-'))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
   faux.setResponses(Array.from({ length: 20 }, () => fauxAssistantMessage('Ready.')))

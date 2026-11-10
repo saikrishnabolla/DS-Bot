@@ -1,5 +1,5 @@
 // The Electron parts of the app, as a test double: enough of the API for the main process
-// of src/main.mjs to run without a display, without DSH and without the user's data.
+// of src/main.mjs to run without a display, without Cue and without the user's data.
 // The loader (test/helpers/loader.mjs) puts this module in place of "electron".
 import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync } from 'node:fs'
@@ -13,7 +13,7 @@ export const paths = {
   root,
   userData: join(root, 'userData'),
   downloads: join(root, 'downloads'),
-  exe: join(root, 'DS Bot.exe'),
+  exe: join(root, 'Cue.exe'),
   // The folder of the app itself: the Host's pnpm lives in it.
   appPath: join(root, 'app'),
 }
@@ -97,7 +97,7 @@ export class FakeWindow extends EventEmitter {
     try {
       const parsed = new URL(url)
       const token = parsed.searchParams.get('token')
-      if (token !== null) state.cookies.push({ name: 'dsh-auth', value: token, domain: parsed.hostname, path: '/' })
+      if (token !== null) state.cookies.push({ name: 'Cue-auth', value: token, domain: parsed.hostname, path: '/' })
     } catch { /* a page without an address of its own */ }
     // The window is on the screen once its first page is there.
     if (!this.ready) {
@@ -138,7 +138,7 @@ class FakeWebContents extends EventEmitter {
     this.isDestroyed = () => this.win.destroyed
     this.getURL = () => this.win.url
     this.isLoading = () => false
-    this.getTitle = () => 'DS Bot'
+    this.getTitle = () => 'Cue'
     this.sent = []
     this.send = (...args) => {
       this.sent.push(args)
@@ -155,7 +155,7 @@ class FakeWebContents extends EventEmitter {
 class FakeApp extends EventEmitter {
   constructor() {
     super()
-    this.name = 'DS Bot'
+    this.name = 'Cue'
     this.getVersion = () => '0.2.2'
     this.getLocale = () => 'en-US'
     this.getPath = (name) => paths[name] ?? join(root, String(name))
@@ -282,5 +282,8 @@ export const dialog = {
 
 export const shell = {
   openExternal: async (url) => { state.opened = (state.opened ?? []).concat(url) },
-  openPath: async () => '',
+  openPath: async (path) => {
+    state.openedPaths = (state.openedPaths ?? []).concat(path)
+    return state.openPathError ?? ''
+  },
 }

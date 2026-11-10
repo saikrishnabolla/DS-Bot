@@ -11,7 +11,7 @@ import { fakeAttachments, fakeContext } from './fake-ctx.js'
 
 // A fake team of two Bots in one group; member answers are played back through the
 // session/event listener, so a round runs with no model. Prompts land in the
-// Session's inbox the way DSH holds them while a turn runs: queued for the next turn,
+// Session's inbox the way Cue holds them while a turn runs: queued for the next turn,
 // or steered into the next step.
 // `home`: start on the data of an earlier run, as after a restart.
 let rt
@@ -79,7 +79,7 @@ function start({ home = mkdtempSync(join(tmpdir(), 'ds-bot-rounds-')) } = {}) {
     const response = await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
   }
-  // Session events arrive one at a time in DSH; awaiting each listener keeps that order.
+  // Session events arrive one at a time in Cue; awaiting each listener keeps that order.
   const emit = async (sessionId, event) => {
     for (const listener of ctx.listeners.get('session/event') ?? []) await listener({ id: sessionId }, event)
   }
@@ -266,7 +266,7 @@ test('a message with an image or a chat reference waits for its own round, and s
   const first = await turnFor(sent)
   await compose(room.id, [{ type: 'text', text: 'see this' }, { type: 'image', data: 'AAAA', mediaType: 'image/png' }])
   await compose(room.id, 'after the image')
-  await compose(room.id, 'about @[Notes](dsh-session:abc123)', 'steer')
+  await compose(room.id, 'about @[Notes](cue-session:abc123)', 'steer')
   await answer(first.sessionId, first.message.source.exchangeId, 'one', 1)
   const second = await turnFor(sent, first)
   assert.doesNotMatch(second.message.content[0].text, /see this|after the image|about @/)
@@ -401,7 +401,7 @@ test('a delivery that fails for another reason shows a failure and keeps the Ses
   assert.equal(rt.roomOf(room.id).sessions[chief], first.sessionId)
 })
 
-// #217: DSH opens a relative file link from the folder of the Session that shows it. A
+// #217: Cue opens a relative file link from the folder of the Session that shows it. A
 // member wrote the link in its own group Session, which works in the group's folder; the
 // group's Session and other Bots work elsewhere, so the link reaches them in full.
 test('a relative file link a member writes reaches the group, and another Bot, as a full path', async (t) => {
@@ -435,7 +435,7 @@ test('a relative file link a member writes reaches the group, and another Bot, a
   assert.ok(delivered.message.content.map(block => block.text).join('\n').includes(`[notes](${full('notes.md')}#L3)`))
 })
 
-// #209: DSH can fail a member's turn before its first step (DSH 0.2.1 does so for a folder
+// #209: Cue can fail a member's turn before its first step (the runtime does so for a folder
 // that is gone), so the turn never takes the round's call. The round counts the failure at
 // once instead of waiting minutes for a reply that cannot come.
 test('a member turn that fails before it takes the call fails that member in the round at once', async (t) => {
@@ -538,7 +538,7 @@ test('a long group line keeps its start in state.json, and members and read_grou
   assert.ok((await read.execute({ group: 'R1', seq: saved.seq }, exec)).endsWith(long))
   await stop({ keep: true })
 
-  // The log is full (60 lines) when DSH starts again, the long line second oldest.
+  // The log is full (60 lines) when Cue starts again, the long line second oldest.
   const file = join(home, 'state.json')
   const onDisk = JSON.parse(readFileSync(file, 'utf8'))
   const kept = onDisk.rooms[room.id]
@@ -624,7 +624,7 @@ test('a file the user sends in a group reaches each member the line is shown to,
 test('an image the user sends in a group reaches each member the line is shown to, once, with its read-only path', async (t) => {
   const { call, emit, relay, answer, stop, sent, ctx, rt } = start()
   t.after(stop)
-  const savedPath = '/tmp/dsh-attachments/objects/ab/cd'
+  const savedPath = '/tmp/Cue-attachments/objects/ab/cd'
   ctx.get = name => (name === 'attachments' ? { imageHostPath: () => savedPath } : undefined)
   const room = await team(call, sent)
   const png = { attachmentId: 'sha256:abcd1234', name: 'image.png', mediaType: 'image/png', bytes: 67_000, width: 800, height: 600 }
@@ -633,7 +633,7 @@ test('an image the user sends in a group reaches each member the line is shown t
   const first = await turnFor(sent)
   const images = message => message.content.filter(block => block.type === 'image').map(block => block.attachment)
   assert.deepEqual(images(first.message), [png])
-  assert.match(first.message.content[0].text, /read-only copy saved at "\/tmp\/dsh-attachments\/objects\/ab\/cd"/)
+  assert.match(first.message.content[0].text, /read-only copy saved at "\/tmp\/Cue-attachments\/objects\/ab\/cd"/)
   await answer(first.sessionId, first.message.source.exchangeId, 'I see it.', 1)
   const second = await turnFor(sent, first)
   assert.deepEqual(images(second.message), [png])
@@ -987,7 +987,7 @@ test('a user message mid-round reaches the admin at once while a member still an
   const admin = await turnFor(sent)
   await answer(admin.sessionId, admin.message.source.exchangeId, '@Writer go', 1)
   const writer = await turnFor(sent, admin)
-  // The Writer is still answering when the user writes; DSH reports the inbox change.
+  // The Writer is still answering when the user writes; Cue reports the inbox change.
   await compose(room.id, 'why is the Tester idle?')
   await emit(room.id, { type: 'agent/inbox/spliced', data: { target: 'next-turn', inserted: [] } })
   const again = await turnFor(sent, admin, writer)

@@ -13,9 +13,10 @@ async function fixture(t, { browser = false } = {}) {
   const uiDir = join(root, 'ui')
   const workspacePath = join(root, 'workspace')
   await Promise.all([mkdir(dataDir), mkdir(uiDir), mkdir(workspacePath)])
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   let host
   let call
+  let faux
 
   const open = async () => {
     const models = await ModelRuntime.create({
@@ -23,7 +24,7 @@ async function fixture(t, { browser = false } = {}) {
       modelsPath: null,
       refreshOnCreate: false,
     })
-    const faux = fauxProvider()
+    faux = fauxProvider()
     faux.setResponses(Array.from({ length: 100 }, () => fauxAssistantMessage('Ready.')))
     models.registerNativeProvider(faux.provider)
     await models.refresh({ allowNetwork: false })
@@ -75,6 +76,7 @@ async function fixture(t, { browser = false } = {}) {
     restart,
     state,
     host: () => host,
+    faux: () => faux,
     call: (...args) => call(...args),
   }
 }
@@ -83,6 +85,8 @@ const ok = result => {
   assert.equal(result.ok, true, result.error?.message)
   return result.value
 }
+
+const userQueue = items => items.filter(item => item.source.kind === 'user')
 
 const refused = (result, message) => {
   assert.equal(result.ok, false)
@@ -118,7 +122,36 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   }))
   assert.equal(providers.providers.find(provider => provider.id === 'anthropic')?.key.configured, true)
 
+  env.host().runtime.defaultModel = async () => 'faux/faux-1'
   const agent = ok(await env.call('add-agent'))
+  assert.deepEqual((await env.host().runtime.ctx.harness.agent(agent.sessions[0])).model, { provider: 'faux', modelId: 'faux-1' })
+  assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Plain Agent prompt' })), true)
+  const plainAgent = await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])
+  await plainAgent.agent.whenIdle()
+  const agentChat = ok(await env.call('agent-chat', { sessionId: agent.sessions[0] }))
+  assert.deepEqual(agentChat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => [item.kind, item.text]), [
+    ['user', 'Plain Agent prompt'],
+    ['bot', 'Ready.'],
+  ])
+  env.faux().setResponses([async (_context, options) => {
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 2_000)
+      options?.signal?.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+    })
+    return fauxAssistantMessage('This answer should be stopped.')
+  }])
+  assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Start slow Agent work' })), true)
+  const runningDeadline = Date.now() + 2_000
+  while ((await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])).agent.status !== 'running') {
+    if (Date.now() >= runningDeadline) assert.fail('Agent session did not start running')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.equal(ok(await env.call('stop-agent-work', { sessionId: agent.sessions[0] })), true)
+  await plainAgent.agent.whenIdle()
+  assert.equal(plainAgent.agent.status, 'idle')
+  const agentRows = ok(await env.call('agent-sessions'))
+  assert.deepEqual(agentRows.ids, [agent.sessions[0]])
+  assert.equal(agentRows.byId[agent.sessions[0]].running, false)
   const second = ok(await env.call('agent-session', { agentId: agent.id }))
   const workspaceId = (await env.state()).workspaceId
   const plain = await env.host().runtime.ctx.sessionController.create({ workspaceId })
@@ -161,6 +194,135 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   assert.equal(ok(await env.call('remove-agent', { agentId: agent.id })).agents.length, 0)
   providers = ok(await env.call('provider-key', { provider: 'anthropic', value: null }))
   assert.equal(providers.providers.some(provider => provider.id === 'anthropic'), false)
+})
+
+test('saving a provider key clears that provider\'s credential block', async t => {
+  const env = await fixture(t)
+  const chief = (await env.state()).bots[0]
+  env.host().runtime.state.bots[chief.id].blocked = {
+    code: 'AUTH', provider: 'anthropic', status: 401, at: 1,
+  }
+
+  ok(await env.call('provider-key', { provider: 'anthropic', value: 'sk-replaced' }))
+
+  assert.equal((await env.state()).bots.find(bot => bot.id === chief.id).blocked, undefined)
+})
+
+test('a second private-chat send queues for the next turn by default', async t => {
+  const env = await fixture(t)
+  const callsBeforeCreate = env.faux().state.callCount
+  const writer = ok(await env.call('create-bot', {
+    name: 'Writer', role: 'Write', model: 'faux/faux-1',
+  }))
+  const kickoffDeadline = Date.now() + 5_000
+  while (env.faux().state.callCount === callsBeforeCreate) {
+    if (Date.now() >= kickoffDeadline) assert.fail('Writer kickoff did not start')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  const sessionId = env.host().runtime.chatOf(writer.id)
+  const { agent: writerAgent } = await env.host().runtime.ctx.sessionController.resolveAgent(sessionId)
+  await writerAgent.whenIdle()
+  let release
+  let started
+  const running = new Promise(resolve => { started = resolve })
+  t.after(() => release?.())
+  env.faux().setResponses([
+    async () => {
+      started()
+      await new Promise(resolve => { release = resolve })
+      return fauxAssistantMessage('First answer.')
+    },
+    fauxAssistantMessage('Second answer.'),
+  ])
+
+  assert.equal(ok(await env.call('send', { sessionId, text: 'First message' })), true)
+  await running
+  assert.equal(ok(await env.call('send', { sessionId, text: 'Second message' })), true)
+
+  const watch = await env.host().runtime.ctx.harness.watch(sessionId, { min: 1, max: 20 })
+  t.after(() => watch.stop())
+  const modes = watch.value.docs['pi.inbox'].items
+    .filter(item => item.entry?.data?.source?.kind === 'user')
+    .map(item => item.mode)
+  const queue = ok(await env.call('queue', { sessionId }))
+  release()
+  await writerAgent.whenIdle()
+  assert.deepEqual(modes, ['followUp'])
+  assert.deepEqual(userQueue(queue['next-turn']).map(item => [item.source.kind, item.content[0].text, item.mode]), [
+    ['user', 'Second message', 'followUp'],
+  ])
+  const chat = ok(await env.call('chat', { botId: writer.id }))
+  const rows = chat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => [item.kind, item.text])
+  const first = rows.findIndex(item => item[0] === 'user' && item[1] === 'First message')
+  assert.notEqual(first, -1)
+  assert.deepEqual(rows.slice(first), [
+    ['user', 'First message'],
+    ['bot', 'First answer.'],
+    ['user', 'Second message'],
+    ['bot', 'Second answer.'],
+  ])
+})
+
+test('queued private-chat messages can be edited, removed and explicitly steered', async t => {
+  const env = await fixture(t)
+  const writer = ok(await env.call('create-bot', {
+    name: 'Writer', role: 'Write', model: 'faux/faux-1',
+  }))
+  let release
+  let started
+  t.after(() => release?.())
+  const running = new Promise(resolve => { started = resolve })
+  env.faux().setResponses([
+    async () => {
+      started()
+      await new Promise(resolve => { release = resolve })
+      return fauxAssistantMessage('First answer.')
+    },
+    fauxAssistantMessage('Steered answer.'),
+  ])
+
+  const sessionId = env.host().runtime.chatOf(writer.id)
+  assert.equal(ok(await env.call('send', { sessionId, text: 'First message' })), true)
+  await running
+  try {
+    assert.equal(ok(await env.call('send', { sessionId, text: 'Second message' })), true)
+    let queue = userQueue(ok(await env.call('queue', { sessionId }))['next-turn'])
+    assert.equal(queue.length, 1)
+
+    ok(await env.call('queue-update', {
+      sessionId,
+      itemId: queue[0].id,
+      action: { kind: 'edit', content: [{ type: 'text', text: 'Edited message' }] },
+    }))
+    queue = userQueue(ok(await env.call('queue', { sessionId }))['next-turn'])
+    assert.deepEqual(queue.map(item => [item.content[0].text, item.mode]), [['Edited message', 'followUp']])
+
+    assert.equal(ok(await env.call('send', { sessionId, text: 'Delete this message' })), true)
+    queue = userQueue(ok(await env.call('queue', { sessionId }))['next-turn'])
+    assert.equal(queue.length, 2)
+    ok(await env.call('queue-update', {
+      sessionId,
+      itemId: queue.find(item => item.content[0].text === 'Delete this message').id,
+      action: { kind: 'remove' },
+    }))
+    queue = userQueue(ok(await env.call('queue', { sessionId }))['next-turn'])
+    assert.deepEqual(queue.map(item => item.content[0].text), ['Edited message'])
+
+    ok(await env.call('queue-update', {
+      sessionId,
+      itemId: queue[0].id,
+      action: { kind: 'steer' },
+    }))
+    queue = userQueue(ok(await env.call('queue', { sessionId }))['next-turn'])
+    assert.deepEqual(queue.map(item => [item.content[0].text, item.mode]), [['Edited message', 'steer']])
+  } finally {
+    release?.()
+  }
+  const { agent } = await env.host().runtime.ctx.sessionController.resolveAgent(sessionId)
+  await agent.whenIdle()
+  const chat = ok(await env.call('chat', { botId: writer.id }))
+  const text = chat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => item.text)
+  assert.deepEqual(text, ['First message', 'First answer.', 'Edited message', 'Steered answer.'])
 })
 
 test('owned Host persists connector settings, mail rules and capability attachments without external credentials', async t => {

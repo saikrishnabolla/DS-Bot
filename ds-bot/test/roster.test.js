@@ -9,9 +9,8 @@ import { format } from 'node:util'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
-// DSH's settings and credentials for a DeepSeek route that takes an API key. A key set
-// or removed is announced the way DSH announces it. `records` are the stored records
-// (an account sign-in's), announced by the test.
+// Cue's credentials for a DeepSeek route that takes an API key. A key set or removed
+// is announced the way Cue announces it. `records` are other stored credentials.
 function keyed(ctx, stored, records) {
   return {
     settings: { describe: () => [{ ns: 'llm-deepseek', revision: 0, value: { apiKeyEnv: 'DEEPSEEK_API_KEY' }, user: {}, base: {} }] },
@@ -24,7 +23,7 @@ function keyed(ctx, stored, records) {
   }
 }
 
-// Enough of the dsh services for the roster to make Sessions; kickoff messages are dropped.
+// Enough of the Cue services for the roster to make Sessions; kickoff messages are dropped.
 // With `keys`, the models' route takes an API key and these are the ones set.
 let rt
 function start(team, { models = [], reasoning = {}, archiveError, keys, selection } = {}) {
@@ -33,7 +32,8 @@ function start(team, { models = [], reasoning = {}, archiveError, keys, selectio
   const services = {}
   const ctx = fakeContext({ services })
   const records = new Set()
-  if (keys !== undefined) Object.assign(services, keyed(ctx, new Set(keys), records))
+  const stored = new Set(keys ?? [])
+  if (keys !== undefined) Object.assign(services, keyed(ctx, stored, records))
   if (selection !== undefined) {
     const baseGet = ctx.get
     ctx.get = name => name === 'agentDefaultModel' ? { currentSelection: () => selection } : baseGet(name)
@@ -79,7 +79,14 @@ function start(team, { models = [], reasoning = {}, archiveError, keys, selectio
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  const modelBoundary = keys === undefined ? undefined : () => ({
+    keyRefs: () => new Map([['deepseek', 'DEEPSEEK_API_KEY']]),
+    missingKeys: async providers => new Set(providers.filter(provider => provider === 'deepseek' && !stored.has('DEEPSEEK_API_KEY'))),
+    providersView: async () => ({ available: true, providers: [], addable: [], protocols: [] }),
+    setProviderKey: async () => services.credentials.set('DEEPSEEK_API_KEY'),
+    clearProviderKey: async () => services.credentials.unset('DEEPSEEK_API_KEY'),
+  })
+  rt = createRuntime(ctx, { home, modelBoundary })
   const call = async (endpoint, payload) => {
     const response = await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
@@ -469,7 +476,7 @@ test('deleting a Bot or group chat stops its Session, so its tasks are removed',
   archived.length = 0
   assert.equal((await call('delete-bot', { id: writer.id })).ok, true)
   assert.equal((await call('delete-room', { id: room.id })).ok, true)
-  // `stopActivity` lets DSH's session-stop hook drop the Session's armed
+  // `stopActivity` lets Cue's session-stop hook drop the Session's armed
   // scheduled tasks; without it the archive is refused and they keep
   // delivering into the deleted Session.
   assert.deepEqual(archived, [
@@ -532,7 +539,7 @@ test('a hidden Bot made Main Bot shows again, and a replaced Chief drops its hel
   assert.equal(toChief(), greeted)
 })
 
-// A turn in a Bot Session as DSH reports it, to every listener.
+// A turn in a Bot Session as Cue reports it, to every listener.
 const emitIn = (ctx, sessionId, event) => { for (const listener of ctx.listeners.get('session/event')) listener({ id: sessionId }, event) }
 function runTurn(ctx, sessionId, turn, message, reason) {
   emitIn(ctx, sessionId, { type: 'turn/start', data: { turn } })
@@ -600,7 +607,7 @@ test('a held greeting goes once a turn answered the user, and a Bot that can ans
   t.after(stop)
   const chief = (await call('state', {})).value.mainBotId
   const writer = (await call('create-bot', { name: 'Writer' })).value
-  // DSH's own default route answered the first Main Bot.
+  // Cue's own default route answered the first Main Bot.
   runTurn(ctx, chief, 1, typed('hello?'), { kind: 'completed' })
   emitIn(ctx, writer.id, { type: 'user/message', data: typed('hi') })
   await settle()
@@ -669,12 +676,6 @@ test('a Bot is blocked by the facts of a failure only the user can fix, until it
   ctx.emit('credentials/reference-updated', 'DEEPSEEK_API_KEY')
   await settle()
   assert.equal((await botIn(call, chief)).blocked, undefined)
-
-  runTurn(ctx, chief, 5, typed('more'), failed('ACCOUNT_SIGNED_OUT'))
-  await settle()
-  assert.equal((await botIn(call, chief)).blocked.code, 'ACCOUNT_SIGNED_OUT')
-  await call('update-bot', { id: chief, model: 'deepseek/deepseek-v4-pro' })
-  assert.equal((await botIn(call, chief)).blocked, undefined)
 })
 
 test('Retry has the Bot answer the user\'s last message without sending it again, or sends a failed greeting again', async (t) => {
@@ -702,54 +703,16 @@ test('Retry has the Bot answer the user\'s last message without sending it again
   assert.equal((await botIn(call, chief)).waiting, undefined)
 })
 
-// The record a DeepSeek account sign-in writes.
-const ACCOUNT_RECORD = 'deepseek-account-platform/default'
-
-test('a sign-in lifts what a lapsed sign-in blocked and sends the held greeting; a sign-out, a key or a provider does not', async (t) => {
-  const { call, stop, sent, ctx, records } = start(undefined, { models: ['deepseek-v4-flash'], keys: ['DEEPSEEK_API_KEY'] })
-  t.after(stop)
-  const chief = (await call('state', {})).value.mainBotId
-  await call('update-bot', { id: chief, model: 'deepseek/deepseek-v4-flash' })
-  await until(() => sent.length === 1)
-  // The provider refuses the token, and its record goes while the turn still runs.
-  records.add(ACCOUNT_RECORD)
-  emitIn(ctx, chief, { type: 'turn/start', data: { turn: 1 } })
-  emitIn(ctx, chief, { type: 'user/message', data: sent[0].message })
-  records.delete(ACCOUNT_RECORD)
-  ctx.emit('credentials/record-updated', ACCOUNT_RECORD)
-  emitIn(ctx, chief, { type: 'turn/end', data: { turn: 1, reason: failed('ACCOUNT_TOKEN_INVALID') } })
-  await settle()
-  ctx.emit('credentials/record-updated', ACCOUNT_RECORD)
-  ctx.emit('credentials/reference-updated', 'DEEPSEEK_API_KEY')
-  ctx.emit('llm/adapters-updated')
-  await settle()
-  let main = await botIn(call, chief)
-  assert.equal(main.blocked.code, 'ACCOUNT_TOKEN_INVALID')
-  assert.equal(main.waiting, true)
-  assert.equal(sent.length, 1)
-
-  records.add(ACCOUNT_RECORD)
-  ctx.emit('credentials/record-updated', ACCOUNT_RECORD)
-  await until(() => sent.length === 2)
-  assert.equal(sent[1].message.source.role, 'kickoff')
-  assert.equal(sent[1].message.content[0].text, sent[0].message.content[0].text)
-  main = await botIn(call, chief)
-  assert.equal(main.blocked, undefined)
-  assert.equal(main.waiting, undefined)
-})
-
 test('a held greeting goes out again only on a change that can fix its block: never a balance, a key another provider reads or a key removed', async (t) => {
-  const { call, stop, sent, ctx, records } = start(undefined, { models: ['deepseek-v4-flash'], keys: ['DEEPSEEK_API_KEY', 'OTHER_API_KEY'] })
+  const { call, stop, sent, ctx } = start(undefined, { models: ['deepseek-v4-flash'], keys: ['DEEPSEEK_API_KEY', 'OTHER_API_KEY'] })
   t.after(stop)
   const chief = (await call('state', {})).value.mainBotId
   await call('update-bot', { id: chief, model: 'deepseek/deepseek-v4-flash' })
   await until(() => sent.length === 1)
   runTurn(ctx, chief, 1, sent[0].message, failed('QUOTA', { status: 402 }))
   await settle()
-  // A key, a sign-in, a provider registering: none of it tops up a balance.
-  records.add(ACCOUNT_RECORD)
+  // A key or a provider registering does not top up a balance.
   for (const ref of ['OTHER_API_KEY', 'DEEPSEEK_API_KEY']) ctx.emit('credentials/reference-updated', ref)
-  ctx.emit('credentials/record-updated', ACCOUNT_RECORD)
   ctx.emit('llm/adapters-updated')
   await settle()
   assert.equal(sent.length, 1)
@@ -824,14 +787,14 @@ const takeover = (home, team) => {
   if (team !== undefined) writeFileSync(join(home, 'state.json'), JSON.stringify(team))
 }
 
-test('a host that loses its lock to another dsh refuses changes instead of making a phantom Bot', async (t) => {
+test('a host that loses its lock to another Cue instance refuses changes instead of making a phantom Bot', async (t) => {
   const { call, stop, home, ctx } = start({ version: 1, mainBotIds: ['chief'], bots: { chief: { id: 'chief', name: 'Chief' } } })
   t.after(stop)
   assert.equal((await call('state', {})).value.readOnly, null)
   let created = 0
   const create = ctx.sessionController.create
   ctx.sessionController.create = async (...args) => { created += 1; return create(...args) }
-  // Another live dsh takes the lock and writes its own team.
+  // Another live Cue takes the lock and writes its own team.
   takeover(home, { version: 1, revision: 9, mainBotIds: ['chief'], bots: { chief: { id: 'chief', name: 'Chief' }, other: { id: 'other', name: 'FromB' } } })
   const answer = await call('create-bot', { name: 'Phantom' })
   assert.equal(answer.ok, false)
@@ -839,7 +802,7 @@ test('a host that loses its lock to another dsh refuses changes instead of makin
   assert.equal(created, 0)
   // The file keeps the new owner's team, and this host now follows it.
   const team = (await call('state', {})).value
-  assert.match(team.readOnly, /another dsh/)
+  assert.match(team.readOnly, /another Cue instance/)
   assert.ok(team.bots.some(bot => bot.name === 'FromB'))
   assert.equal(team.bots.some(bot => bot.name === 'Phantom'), false)
 })
@@ -961,7 +924,7 @@ test('a Bot cannot be named or renamed like the user; one named so before keeps 
 })
 
 // Holds every new Session until `release`, so creates that start together are all
-// waiting on it at once, as with a slow DSH.
+// waiting on it at once, as with a slow Cue.
 const holdSessions = (ctx) => {
   const create = ctx.sessionController.create
   let open
@@ -1036,7 +999,7 @@ test('a create that fails lets its name go', async (t) => {
   t.after(stop)
   await call('state', {})
   const create = ctx.sessionController.create
-  ctx.sessionController.create = async () => { throw new Error('dsh is busy') }
+  ctx.sessionController.create = async () => { throw new Error('Cue is busy') }
   assert.equal((await call('create-bot', { name: 'Coder' })).ok, false)
   ctx.sessionController.create = create
   assert.equal((await call('create-bot', { name: 'Coder' })).ok, true)
@@ -1240,7 +1203,7 @@ test('a photo in the team\'s data is refused, and one in the team workspace ther
   const exec = { agent: { id: chief } }
   const tool = avatar => rt.teamTools.find(d => d.name === 'update_bot').execute({ avatar }, exec)
   writeFileSync(join(home, 'photo.png'), PNG_BYTES)
-  assert.match(await tool(join(home, 'photo.png')), /is in DeepSeek Harness data, so it cannot be a Bot's photo/)
+  assert.match(await tool(join(home, 'photo.png')), /is in Cue data, so it cannot be a Bot's photo/)
   assert.equal((await call('state', {})).value.bots.find(bot => bot.id === chief).avatar?.image, undefined)
   // The default team workspace lies in the team's data, and the Bots' own files are there.
   const workspace = ctx.workspaceRegistry.get((await call('state', {})).value.workspaceId)?.path ?? join(home, 'workspace')
@@ -1362,7 +1325,7 @@ test('a model-less create-bot starts the Bot on the saved team default model', a
   t.after(stop)
   await call('set-prefs', { defaultBotModel: 'deepseek/deepseek-v4-pro' })
 
-  // The HTTP create names no model: the team's saved pick applies, not the DSH default.
+  // The HTTP create names no model: the team's saved pick applies, not the Cue default.
   const defaulted = (await call('create-bot', { name: 'Defaulted' })).value
   assert.equal(defaulted.model, 'deepseek/deepseek-v4-pro')
 
@@ -1370,7 +1333,7 @@ test('a model-less create-bot starts the Bot on the saved team default model', a
   const named = (await call('create-bot', { name: 'Named', model: 'deepseek/deepseek-v4-flash' })).value
   assert.equal(named.model, 'deepseek/deepseek-v4-flash')
 
-  // A saved pick the catalog no longer serves falls back to the DSH default…
+  // A saved pick the catalog no longer serves falls back to the Cue default…
   rt.state.prefs.defaultBotModel = 'gone/model'
   const stale = (await call('create-bot', { name: 'Stale' })).value
   assert.equal(stale.model, 'deepseek/deepseek-v4-flash')

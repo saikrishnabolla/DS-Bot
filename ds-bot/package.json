@@ -1,7 +1,7 @@
 {
   "name": "ds-bot",
   "version": "0.3.2",
-  "description": "DS Bot: a team of long-lived Bots with Main Bots, Bot-to-Bot messages and group chats",
+  "description": "Cue: a team of long-lived Bots with Main Bots, Bot-to-Bot messages and group chats",
   "keywords": [
     "bot",
     "multi-agent",
@@ -21,7 +21,6 @@
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./client": "./client.js",
     "./engine": "./src/engine/owned-harness.js",
     "./host": "./src/engine/owned-host.js",
     "./server": "./src/server/owned-server.js",
@@ -36,59 +35,38 @@
     "src/shared/",
     "src/office/",
     "src/view/",
-    "client.js",
     "office.js",
     "web-search.js",
-    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/build-client.mjs",
-    "test": "node --import ./test/harness-resolve.mjs --test --test-timeout=120000 --test-force-exit \"test/*.test.js\"",
-    "lint": "node scripts/lint.mjs",
-    "harness": "npm install --prefix dev/harness --legacy-peer-deps=false --no-package-lock --no-fund --no-audit",
-    "check": "sh dev/check.sh"
+    "build": "node scripts/build-office.mjs",
+    "test": "node --test --test-timeout=120000 --test-force-exit \"test/*.test.js\"",
+    "lint": "node scripts/lint.mjs"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-scope": "*",
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/dsh-web": "*",
     "react": ">=19",
     "react-dom": ">=19"
-  },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-llm": { "optional": true },
-    "@deepseek-ai/dsh-scope": { "optional": true },
-    "@deepseek-ai/dsh-tools": { "optional": true },
-    "@deepseek-ai/dsh-web": { "optional": true }
-  },
-  "dsh": {
-    "client": {
-      "platform": "web"
-    },
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
   },
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
     "esbuild": "0.28.2",
     "jsdom": "31.0.0",
     "oxlint": "1.93.0",
-    "qrcode-generator": "2.0.4"
+    "qrcode-generator": "2.0.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "dependencies": {
-    "@js-temporal/polyfill": "0.5.1",
     "@earendil-works/chord": "1.5.0",
     "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-codemode": "1.5.0",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-durable": "1.5.0",
     "@earendil-works/pi-mcp": "1.5.0",
     "@joplin/turndown-plugin-gfm": "1.0.67",
+    "@js-temporal/polyfill": "0.5.1",
     "@modelcontextprotocol/client": "2.4.0",
     "@trycua/cua-driver": "0.46.0",
     "htmlparser2": "10.1.0",

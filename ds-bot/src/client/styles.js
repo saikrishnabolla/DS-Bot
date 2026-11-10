@@ -2,25 +2,20 @@ import { INKS } from './inks.js'
 import { DEFAULT_MASK } from './characters.js'
 import { MENTION_ORIGIN } from './text.js'
 import { SPRING_SHAPE, SPRING_TAP, SPRING_STRETCH, SPRING_POP, spring } from './motion.js'
-import { DSH_NARROW } from './frame-layout.js'
 
 // The pill stretches for "Memory updated" on SPRING_STRETCH, and its icon pops on
 // SPRING_POP; it closes on SPRING_SHAPE.
 
 // The base styles split the way the surface groups do. SHELL_CSS carries the marks,
-// the Bot sidebar, every overlay, and the shell chrome they reshape; markup shared
-// with the overlays (the exchange dialog reuses bubbles, the Secrets page reuses
-// question-card fields) stays here so a plain view keeps it styled.
-// CONVERSATION_CSS re-skins the shell's own conversation DOM and styles what only
-// the conversation renders.
+// sidebar, overlays, and shared view markup. CONVERSATION_CSS styles the chat.
 export const SHELL_CSS = `
-body{--bt-im-telegram:#229ed9;--bt-im-weixin:#07c160;--bt-im-feishu:#3370ff;--bt-im-dingtalk:#1e88e5;--bt-im-wecom:#0082ef;--bt-im-qq:#e03e3e;--bt-im-discord:#5865f2;--bt-im-slack:#4a154b;--bt-im-mark-ink:#ffffff;--bt-qr-paper:#ffffff;--bt-qr-ink:#141414;--bt-ink:#141414;--bt-danger:#e02135;--bt-ink-2:rgba(20,20,20,.6);--bt-ink-3:rgba(20,20,20,.36);--bt-bubble:#eeeeee;--bt-sidebar:#f7f7f7;--bt-main:#fcfcfc;--bt-line:rgba(20,20,20,.08);--bt-line-2:rgba(20,20,20,.15);--bt-line-weak:rgba(20,20,20,.1);--bt-hover:rgba(119,119,119,.09);--bt-active:rgba(119,119,119,.17);--bt-card:#ffffff;--bt-accent:#4d6bfe;--bt-green:#00c972;--bt-star:#ff9800;--bt-user:#070707;--bt-user-ink:#fcfcfc;--bt-tag-bg:rgba(20,20,20,.06);--bt-tag-ink:rgba(20,20,20,.56);--bt-knob:#ffffff;--bt-glass-bg:color-mix(in srgb,var(--bt-main) 78%,transparent);--bt-glass-border:rgba(255,255,255,.72);--bt-glass-rim:rgba(20,20,20,.09);--bt-glass-shadow:0 8px 28px -6px rgba(0,0,0,.08),0 2px 6px -1px rgba(0,0,0,.04),inset 0 1px 0 rgba(255,255,255,.82);--bt-accent-soft:color-mix(in srgb,var(--bt-accent) 14%,transparent);--bt-danger-soft:color-mix(in srgb,var(--bt-danger) 14%,transparent);--bt-danger-glow:color-mix(in srgb,var(--bt-danger) 24%,transparent);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;--bt-font:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
+body{--bt-im-telegram:#229ed9;--bt-im-weixin:#07c160;--bt-im-feishu:#3370ff;--bt-im-dingtalk:#1e88e5;--bt-im-wecom:#0082ef;--bt-im-qq:#e03e3e;--bt-im-discord:#5865f2;--bt-im-slack:#4a154b;--bt-im-mark-ink:#ffffff;--bt-qr-paper:#ffffff;--bt-qr-ink:#141414;--bt-ink:#141414;--bt-danger:#e02135;--bt-ink-2:rgba(20,20,20,.6);--bt-ink-3:rgba(20,20,20,.36);--bt-bubble:#eeeeee;--bt-sidebar:#f7f7f7;--bt-main:#fcfcfc;--bt-line:rgba(20,20,20,.08);--bt-line-2:rgba(20,20,20,.15);--bt-line-weak:rgba(20,20,20,.1);--bt-hover:rgba(119,119,119,.09);--bt-active:rgba(119,119,119,.17);--bt-card:#ffffff;--bt-accent:#4d6bfe;--bt-green:#00c972;--bt-star:#ff9800;--bt-user:#070707;--bt-user-ink:#fcfcfc;--bt-tag-bg:rgba(20,20,20,.06);--bt-tag-ink:rgba(20,20,20,.56);--bt-knob:#ffffff;--bt-glass-bg:color-mix(in srgb,var(--bt-main) 78%,transparent);--bt-glass-border:rgba(255,255,255,.72);--bt-glass-rim:rgba(20,20,20,.09);--bt-glass-shadow:0 8px 28px -6px rgba(0,0,0,.08),0 2px 6px -1px rgba(0,0,0,.04),inset 0 1px 0 rgba(255,255,255,.82);--bt-accent-soft:color-mix(in srgb,var(--bt-accent) 14%,transparent);--bt-danger-soft:color-mix(in srgb,var(--bt-danger) 14%,transparent);--bt-danger-glow:color-mix(in srgb,var(--bt-danger) 24%,transparent);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;--bt-font:var(--cue-ui-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
 /* iOS waits out a double-tap zoom on buttons; the plugin's own controls never zoom. */
 :is(.bt-tool,.bt-uaction,.bt-menu button,.bt-menu-item,.bt-icon-btn,.bt-round,.bt-pill,.bt-account,.bt-set-row,.bt-settings-item,.bt-react-strip button,.bt-palette-row,.bt-palette-clear,.bt-tab,.bt-ptab,.bt-ptab-x,.bt-bcard-x,.bt-plus,.bt-q-btn,.bt-q-x,.bt-x,.bt-nc-send,.bt-send,.bt-soft,.bt-mini,.bt-side-send,.bt-shape,.bt-swatch,.bt-color,.bt-newchat,.bt-task-day,.bt-task-remove,.bt-fb-btn){touch-action:manipulation}
 :is(.bt-round,.bt-you,.bt-account,.bt-color,.bt-color span,.bt-swatch,.bt-icon-btn,.bt-avatar-trigger,.bt-avatar-pencil,.bt-plus,.bt-mic,.bt-voice){corner-shape:round}
-body[data-ds-dark-theme]{--bt-im-telegram:#2ea8de;--bt-im-weixin:#17c96a;--bt-im-feishu:#4d84ff;--bt-im-dingtalk:#3d99ed;--bt-im-wecom:#2898f2;--bt-im-qq:#e85555;--bt-im-discord:#6e7bf2;--bt-im-slack:#7c4380;--bt-im-mark-ink:#ffffff;--bt-ink:#f2f2f2;--bt-ink-2:rgba(242,242,242,.6);--bt-ink-3:rgba(242,242,242,.36);--bt-bubble:#262626;--bt-sidebar:#1b1b1b;--bt-main:#141414;--bt-line:rgba(255,255,255,.08);--bt-line-2:rgba(255,255,255,.15);--bt-line-weak:rgba(255,255,255,.1);--bt-hover:rgba(160,160,160,.12);--bt-active:rgba(160,160,160,.2);--bt-card:#1f1f1f;--bt-user:#f2f2f2;--bt-user-ink:#141414;--bt-tag-bg:rgba(255,255,255,.09);--bt-tag-ink:rgba(242,242,242,.62);--bt-glass-bg:color-mix(in srgb,var(--bt-main) 74%,transparent);--bt-glass-border:rgba(255,255,255,.13);--bt-glass-rim:rgba(255,255,255,.11);--bt-glass-shadow:0 12px 32px -6px rgba(0,0,0,.42),0 2px 8px -1px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.12);--bt-accent-soft:color-mix(in srgb,var(--bt-accent) 18%,transparent);--bt-danger-soft:color-mix(in srgb,var(--bt-danger) 18%,transparent);--bt-danger-glow:color-mix(in srgb,var(--bt-danger) 28%,transparent)}
+body[data-cue-dark-theme]{--bt-im-telegram:#2ea8de;--bt-im-weixin:#17c96a;--bt-im-feishu:#4d84ff;--bt-im-dingtalk:#3d99ed;--bt-im-wecom:#2898f2;--bt-im-qq:#e85555;--bt-im-discord:#6e7bf2;--bt-im-slack:#7c4380;--bt-im-mark-ink:#ffffff;--bt-ink:#f2f2f2;--bt-ink-2:rgba(242,242,242,.6);--bt-ink-3:rgba(242,242,242,.36);--bt-bubble:#262626;--bt-sidebar:#1b1b1b;--bt-main:#141414;--bt-line:rgba(255,255,255,.08);--bt-line-2:rgba(255,255,255,.15);--bt-line-weak:rgba(255,255,255,.1);--bt-hover:rgba(160,160,160,.12);--bt-active:rgba(160,160,160,.2);--bt-card:#1f1f1f;--bt-user:#f2f2f2;--bt-user-ink:#141414;--bt-tag-bg:rgba(255,255,255,.09);--bt-tag-ink:rgba(242,242,242,.62);--bt-glass-bg:color-mix(in srgb,var(--bt-main) 74%,transparent);--bt-glass-border:rgba(255,255,255,.13);--bt-glass-rim:rgba(255,255,255,.11);--bt-glass-shadow:0 12px 32px -6px rgba(0,0,0,.42),0 2px 8px -1px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.12);--bt-accent-soft:color-mix(in srgb,var(--bt-accent) 18%,transparent);--bt-danger-soft:color-mix(in srgb,var(--bt-danger) 18%,transparent);--bt-danger-glow:color-mix(in srgb,var(--bt-danger) 28%,transparent)}
 ${Object.entries(INKS).map(([name, [light]]) => `body{--bt-ink-${name}:${light}}`).join('')}
-${Object.entries(INKS).map(([name, [, dark]]) => `body[data-ds-dark-theme]{--bt-ink-${name}:${dark}}`).join('')}
+${Object.entries(INKS).map(([name, [, dark]]) => `body[data-cue-dark-theme]{--bt-ink-${name}:${dark}}`).join('')}
 .bt-mark{display:inline-block;flex:none;position:relative;line-height:0}
 .bt-mark svg{width:100%;height:100%;overflow:visible}
 .bt-mark-img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;box-shadow:inset 0 0 0 1px var(--bt-line)}
@@ -150,30 +145,6 @@ body[data-bt-motion=quiet] .bt-mark[data-poke]{cursor:default}
 .bt-row-preview{font-size:13px;line-height:18px;color:var(--bt-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-unread{width:8px;height:8px;border-radius:50%;background:var(--bt-accent);flex:none;margin-right:2px;animation:bt-fade .13s cubic-bezier(.22,1,.36,1)}
 .bt-unread-wait{background:var(--bt-star)}
-/* Our own left column, portalled over the shell's collapsed sidebar. It reaches
-   the window's top edge so the title band and the column share one fill (under
-   Mica the app styles DSH's sidebar the same way, via --bt-leftcol-fill there);
-   it stays under the shell's title-bar switch (z 30) and the popovers (z 60),
-   and the floating drawer keeps the opaque fill over the conversation. */
-.bt-leftcol{position:fixed;left:0;top:0;bottom:0;z-index:25;display:flex;--bt-lc-clear:var(--dsh-frame-top-clearance,var(--dsh-windows-titlebar-height,0px));background:var(--bt-leftcol-fill,var(--bt-sidebar));border-right:.5px solid var(--bt-line);box-sizing:border-box;padding:calc(var(--bt-lc-clear) + 6px) 12px 6px;color:var(--bt-ink);font-family:var(--bt-font)}
-html[data-windows-titlebar] .bt-leftcol,html[data-platform=darwin] .bt-leftcol{border-right:none}
-.bt-leftcol{animation:bt-leftcol-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
-.bt-leftcol[data-leaving]{transform:translateX(-100%);transition:transform ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing};pointer-events:none}
-@keyframes bt-leftcol-in{from{transform:translateX(-100%)}}
-@media (prefers-reduced-motion:reduce){.bt-leftcol{animation:none}.bt-leftcol[data-leaving],[class*="_centerCol"]{transition:none}}
-.bt-leftcol-grip{position:absolute;right:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
-.bt-leftcol-grip:hover,.bt-leftcol-grip:active{background:linear-gradient(to right,transparent 3px,var(--bt-line-2) 3px,var(--bt-line-2) 5px,transparent 5px)}
-/* The shell's collapsed sidebar keeps no track in the Bot view, so a hidden
-   column leaves nothing behind (the shell's right column, when open, keeps its
-   own geometry). Narrow hosts may put the conversation in the first track,
-   so only the desktop layout can force that track to zero. */
-@media (min-width:${DSH_NARROW}px){
-[class*="_frame"][data-sidebar-collapsed][data-rightbar-collapsed]:has(>[class*="_sidebarCol"]){grid-template-columns:0px minmax(0,1fr) 0px!important}
-}
-html[data-bt-collapsing] [class*="_frame"]:has(>[class*="_sidebarCol"]){transition:none!important}
-.bt-leftcol[data-left=drawer]{background:var(--bt-sidebar);box-shadow:8px 0 24px rgba(0,0,0,.14)}
-.bt-leftcol>.bt-side{width:100%}
-.bt-leftcol-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
 .bt-rail{align-items:center;gap:6px;padding:0}
 .bt-rail .bt-row{justify-content:center;width:56px;height:56px;min-height:56px;padding:0;border-radius:16px}
 .bt-rail-top{display:flex;flex-direction:column;align-items:center;gap:8px;padding-bottom:8px}
@@ -182,18 +153,10 @@ html[data-bt-collapsing] [class*="_frame"]:has(>[class*="_sidebarCol"]){transiti
 /* Icon rows breathe the way the open column's rows do: 8px of gap puts ~20px
    between avatar edges, the open list's 19px (8px padding + 3px gap + 8px). */
 .bt-rail .bt-list{align-self:stretch;align-items:center;gap:8px}
-/* The rail's list spans the whole column: the badges and dots that sit on a row's
-   edge need room beside the 56px rows, or the list scrolls sideways. */
-.bt-leftcol[data-left=rail]{padding:calc(var(--bt-lc-clear) + 8px) 0 8px}
-.bt-leftcol-foot-rail{flex-direction:column;gap:8px}
-/* A drag that crosses the rail's snap line rides the spring to its target: the
-   content is pinned at the target size so only the column's edge moves. */
-.bt-leftcol[data-folding]{overflow:hidden;transition:width ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
-.bt-leftcol[data-folding]>.bt-side{flex:none;width:calc(var(--bt-lc-w) - 24px)}
-.bt-leftcol[data-left=rail][data-folding]>.bt-side{width:var(--bt-lc-w);margin-inline:auto}
 .bt-dot{position:absolute;top:4px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--bt-accent);box-shadow:0 0 0 1.5px var(--bt-sidebar)}
 .bt-dot-wait{background:var(--bt-star)}
-.bt-side-foot{display:flex;padding-top:8px}
+.bt-side-foot{display:flex;align-items:center;gap:9px;padding-top:8px;flex:none}
+.bt-side-foot-rail{flex-direction:column;gap:8px}
 
 .bt-head{position:relative;display:flex;justify-content:center;align-items:center;height:40px;flex:none;pointer-events:none}
 .bt-pill{pointer-events:auto;display:inline-flex;align-items:center;gap:8px;height:40px;padding:7.5px 13.5px 7.5px 7.5px;border-radius:999px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);font-family:inherit;font-size:14px;line-height:20px;cursor:pointer;max-width:70%;box-sizing:border-box;transition:background-color .12s ease,transform ${SPRING_TAP.duration}ms ${SPRING_TAP.easing}}
@@ -222,19 +185,19 @@ html[data-bt-collapsing] [class*="_frame"]:has(>[class*="_sidebarCol"]){transiti
 /* The width settings: the share of the column a bubble may take, and the flat text. */
 body{--bt-msg-w:.8;--bt-flat-w:1}
 .bt-astack{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0}
-.bt-bubble{max-width:min(calc(var(--bt-msg-w) * 100%),calc(100% - 82px));background:var(--bt-bubble);color:var(--bt-ink);border-radius:18px;padding:7px 12px;font-size:var(--dsh-content-font-size,14px);line-height:calc(var(--dsh-content-font-size,14px) + 10px);box-sizing:border-box;overflow-wrap:anywhere;text-wrap:pretty;text-autospace:normal}
+.bt-bubble{max-width:min(calc(var(--bt-msg-w) * 100%),calc(100% - 82px));background:var(--bt-bubble);color:var(--bt-ink);border-radius:18px;padding:7px 12px;font-size:var(--cue-content-font-size,14px);line-height:calc(var(--cue-content-font-size,14px) + 10px);box-sizing:border-box;overflow-wrap:anywhere;text-wrap:pretty;text-autospace:normal}
 .bt-msg:not(:first-child)>.bt-msg-line>.bt-bubble{border-start-start-radius:6px}
 .bt-msg:not(:last-child)>.bt-msg-line>.bt-bubble{border-end-start-radius:6px}
-.bt-bubble [class*="_markdown"]>*+*{margin-top:10px}
-.bt-bubble [class*="_markdown"]{color:inherit!important;font-size:inherit!important;line-height:inherit!important}
+.bt-bubble .md_markdown>*+*{margin-top:10px}
+.bt-bubble .md_markdown{color:inherit!important;font-size:inherit!important;line-height:inherit!important}
 .bt-bubble p{margin:0}
 .bt-bubble p + p{margin-top:6px}
 .bt-bubble ul,.bt-bubble ol{margin:4px 0;padding-left:20px}
-.bt-bubble [class*="_markdown"] li+li{margin-top:6px}
-.bt-bubble [class*="_markdown"] li::marker{color:var(--bt-ink-2)}
+.bt-bubble .md_markdown li+li{margin-top:6px}
+.bt-bubble .md_markdown li::marker{color:var(--bt-ink-2)}
 /* line-height:1 keeps the monospace line box from making an inline code line taller. */
-.bt-bubble [class*="_markdown"] :not(pre)>code{line-height:1;-webkit-box-decoration-break:clone;box-decoration-break:clone}
-.bt-bubble :is(img,video),.bt-ububble :is(img,video),[data-chat-flow] [class*="_bubble"] :is(img,video){max-width:100%;height:auto}
+.bt-bubble .md_markdown :not(pre)>code{line-height:1;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.bt-bubble :is(img,video),.bt-ububble :is(img,video){max-width:100%;height:auto}
 .bt-bubble a[href^="${MENTION_ORIGIN}"]{text-decoration:none;font-weight:400;cursor:pointer;white-space:nowrap}
 .bt-bubble a[href^="${MENTION_ORIGIN}"]::before{content:"";display:inline-block;width:16px;height:16px;margin-right:3px;vertical-align:-3px;background:currentColor;-webkit-mask:${DEFAULT_MASK} center/contain no-repeat;mask:${DEFAULT_MASK} center/contain no-repeat}
 .bt-group-msg{display:flex;flex-direction:column;gap:4px;margin:16px 0 0}
@@ -257,8 +220,8 @@ button.bt-lead{border:0;background:none;padding:0;cursor:pointer}
 .bt-x{border:0;background:none;color:var(--bt-ink-2);cursor:pointer;width:24px;height:24px;border-radius:6px;font-size:16px;line-height:24px;padding:0;transition:background-color .12s ease,color .12s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-x:hover{background:var(--bt-hover);color:var(--bt-ink)}
 
-.bt-q{margin:0 auto 8px;width:100%;max-width:var(--dsh-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--bt-q-edge:color-mix(in srgb,var(--bt-ink) 10%,transparent);--bt-q-rule:color-mix(in srgb,var(--bt-ink) 8%,transparent);--bt-q-rule-2:color-mix(in srgb,var(--bt-ink) 5%,transparent);background:var(--bt-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--bt-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--bt-ink);font-family:var(--bt-font);animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing} backwards,bt-veil-in .2s ease-out backwards}
-body[data-ds-dark-theme] .bt-q{--bt-q-edge:rgba(255,255,255,.16);--bt-q-rule:rgba(255,255,255,.12);--bt-q-rule-2:rgba(255,255,255,.08)}
+.bt-q{margin:0 auto 8px;width:100%;max-width:var(--cue-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--bt-q-edge:color-mix(in srgb,var(--bt-ink) 10%,transparent);--bt-q-rule:color-mix(in srgb,var(--bt-ink) 8%,transparent);--bt-q-rule-2:color-mix(in srgb,var(--bt-ink) 5%,transparent);background:var(--bt-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--bt-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--bt-ink);font-family:var(--bt-font);animation:bt-q-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing} backwards,bt-veil-in .2s ease-out backwards}
+body[data-cue-dark-theme] .bt-q{--bt-q-edge:rgba(255,255,255,.16);--bt-q-rule:rgba(255,255,255,.12);--bt-q-rule-2:rgba(255,255,255,.08)}
 @keyframes bt-q-in{from{transform:translateY(10px) scale(.97)}}
 .bt-q-settled{animation:none}
 .bt-q-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
@@ -319,7 +282,7 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-q-btn:hover{background:var(--bt-active)}
 .bt-q-submit:focus-visible,.bt-q-btn:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-q-foot{display:flex;justify-content:flex-end;gap:8px}
-.bt-q-raised{width:calc(var(--dsh-chat-content-width,748px) - 32px);max-width:calc(100% - 32px);gap:0;padding:0;box-shadow:0 2px 8px rgba(20,20,20,.035),inset 0 0 0 .5px color-mix(in srgb,var(--bt-ink) 5%,transparent)}
+.bt-q-raised{width:calc(var(--cue-chat-content-width,748px) - 32px);max-width:calc(100% - 32px);gap:0;padding:0;box-shadow:0 2px 8px rgba(20,20,20,.035),inset 0 0 0 .5px color-mix(in srgb,var(--bt-ink) 5%,transparent)}
 .bt-q-raised .bt-q-head{padding:14px 16px 4px 20px}
 .bt-q-raised .bt-q-head:last-child{padding-bottom:16px}
 .bt-q-raised .bt-q-list{gap:1px;margin:0;padding:8px}
@@ -354,7 +317,7 @@ button.bt-q-opt:active{background:var(--bt-active)}
 .bt-hint{padding:14px;text-align:center;font-size:13px;color:var(--bt-ink-2)}
 .bt-nc-spacer{flex:1}
 .bt-nc-compose{padding:0 16px 14px;display:flex;justify-content:center}
-.bt-nc-card{display:flex;align-items:flex-end;gap:6px;width:100%;max-width:var(--dsh-chat-content-width,748px);min-height:44px;padding:4px 6px;border-radius:22px;border:1px solid var(--bt-line-2);background:var(--bt-main);box-shadow:0 2px 8px -2px rgba(0,0,0,.06);box-sizing:border-box}
+.bt-nc-card{display:flex;align-items:flex-end;gap:6px;width:100%;max-width:var(--cue-chat-content-width,748px);min-height:44px;padding:4px 6px;border-radius:22px;border:1px solid var(--bt-line-2);background:var(--bt-main);box-shadow:0 2px 8px -2px rgba(0,0,0,.06);box-sizing:border-box}
 .bt-nc-plus{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--bt-ink-2);background:var(--bt-hover);flex:none}
 .bt-nc-card textarea{flex:1;resize:none;border:0;outline:none;background:none;color:var(--bt-ink);font:inherit;font-size:14px;line-height:20px;padding:7px 4px;min-height:34px;max-height:140px;box-sizing:border-box}
 .bt-nc-send{width:34px;height:34px;border-radius:50%;border:0;background:var(--bt-accent);color:var(--bt-accent-ink,#fff);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
@@ -383,12 +346,12 @@ button.bt-q-opt:active{background:var(--bt-active)}
    chrome top to 0 so that dialog masks also cover the caption band; the panel then reaches
    the top edge, its own surface under the buttons, and the band over it still drags the
    window. Where the chrome top already clears the title bar the band is 0. */
-html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel){--bt-caption-band:calc(var(--dsh-windows-titlebar-height,0px) - var(--dsh-frame-chrome-top,0px));padding-top:var(--bt-caption-band)}
+html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel){--bt-caption-band:calc(var(--cue-windows-titlebar-height,0px) - var(--cue-frame-chrome-top,0px));padding-top:var(--bt-caption-band)}
 html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::before{content:"";position:absolute;top:0;left:0;right:0;height:var(--bt-caption-band);-webkit-app-region:drag}
-.bt-pane{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
+.bt-pane{position:fixed;top:var(--cue-frame-chrome-top,0px);right:0;bottom:0;z-index:45;pointer-events:auto;background:var(--bt-main);color:var(--bt-ink);display:flex;font-family:var(--bt-font)}
 .bt-dialog{flex:1;display:flex;flex-direction:column;min-width:0}
 .bt-dialog .bt-head{height:62px}
-.bt-dialog-log{flex:1;overflow-y:auto;padding:8px 16px 20px;width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto;box-sizing:border-box}
+.bt-dialog-log{flex:1;overflow-y:auto;padding:8px 16px 20px;width:100%;max-width:var(--cue-chat-content-width,748px);margin:0 auto;box-sizing:border-box}
 .bt-dialog-foot{display:flex;justify-content:center;padding:10px 10px 16px}
 .bt-exchange{animation:bt-sheet-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing} both,bt-veil-in .24s ease-out both}
 .bt-exchange[data-leaving]{animation:bt-sheet-out .22s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
@@ -400,7 +363,7 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-fold{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:4px;white-space:normal}
 .bt-fold-code{position:relative}
 .bt-fold-code>.bt-tool{position:absolute;right:6px;bottom:6px}
-/* The part of a cut code block the preview keeps, drawn by DS Bot so the host's
+/* The part of a cut code block the preview keeps, drawn by Cue so the host's
    Markdown draws no copy control of its own for it. */
 .bt-fold-code>.bt-fold-pre{margin:0;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,currentColor 6%,transparent);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:20px;overflow-x:auto}
 .bt-fold-code>*+.bt-fold-pre{margin-top:6px}
@@ -416,17 +379,16 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 @keyframes bt-foot-in{from{opacity:0;transform:translateY(6px)}}
 @keyframes bt-foot-out{to{opacity:0;transform:translateY(6px)}}
 @media (prefers-reduced-motion:reduce){.bt-exchange,.bt-exchange .bt-dialog-foot{animation-duration:.01s}}
-.bt-soft{height:36px;border-radius:999px;border:0;background:var(--bt-hover);color:var(--bt-ink);padding:0 16px;font-size:14px;cursor:pointer;flex:none;white-space:nowrap}
+.bt-soft{height:36px;border-radius:999px;border:0;background:var(--bt-hover);color:var(--bt-ink);padding:0 16px;font-family:inherit;font-size:14px;cursor:pointer;flex:none;white-space:nowrap}
 .bt-soft:hover{background:var(--bt-active)}
 .bt-time{display:block;text-align:center;font-size:12px;line-height:16px;color:var(--bt-ink-2);padding:6px 0}
 
-.bt-panel{position:fixed;top:var(--dsh-frame-chrome-top,0px);right:0;bottom:0;width:var(--bt-panel-w,320px);pointer-events:auto;z-index:40;background:var(--bt-main);border-left:.5px solid var(--bt-line-2);display:flex;flex-direction:column;color:var(--bt-ink);font-family:var(--bt-font);box-sizing:border-box;animation:bt-pane-in .3s cubic-bezier(.2,0,0,1);transition:width ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-panel{position:fixed;top:var(--cue-frame-chrome-top,0px);right:0;bottom:0;width:var(--bt-panel-w,320px);pointer-events:auto;z-index:40;background:var(--bt-main);border-left:.5px solid var(--bt-line-2);display:flex;flex-direction:column;color:var(--bt-ink);font-family:var(--bt-font);box-sizing:border-box;animation:bt-pane-in .3s cubic-bezier(.2,0,0,1);transition:width ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-panel[data-leaving]{transform:translateX(100%);transition:transform .3s cubic-bezier(.2,0,0,1);pointer-events:none}
 .bt-panel[data-instant]{transition:none}
 @keyframes bt-pane-in{from{transform:translateX(100%)}}
 /* The conversation's margins glide with the Bot panel's slide and with our left
    column's slide in and out. */
-[class*="_centerCol"]{transition:margin-right ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-panel-grip{position:absolute;left:-5px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:3;touch-action:none}
 .bt-panel-grip:hover,.bt-panel[data-dragging] .bt-panel-grip{background:linear-gradient(to right,transparent 4px,var(--bt-line-2) 4px,var(--bt-line-2) 6px,transparent 6px)}
 .bt-drag-shield{position:fixed;inset:0;z-index:45;cursor:col-resize}
@@ -518,10 +480,10 @@ html[data-windows-titlebar]:not([data-fullscreen]) :is(.bt-pane,.bt-panel)::befo
 .bt-seg button.bt-perm-danger,.bt-seg button.bt-perm-danger[aria-pressed=true],.bt-kv span.bt-perm-danger{color:var(--bt-danger)}
 
 /* Settings dialog: a 198px page list beside the page. */
-.bt-settings-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:60;display:flex;align-items:center;justify-content:center;font-family:var(--bt-font)}
+.bt-settings-layer{position:fixed;inset:var(--cue-frame-chrome-top,0px) 0 0;z-index:60;display:flex;align-items:center;justify-content:center;font-family:var(--bt-font)}
 .bt-scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);animation:bt-fade .22s ease-out}
-body[data-ds-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
-.bt-settings{--bt-set-w:min(1100px,calc(100vw - 48px));--bt-set-h:min(780px,calc(100vh - 2*max(32px,var(--dsh-frame-overlay-top,32px))));position:relative;width:var(--bt-set-w);height:var(--bt-set-h);background:var(--bt-main);border-radius:16px;border:.5px solid var(--bt-line-2);box-shadow:0 24px 80px rgba(0,0,0,.24);display:flex;overflow:hidden;color:var(--bt-ink);animation:bt-dialog-rise ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
+body[data-cue-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
+.bt-settings{--bt-set-w:min(1100px,calc(100vw - 48px));--bt-set-h:min(780px,calc(100vh - 2*max(32px,var(--cue-frame-overlay-top,32px))));position:relative;width:var(--bt-set-w);height:var(--bt-set-h);background:var(--bt-main);border-radius:16px;border:.5px solid var(--bt-line-2);box-shadow:0 24px 80px rgba(0,0,0,.24);display:flex;overflow:hidden;color:var(--bt-ink);animation:bt-dialog-rise ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
 :is(.bt-settings-layer,.bt-mem-layer)[data-leaving]{pointer-events:none}
 :is(.bt-settings-layer,.bt-mem-layer)[data-leaving] .bt-scrim{opacity:0;transition:opacity .16s ease-in}
 :is(.bt-settings-layer,.bt-mem-layer)[data-leaving]>[role=dialog]{animation:bt-dialog-sink .16s cubic-bezier(.4,0,1,1) forwards}
@@ -539,16 +501,8 @@ body[data-ds-dark-theme] .bt-scrim{background:rgba(0,0,0,.5)}
 .bt-settings-icon{display:inline-flex;flex:none;width:16px;height:16px;align-items:center;justify-content:center}
 .bt-settings-actions{margin-left:auto;display:flex;align-items:center;gap:8px;min-width:0}
 .bt-settings-actions:empty{display:none}
-.bt-dsh-section{min-width:0}
-/* A DSH page opens on its own title, which the dialog head already shows. */
-.bt-dsh-section>[data-slot]>*>h2:first-child,.bt-dsh-section>[data-slot]>*>:first-child>h2:first-child{display:none}
-.bt-dsh-item{min-width:0}
-/* DSH's General rows draw their own row inside DS Bot's card: the card's inset and
-   rules apply, an empty row takes no line, and Appearance is already the section title. */
-.bt-dsh-item>[data-slot]>*{padding-left:12px;padding-right:12px;border-bottom-width:0}
-.bt-dsh-item>[data-slot]>.bt-set-row{padding:10px 12px}
-.bt-dsh-item:has(>[data-slot]:empty){display:none}
-.bt-dsh-item[data-item=appearance]>[data-slot]>*>:first-child{display:none}
+.bt-doc-action{display:flex;align-items:center;gap:8px;min-width:0}
+.bt-doc-action .bt-set-hint{max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bt-advanced{width:100%;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;justify-content:space-between}
 .bt-advanced:hover{background:var(--bt-hover)}
 .bt-advanced>svg{flex:none;color:var(--bt-ink-3)}
@@ -637,6 +591,78 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-set-form-foot{justify-content:flex-end}
 @media(max-width:600px){.bt-set-form-row{grid-template-columns:1fr}}
 
+/* Settings → Built-in plugins. */
+.bt-plugin-page{width:100%;max-width:760px;display:flex;flex-direction:column;gap:14px;color:var(--bt-ink)}
+.bt-plugin-lead,.bt-plugin-group-hint,.bt-plugin-empty{margin:0;color:var(--bt-ink-2);font-size:13px;line-height:20px}
+.bt-plugin-search{position:relative;display:flex;align-items:center;color:var(--bt-ink-3)}
+.bt-plugin-search>svg{position:absolute;left:12px;pointer-events:none}
+.bt-plugin-search input{box-sizing:border-box;width:100%;height:36px;border:.5px solid var(--bt-line-2);border-radius:10px;background:var(--bt-card);padding:0 34px 0 36px;color:var(--bt-ink);font:inherit;font-size:13px;outline:none}
+.bt-plugin-search input::placeholder{color:var(--bt-ink-3)}
+.bt-plugin-search input:focus-visible{border-color:var(--bt-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--bt-accent) 18%,transparent)}
+.bt-plugin-group{display:flex;flex-direction:column;gap:10px}
+.bt-plugin-group+.bt-plugin-group{border-top:.5px solid var(--bt-line);padding-top:14px}
+.bt-plugin-group-head{display:flex;align-items:center;gap:8px;min-height:36px}
+.bt-plugin-group-toggle{display:flex;align-items:center;gap:8px;padding:0;border:0;background:none;color:inherit;font:inherit;font-size:14px;line-height:22px;cursor:pointer}
+.bt-plugin-group-toggle>svg{rotate:-90deg;color:var(--bt-ink-3);transition:rotate .14s ease}
+.bt-plugin-group-toggle[aria-expanded=true]>svg{rotate:0deg}
+.bt-plugin-group-hint{margin:-6px 0 0 20px;font-size:12px;line-height:18px}
+.bt-plugin-preset{margin-left:auto;display:inline-flex;align-items:center;gap:12px;height:36px;padding:0 14px;border:0;border-radius:10px;background:var(--bt-hover);color:var(--bt-ink);font:inherit;font-size:14px;line-height:22px;white-space:nowrap}
+.bt-plugin-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
+.bt-plugin-card{min-width:0;display:flex;flex-direction:column;overflow:hidden;border:.5px solid var(--bt-line-2);border-radius:12px;background:var(--bt-card)}
+.bt-plugin-card-main{box-sizing:border-box;width:100%;min-height:78px;display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:12px 14px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.bt-plugin-card-main:hover,.bt-plugin-card[data-open]>.bt-plugin-card-main{background:var(--bt-hover)}
+.bt-plugin-card-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.bt-plugin-card-title{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px}
+.bt-plugin-card-row>svg{flex:none;color:var(--bt-ink-3)}
+.bt-plugin-card[data-open] .bt-plugin-card-row>svg{rotate:180deg}
+.bt-plugin-card-description{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:var(--bt-ink-2);font-size:12px;line-height:18px;text-wrap:pretty}
+.bt-plugin-card[data-open] .bt-plugin-card-description{display:block}
+.bt-plugin-id{align-self:flex-start;max-width:100%;box-sizing:border-box;margin-top:4px;padding:1px 6px;border-radius:4px;background:var(--bt-hover);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bt-ink-2);font:12px/18px var(--bt-mono)}
+.bt-plugin-state{flex:none;padding:1px 7px;border-radius:999px;background:var(--bt-hover);color:var(--bt-ink-2);font-size:11px;line-height:18px;text-transform:capitalize}
+.bt-plugin-details{display:grid;grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:0;padding:10px 14px 12px;border-top:.5px solid var(--bt-line);background:var(--bt-hover)}
+.bt-plugin-details div{display:contents}
+.bt-plugin-details dt{color:var(--bt-ink-3);font-size:11px;line-height:17px}
+.bt-plugin-details dd{min-width:0;margin:0;overflow-wrap:anywhere;color:var(--bt-ink-2);font-size:12px;line-height:17px}
+.bt-plugin-skeleton{display:flex;flex-direction:column;gap:8px;padding:15px 14px;border:.5px solid var(--bt-line-2);border-radius:12px;background:var(--bt-card)}
+.bt-plugin-skeleton span{width:40%;height:14px;border-radius:4px;background:var(--bt-hover);animation:bt-plugin-pulse 2s ease-in-out infinite}
+.bt-plugin-skeleton span+span{width:80%;height:12px}
+.bt-plugin-failure{color:var(--bt-danger);font-size:13px;line-height:20px}
+@keyframes bt-plugin-pulse{50%{opacity:.55}}
+@media(max-width:760px){.bt-plugin-cards{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){.bt-plugin-group-toggle>svg,.bt-plugin-skeleton span{transition:none;animation:none}}
+
+/* Settings → Agent presets. */
+.bt-preset-page{width:100%;max-width:720px;display:flex;flex-direction:column;gap:16px;color:var(--bt-ink)}
+.bt-preset-lead{max-width:700px;margin:0;color:var(--bt-ink-2);font-size:13px;line-height:18px}
+.bt-preset-section{display:flex;flex-direction:column;gap:8px}
+.bt-preset-section>h3{margin:0;color:var(--bt-ink-2);font-size:12px;line-height:18px;font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+.bt-preset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.bt-preset-card{display:flex;min-width:0;flex-direction:column;overflow:hidden;border:.5px solid var(--bt-line-2);border-radius:16px;background:var(--bt-card)}
+.bt-preset-card[data-selected]{border-color:var(--bt-ink-2)}
+.bt-preset-card-main{display:flex;min-height:138px;flex:1;flex-direction:column;align-items:stretch;gap:16px;padding:14px 16px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.bt-preset-card-main:hover:not(:disabled){background:var(--bt-hover)}
+.bt-preset-card-main:disabled{cursor:wait}
+.bt-preset-card-head{display:flex;align-items:center;gap:8px;min-width:0}
+.bt-preset-card-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;line-height:20px;font-weight:600}
+.bt-preset-card-head code{margin-left:auto;color:var(--bt-ink-3);font:12px/18px var(--bt-mono)}
+.bt-preset-default,.bt-preset-built-in{flex:none;padding:2px 8px;border:.5px solid var(--bt-line-2);border-radius:999px;font-size:12px;line-height:18px;white-space:nowrap}
+.bt-preset-default{border-color:transparent;background:var(--bt-ink);color:var(--bt-main)}
+.bt-preset-built-in{color:var(--bt-ink-2)}
+.bt-preset-description{color:var(--bt-ink-2);font-size:13px;line-height:20px;text-wrap:pretty}
+.bt-preset-actions{display:flex;align-items:center;gap:16px;padding:10px 16px;border-top:.5px solid var(--bt-line);background:var(--bt-hover)}
+.bt-preset-actions button{padding:0;border:0;background:none;color:var(--bt-ink-2);font:inherit;font-size:12px;line-height:20px;cursor:pointer}
+.bt-preset-actions button:hover{color:var(--bt-ink)}
+.bt-preset-actions .bt-preset-config{margin-left:auto;font-family:var(--bt-mono)}
+.bt-preset-create{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;border:1px dashed var(--bt-line-2);border-radius:12px;background:none;color:var(--bt-ink);font:inherit;font-size:13px;cursor:pointer}
+.bt-preset-create:hover{background:var(--bt-hover)}
+.bt-preset-inspect{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.36)}
+.bt-preset-inspect-card{width:min(460px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:20px;border:.5px solid var(--bt-line-2);border-radius:16px;background:var(--bt-main);box-shadow:0 18px 60px rgba(0,0,0,.28)}
+.bt-preset-inspect-card h3,.bt-preset-inspect-card p{margin:0}
+.bt-preset-inspect-card p{color:var(--bt-ink-2);font-size:13px;line-height:20px}
+.bt-preset-inspect-card code{color:var(--bt-ink-3);font:12px/18px var(--bt-mono)}
+.bt-preset-inspect-card .bt-soft{align-self:flex-end}
+@media(max-width:760px){.bt-preset-grid{grid-template-columns:minmax(0,1fr)}}
+
 /* Settings → Connectors. */
 .bt-connector{display:flex;flex-direction:column;gap:10px;padding:12px}
 .bt-connector-head{display:flex;align-items:center;gap:12px;min-width:0}
@@ -666,38 +692,6 @@ button.bt-set-row:hover{background:var(--bt-hover)}
 .bt-mail-rules-title{font-size:12px;line-height:16px;font-weight:500;color:var(--bt-ink-2)}
 .bt-mail-rule{display:flex;align-items:center;gap:12px;min-height:36px}
 .bt-mail-rule-name{font-size:13px;line-height:18px;color:var(--bt-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* Shell chrome reshaped for the team view. Selectors use stable data attributes where the
-   shell offers them and CSS-module name suffixes elsewhere. */
-[class*="_newSession"],nav[class*="_panelList"],[class*="_logoRow"]>[class*="_brand"],[class*="_logoRow"]:not(:has([class*="_toggle"])){display:none!important}
-/* The shell's sidebar switch stays where the shell puts it whenever the sidebar is
-   collapsed: on the rail, or fixed in a Windows title bar, where it also stays while
-   the sidebar is open. Elsewhere an open sidebar uses the team's own top row. */
-html:not([data-windows-titlebar]) :not([class*="_collapsed"])>[class*="_logoRow"]{display:none!important}
-html[data-windows-titlebar] :not([class*="_collapsed"])>[class*="_logoRow"]{height:0!important;margin:0!important}
-html[data-windows-titlebar] .bt-side-collapse{display:none}
-/* Under a Windows title bar our own switch replaces the shell's: the shell's
-   toggle expands the shell sidebar first, and pulling it back afterwards is a
-   visible flash of the shell's column. A host whose window controls stand at the band's
-   left (the macOS traffic lights) sets --bt-caption-start to the room they take. */
-html[data-windows-titlebar] [class*="_logoRow"]>[class*="_toggle"]{display:none!important}
-html[data-windows-titlebar] .bt-title-toggle{position:fixed;left:calc(12px + var(--bt-caption-start,0px));top:calc((var(--dsh-windows-titlebar-height,0px) - 28px) / 2);width:28px;height:28px;z-index:30;-webkit-app-region:no-drag;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;padding:0;background:transparent;color:var(--bt-ink);cursor:pointer;font-family:var(--bt-font)}
-html[data-windows-titlebar] .bt-title-toggle:hover{background:var(--bt-hover)}
-/* Elsewhere the switch shows only while the column is hidden, where the column's
-   own top row had it. */
-html:not([data-windows-titlebar]) .bt-title-toggle{position:fixed;left:12px;top:calc(var(--dsh-frame-top-clearance,0px) + 6px);z-index:30}
-/* The footer ends in the Bot row: the whale's settings seat, then the account menu
-   when no plugin holds that seat. Every other plugin's entry takes a whole row above
-   it, in the shell's order, so none of them squeezes the Bot row. */
-[class*="_footArea"]{grid-template-columns:auto minmax(0,1fr);grid-auto-flow:row dense;align-items:center;gap:4px 9px;padding:8px 6px 6px!important}
-/* DSH hides the footer of a collapsed sidebar under a Windows title bar; the grid
-   stays out of that one place. */
-html:not([data-windows-titlebar]) [class*="_footArea"],:not([class*="_collapsed"])>[class*="_footArea"]{display:grid!important}
-[class*="_footArea"]>[class*="_footerActions"],[class*="_footArea"]>[class*="_footerActions"]>div{display:contents!important}
-[class*="_footArea"]>[class*="_footerActions"]>div>*{grid-column:1/-1}
-[class*="_footArea"]>[class*="_settingsArea"]{grid-column:1;order:1;width:auto!important}
-[class*="_footArea"] button[aria-label="Settings"]{width:auto!important;padding:0!important;background:none!important;border-radius:50%!important;height:auto!important}
-[class*="_widthHandle"]{display:none!important}
 
 .bt-voice-pane{flex-direction:column;align-items:center;justify-content:center;animation:bt-fade .2s ease-out}
 .bt-voice-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;max-width:560px;text-align:center}
@@ -787,7 +781,7 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-menu[data-leaving]{pointer-events:none;animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards}
 .bt-menu-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-menu-hint{flex:none;color:var(--bt-ink-3);font-size:12px;font-variant-numeric:tabular-nums}
-.bt-palette-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:70;pointer-events:auto;font-family:var(--bt-font)}
+.bt-palette-layer{position:fixed;inset:var(--cue-frame-chrome-top,0px) 0 0;z-index:70;pointer-events:auto;font-family:var(--bt-font)}
 .bt-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.46);animation:bt-fade .22s ease-out}
 .bt-palette{position:absolute;top:50%;left:50%;width:min(560px,92vw);transform:translate(-50%,-50%);display:flex;flex-direction:column;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(28px) saturate(180%);backdrop-filter:blur(28px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);overflow:hidden;color:var(--bt-ink);animation:bt-palette-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
 .bt-palette-layer[data-leaving]{pointer-events:none}
@@ -860,8 +854,8 @@ button:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-side
 .bt-state[aria-pressed=true]{background:var(--bt-active);border-color:var(--bt-line-2);color:var(--bt-ink)}
 .bt-theme-chip{position:relative;width:46px;height:30px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--bt-line-2);background:linear-gradient(90deg,var(--ls) 0 36%,var(--lb) 36%);overflow:hidden}
 .bt-theme-chip i{position:absolute;right:7px;bottom:7px;width:10px;height:10px;border-radius:50%;background:var(--la)}
-body[data-ds-dark-theme] .bt-theme-chip{background:linear-gradient(90deg,var(--ds) 0 36%,var(--db) 36%)}
-body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
+body[data-cue-dark-theme] .bt-theme-chip{background:linear-gradient(90deg,var(--ds) 0 36%,var(--db) 36%)}
+body[data-cue-dark-theme] .bt-theme-chip i{background:var(--da)}
 .bt-tabs{flex-wrap:wrap}
 .bt-soft:disabled{opacity:.4;cursor:default}
 .bt-group-role{margin-left:6px;font-size:11px;line-height:14px;padding:1px 5px;border-radius:4px;background:var(--bt-tag-bg);color:var(--bt-tag-ink);vertical-align:1px}
@@ -897,9 +891,9 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
 .bt-mem-row>svg{flex:none;color:var(--bt-ink-2)}
 .bt-mem-row-copy{flex:1;text-align:left}
 .bt-mem-row-go{display:inline-flex;align-items:center;gap:2px;color:var(--bt-ink-3);font-size:12px;flex:none;white-space:nowrap}
-.bt-mem-layer{position:fixed;inset:var(--dsh-frame-chrome-top,0px) 0 0;z-index:61;display:flex;align-items:center;justify-content:center;font-family:var(--bt-font)}
+.bt-mem-layer{position:fixed;inset:var(--cue-frame-chrome-top,0px) 0 0;z-index:61;display:flex;align-items:center;justify-content:center;font-family:var(--bt-font)}
 .bt-mem-scrim{animation:bt-fade .2s ease-out}
-.bt-mem{position:relative;width:min(680px,calc(100vw - 48px));height:min(760px,calc(100vh - 2*max(32px,var(--dsh-frame-overlay-top,32px))));background:var(--bt-main);border-radius:20px;border:.5px solid var(--bt-line-2);box-shadow:0 24px 80px rgba(0,0,0,.24);display:flex;flex-direction:column;overflow:hidden;color:var(--bt-ink);animation:bt-dialog-rise ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
+.bt-mem{position:relative;width:min(680px,calc(100vw - 48px));height:min(760px,calc(100vh - 2*max(32px,var(--cue-frame-overlay-top,32px))));background:var(--bt-main);border-radius:20px;border:.5px solid var(--bt-line-2);box-shadow:0 24px 80px rgba(0,0,0,.24);display:flex;flex-direction:column;overflow:hidden;color:var(--bt-ink);animation:bt-dialog-rise ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing},bt-veil-in .2s ease-out}
 .bt-mem-head{position:relative;display:flex;align-items:center;gap:8px;height:60px;flex:none;padding:0 14px 0 24px;border-bottom:.5px solid var(--bt-line);box-sizing:border-box}
 .bt-mem-head .bt-icon-btn{width:32px;height:32px;flex:none}
 .bt-mem-head [aria-haspopup] svg{width:18px;height:18px;stroke-width:2.6}
@@ -1033,8 +1027,8 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
 /* Follow the visible viewport, not the layout one: dvh where the browser knows
    it (the earlier vh value is the fallback), and safe-area padding where
    full-screen layers and bottom regions meet the device's own bars. */
-.bt-settings{--bt-set-h:min(780px,calc(100dvh - 2*max(32px,var(--dsh-frame-overlay-top,32px))))}
-.bt-mem{height:min(760px,calc(100dvh - 2*max(32px,var(--dsh-frame-overlay-top,32px))))}
+.bt-settings{--bt-set-h:min(780px,calc(100dvh - 2*max(32px,var(--cue-frame-overlay-top,32px))))}
+.bt-mem{height:min(760px,calc(100dvh - 2*max(32px,var(--cue-frame-overlay-top,32px))))}
 .bt-settings-layer,.bt-mem-layer,.bt-palette-layer{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .bt-panel{padding-bottom:env(safe-area-inset-bottom,0px)}
 .bt-settings-scroll{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
@@ -1070,62 +1064,29 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 /* One button cannot wrap like separate parts, so a long name is cut to fit the chat. */
 .bt-event-whole>.bt-event-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-time-sep{display:flex;justify-content:center;align-items:center;height:28px;margin:14px 0 8px;font-size:12px;line-height:16px;color:var(--bt-ink-2);white-space:nowrap}
-[class*="_scroll"]>[class*="_column"]::before{content:var(--bt-first-sep,none);display:block;flex:none;height:28px;margin:17px 0 12px;font-size:12px;line-height:28px;text-align:center;color:var(--bt-ink-2);white-space:nowrap}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
-   (it is a DSH-wide setting): step groups lose their header and stay open, and what a
+   (it is a Cue-wide setting): step groups lose their header and stay open, and what a
    mode folds away in a finished turn stays shown. TurnProcessCell also opens that
    fold; these rules cover the first frame before it does. */
 [data-step-process]>div:first-child{display:none!important}
 [data-step-process]>[data-step-process-body]{display:block!important;content-visibility:visible!important;max-height:none!important;overflow:visible!important;mask-image:none!important;scrollbar-gutter:auto!important}
 :is([data-step-process],[data-turn-process-hidden])[hidden]{content-visibility:visible!important}
-[class*="_flowItem"]:has(> [data-slot="conversation.chat.node"]:empty, > [data-slot="conversation.chat.node"][data-bt-emptied]){display:none!important}
 /* A turn's process seat is a flow child of its own, not a flowItem: a seat whose
    member cells all emptied themselves (a hidden exchange turn, a turn whose
    calls draw nothing) still kept its margin, stacking a blank band per hidden
-   call. Only the slot a DS Bot cell marked counts, so a seat another renderer
+   call. Only the slot a Cue cell marked counts, so a seat another renderer
    fills — even with plain text and no element child — is never taken for empty. */
 [data-step-process]:has(> [data-step-process-body] [data-slot="conversation.chat.node"][data-bt-emptied]):not(:has(> [data-step-process-body] [data-slot="conversation.chat.node"]:not([data-bt-emptied]))){display:none!important}
-[class*="_header"]:has(.bt-head){border-bottom-color:transparent!important;box-shadow:none!important}
-/* The transcript runs under a floating header pill. */
-header[class*="_header"]:has(.bt-head){position:absolute!important;top:0;left:0;right:0;z-index:8;display:flex!important;padding:10px 0 0!important;background:transparent!important;pointer-events:none;justify-content:center}
-header[class*="_header"]:has(.bt-head)::before{content:"";position:absolute;inset:0 0 auto;height:calc(60px + env(safe-area-inset-top,0px));background:linear-gradient(to bottom,var(--bt-main),color-mix(in srgb,var(--bt-main) 0%,transparent));pointer-events:none;z-index:-1}
-header[class*="_header"]:has(.bt-head)>[class*="_headerLeading"]{position:absolute;left:12px;top:10px;pointer-events:auto}
-header[class*="_header"] .bt-head{flex:1 1 auto;width:100%}
-/* On macOS the shell's header row is the window's drag strip (data-window-drag
-   becomes -webkit-app-region:drag). The floating header stays click-through, so
-   the transcript under it still takes links and the wheel. Only the 40px .bt-head
-   bar the pill sits in is hit again and carries the drag mark; controls inside
-   keep no-drag. The data-slot anchor must not take no-drag, or the bar inherits it. */
-html[data-platform=darwin] header[class*="_header"]:has(.bt-head) .bt-head{pointer-events:auto;-webkit-app-region:drag}
-html[data-platform=darwin] header[class*="_header"]:has(.bt-head) :is(a,button,input,textarea,select,[role=button],[role=menuitem],[role=menu],[contenteditable=true]){-webkit-app-region:no-drag}
-[class*="_body"]:has(> [class*="_scrollBody"]){--dsh-chat-content-width:min(960px,100%)}
-/* The shell writes the column's width on the conversation root at every resize, only to
-   derive the content width that the rule above replaces. Inherited, each write restyled
-   the whole conversation: once a frame while the details panel glides, most in a long
-   group chat. Kept on the root alone, a write restyles one element. */
-@property --dsh-conversation-column-width{syntax:"*";inherits:false}
-@property --dsh-chat-user-width{syntax:"*";inherits:false}
-/* DSH's turn tail keeps what plugins put in it (delivered files, the Bot's separators),
+@property --cue-conversation-column-width{syntax:"*";inherits:false}
+@property --cue-chat-user-width{syntax:"*";inherits:false}
+/* Cue's turn tail keeps what plugins put in it (delivered files, the Bot's separators),
    without its copy and branch row; a tail with nothing in it takes no room. */
 [data-turn-tail]>:not([data-slot="conversation.chat.turnTail"]){display:none!important}
-[class*="_flowItem"][data-chat-flow-kind="turn-tail"]:not(:has([data-slot="conversation.chat.turnTail"]:not(:empty))){display:none!important}
-/* Every team Session belongs to a Bot or a group, so a blank one is an empty chat, not
-   the shell's new-session hero: no headline, no workspace or mode picker, and the
-   composer stays docked at the bottom. */
-[data-content-phase=hero] [class*="_scrollBody"]{justify-content:flex-end!important}
-[data-content-phase=hero] [class*="_composerHero"]{align-self:stretch!important;width:auto!important;padding-bottom:0!important}
-[data-content-phase=hero] [class*="_composerHero"]>[class$="_root"],[data-content-phase=hero] [class*="_heroWorkspaceRow"]{display:none!important}
-[data-content-phase=hero] [class*="_composerHero"] [class*="_input"]{min-height:0!important}
-/* The right sides give back the scrollbar gutter so both edges sit 16px from the column. */
-[class*="_scroll"]:has(> [class*="_column"]){padding:calc(60px + env(safe-area-inset-top,0px)) calc(11px + env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) calc(16px + env(safe-area-inset-left,0px))!important}
-/* The goal island's pod hangs off the header over the transcript's first message. */
-body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc(90px + env(safe-area-inset-top,0px))!important}
-/* The shell's running status only hosts the activity row (.bt-typing). */
 [data-chat-running]{display:block!important;width:100%;min-height:0!important;margin:0!important;padding:0!important}
 [data-chat-running]>span:not([role=status]){display:none!important}
-[data-chat-running]:has(> .bt-typing){margin-top:var(--dsh-chat-flow-gap,12px)!important}
+[data-chat-running]:has(> .bt-typing){margin-top:var(--cue-chat-flow-gap,12px)!important}
 .bt-typing{display:flex;align-items:center;gap:12px;height:36px;min-width:0;padding-inline-start:8px;transform-origin:0 50%;animation:bt-typing-in ${SPRING_TAP.duration}ms ${SPRING_TAP.easing} backwards}
 .bt-typing[data-exiting]{animation:bt-typing-out .14s cubic-bezier(.22,1,.36,1) forwards}
 .bt-typing>.bt-mark,.bt-typing>.bt-cluster{flex-shrink:0}
@@ -1161,42 +1122,19 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 [data-composer-card]{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important;gap:0!important;min-height:44px!important;border-radius:22px!important;padding:7.5px!important;box-sizing:border-box;background:var(--bt-glass-bg)!important;-webkit-backdrop-filter:blur(20px) saturate(180%)!important;backdrop-filter:blur(20px) saturate(180%)!important;border:.5px solid var(--bt-glass-rim)!important;box-shadow:var(--bt-glass-shadow),0 0 0 1px rgba(228,228,228,.04)!important;transition:border-color .15s ease,background-color .15s ease,${spring(SPRING_SHAPE, 'border-radius')}!important}
 [data-composer-card]:hover,[data-composer-card]:focus-within{border-color:color-mix(in srgb,var(--bt-ink) 30%,transparent)!important}
 [data-composer-card]:has(> [data-slot="conversation.input.attachments"] *),[data-composer-card]:has([data-composer-input] br + *),[data-composer-card]:has([data-composer-input] > :nth-child(2)){border-radius:18px!important}
-[class*="_root"]:has(> [data-composer-card]){padding:0 11px 13px 16px!important}
-[class*="_root"]:has(> [data-composer-card])>[data-composer-card]{max-width:min(992px,100%)!important}
-[data-composer-card]>[class*="_row"]{display:contents!important}
-[data-composer-card] [class*="_tools"]{order:1!important;flex:none!important;align-self:flex-end!important;margin:0!important}
 [data-composer-card]>[data-input-scroll]{order:2!important;flex:1 1 0!important;min-width:0!important;padding:0 8px!important;margin:0!important}
-[data-composer-card] [class*="_trailing"]{order:3!important;flex:none!important;align-self:flex-end!important;margin:0!important}
-/* The slot anchor is display:contents, so the rail inside it is the flex item. */
-[data-composer-card]>[data-slot="conversation.input.attachments"]>[class*="_rail"]{order:0!important;flex:0 0 100%!important;margin:0!important;padding:2px 8px 6px!important}
-[data-composer-card]:has(> [data-slot="conversation.input.attachments"] > [class*="_rail"])>[data-input-scroll]{order:1!important;flex:0 0 100%!important;margin:0 0 6px!important}
-[data-composer-card]:has(> [data-slot="conversation.input.attachments"] > [class*="_rail"]) [class*="_tools"]{order:2!important}
-[data-composer-card]:has(> [data-slot="conversation.input.attachments"] > [class*="_rail"]) [class*="_trailing"]{margin-left:auto!important}
 [data-composer-card] [data-composer-input]{min-height:24px!important;padding:2px 0!important}
 [data-composer-card] [data-composer-placeholder]{left:0!important;top:2px!important}
 [data-composer-placeholder]{font-size:0!important;line-height:0!important}
 /* The name sits on ::before so that ::after stays free for other composer skins. */
 [data-composer-placeholder]::before{content:var(--bt-placeholder,"Message")!important;display:block!important;font-size:14px!important;line-height:24px!important;color:color-mix(in srgb,var(--bt-ink) 36%,transparent)!important}
-/* The team's "+" (ComposerPlus) takes the seat of the shell's command-menu button. */
-[data-composer-card] button[class*="_add"]{display:none!important}
 .bt-plus{flex:none;width:28px;height:28px;padding:0;border:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bt-ink) 5%,transparent);box-shadow:inset 0 0 0 .5px var(--bt-line);color:var(--bt-ink-2);cursor:pointer;transition:background-color .15s ease,color .15s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-plus:hover,.bt-plus[aria-expanded=true]{background:color-mix(in srgb,var(--bt-ink) 10%,transparent);color:var(--bt-ink)}
 .bt-plus:active{scale:.9}
 .bt-plus svg{width:14px;height:14px;transition:${spring(SPRING_POP, 'rotate')}}
 .bt-plus[aria-expanded=true] svg{rotate:45deg}
 .bt-plus-menu{min-width:180px}
-[data-composer-card] [class*="_tools"]{gap:0!important}
-[data-composer-card] [class*="_modes"]:empty{display:none!important}
-[data-composer-card] [class*="_activity"]:not(:has([data-slot] > *)){display:none!important}
-[data-composer-card] [class*="_trailing"]{gap:8px!important}
-/* No display here: DSH hides these controls with [hidden] while the Bot works. */
-[data-composer-card] [class*="_standardControls"]{align-items:center!important;gap:8px!important}
-[data-composer-card] button[class*="_primary"]{width:28px!important;height:28px!important;background:var(--bt-accent)!important;color:var(--bt-accent-ink,#fff)!important;border-radius:50%!important;transition:opacity .15s ease,${spring(SPRING_TAP, 'scale')};animation:bt-icon-swap ${SPRING_POP.duration}ms ${SPRING_POP.easing}}
-[data-composer-card] button[class*="_primary"]:hover:not(:disabled){opacity:.9}
-[data-composer-card] button[class*="_primary"]:active:not(:disabled){scale:.9}
 @keyframes bt-icon-swap{from{opacity:0;transform:scale(.5) rotate(-30deg)}}
-[data-composer-card] button[class*="_primary"] svg{width:14px;height:14px}
-[data-composer-card] button[class*="_primary"]:disabled{display:none!important}
 [data-composer-dock]{display:none!important}
 .bt-mic,.bt-voice{flex:none;width:28px;height:28px;border-radius:50%;border:0;padding:0;display:inline-grid;place-items:center;cursor:pointer;transition:background-color .15s ease,color .15s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-mic{background:color-mix(in srgb,var(--bt-ink) 5%,transparent);box-shadow:inset 0 0 0 .5px var(--bt-line);color:var(--bt-ink-2)}
@@ -1215,50 +1153,22 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
   .bt-menu button,.bt-menu [role=menuitem],.bt-react-strip button{min-height:44px}
   .bt-utools[data-open]{opacity:1;visibility:visible}
   .bt-utools button{width:44px;height:44px}
-  [data-chat-flow-kind=user] [class*="_actions"] button{width:44px;height:44px}
 }
-[data-composer-card]:has(button[class*="_primary"]:disabled) .bt-voice{display:inline-grid}
 body[data-bt-room] .bt-voice{display:none!important}
-body[data-bt-room] [data-composer-card]:has(button[class*="_primary"]:disabled) .bt-mic:not([aria-pressed=true]){background:var(--bt-accent);color:var(--bt-accent-ink,#fff)}
 .bt-mic-note{position:absolute;right:12px;bottom:calc(100% + 8px);padding:5px 10px;border-radius:8px;background:var(--bt-user);color:var(--bt-user-ink);font-size:12px;line-height:16px;white-space:nowrap;pointer-events:none;animation:bt-rise .16s ease-out}
 [data-chain-overlay-fallback="conversation.composer"]:has(~ .bt-q){display:block!important;order:2}
 .bt-q{order:1}
-div:has(> nav [class*="_marks"]){display:none!important}
-/* Every user-side bubble (sent, steering mid-turn, not yet admitted, question replies)
-   takes its surface and its text from the one --bt-user pair: a skin that repaints
-   the host's bubble surface alone would otherwise leave the text unreadable. */
-[class*="_userRow"] [class*="_bubble"],[data-chat-flow-kind=question-reply] [class*="_bubble"],[data-chat-flow-kind=command-input] [class*="_bubble"]{background:var(--bt-user)!important;color:var(--bt-user-ink)!important;border-radius:18px!important;padding:7px 12px!important;font-size:var(--dsh-content-font-size,14px)!important;line-height:calc(var(--dsh-content-font-size,14px) + 8px)!important}
-[class*="_userRow"] [class*="_bubble"] [class*="_markdown"],[class*="_userRow"] [class*="_bubble"] a{color:inherit}
-/* Sent messages get the hover toolbar below; steering and unsent bubbles keep none. */
-[class*="_userRow"] [class*="_actions"]{display:none!important}
 /* A steering message the Bot has not read yet shows a small unread label under
    its bubble's right edge; --bt-steer-unread is set per window (header.js), and
    the none fallback means no English can leak into a Chinese window. */
 [data-pending-steering]{flex-wrap:wrap}
 [data-pending-steering]::after{content:var(--bt-steer-unread,none);display:block;flex-basis:100%;width:100%;order:99;margin-top:4px;font-size:11px;line-height:14px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
-[data-chat-flow-kind=user] [class*="_userRow"]{flex-direction:row-reverse;align-items:center;justify-content:flex-start}
-[data-chat-flow-kind=user] [class*="_actions"]{display:flex!important;height:24px!important;gap:2px!important;opacity:0!important;visibility:hidden;transition:opacity .12s ease,visibility .12s!important;flex:none}
-[data-chat-flow-kind=user] [class*="_userRow"]:hover [class*="_actions"],[data-chat-flow-kind=user] [class*="_userRow"]:focus-within [class*="_actions"]{opacity:1!important;visibility:visible}
-@media (hover:none){[data-chat-flow-kind=user] [class*="_actions"]{opacity:1!important;visibility:visible}}
-[data-chat-flow-kind=user] [class*="_actions"] [class*="_timeStart"]{display:none}
-[data-chat-flow-kind=user] [class*="_actions"] button{width:24px;height:24px;border-radius:6px;color:var(--bt-ink-2)}
-[data-chat-flow-kind=user] [class*="_actions"] button:hover{background:var(--bt-hover);color:var(--bt-ink)}
-[data-chat-flow-kind=user] [class*="_actions"] svg{width:15px;height:15px}
 .bt-q-inline{display:flex;margin:4px 0 6px}
 [data-chat-flow-kind=assistant-step]+[data-step-process]:has(.bt-q-inline){margin-top:0!important}
 [data-chat-flow-kind=question-reply]:has(.bt-q-inline),[data-chat-group-key]:has([data-chat-flow-kind=question-reply] .bt-q-inline),[data-chat-group-key]:has(.bt-q-gone){margin-top:0!important}
 .bt-q-inline .bt-q{margin:0;max-width:min(550px,86%);order:0}
 .bt-q-dock{width:100%;display:flex;justify-content:center}
 .bt-q-dock .bt-q{margin:0 auto 8px}
-[class*="_toBottomSlot"]{justify-content:center!important;padding-right:0!important}
-[data-conversation-scroll] [class*="_toBottomSlot"]{bottom:calc(var(--dsh-composer-height,152px) + 8px)!important}
-[class*="_toBottomSlot"]>button{width:36px!important;height:36px!important;margin-top:-36px!important;background:var(--bt-glass-bg)!important;-webkit-backdrop-filter:blur(16px) saturate(180%)!important;backdrop-filter:blur(16px) saturate(180%)!important;color:var(--bt-ink)!important;box-shadow:var(--bt-glass-shadow)!important;animation:bt-tobottom-in ${SPRING_TAP.duration}ms ${SPRING_TAP.easing},bt-veil-in .16s ease-out;transition:background-color .12s ease,${spring(SPRING_TAP, 'scale')}}
-[class*="_toBottomSlot"]>button:active{scale:.9}
-[class*="_toBottomSlot"]>button:hover{background:color-mix(in srgb,var(--bt-ink) 4%,var(--bt-main))!important}
-[class*="_toBottomSlot"]>button svg{display:none}
-[class*="_toBottomSlot"]>button::before{content:"";width:20px;height:20px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 4v12M5 11l5 5 5-5'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 4v12M5 11l5 5 5-5'/%3E%3C/svg%3E") center/contain no-repeat}
-@keyframes bt-tobottom-in{from{translate:0 8px;scale:.8}}
-[data-bt-news] [class*="_toBottomSlot"]>button{visibility:hidden!important;pointer-events:none!important}
 .bt-news{position:fixed;z-index:30;transform:translateX(-50%);display:inline-flex;align-items:center;overflow:hidden;border-radius:999px;background:var(--bt-accent);color:var(--bt-accent-ink);box-shadow:inset 0 0 0 1px rgba(20,20,20,.05),0 1px 3px 0 rgba(0,0,0,.12);font-family:var(--bt-font);animation:bt-news-in ${SPRING_TAP.duration}ms ${SPRING_TAP.easing},bt-veil-in .16s ease-out}
 @keyframes bt-news-in{from{translate:0 8px;scale:.9}}
 .bt-news[data-direction=up]{animation-name:bt-news-in-up,bt-veil-in}
@@ -1269,7 +1179,7 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-news-x{position:absolute;right:4px;top:50%;z-index:1;transform:translateY(-50%);width:20px;height:20px;padding:0;border:0;border-radius:999px;background:transparent;color:inherit;opacity:.75;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .bt-news-x svg{width:12px;height:12px}
 .bt-news-x:hover{opacity:1;background:rgba(20,20,20,.5)}
-@media (prefers-reduced-motion:reduce){.bt-news,[class*="_toBottomSlot"]>button{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-news{animation:none}}
 .bt-new-sep{display:flex;align-items:center;gap:8px;margin:14px 0 8px;padding:2px 0;font-size:11px;line-height:14px;font-weight:500;letter-spacing:.02em;text-transform:uppercase;color:var(--bt-accent);font-family:var(--bt-font)}
 .bt-new-sep::before,.bt-new-sep::after{content:"";flex:1;height:1px;background:color-mix(in srgb,var(--bt-accent) 20%,transparent)}
 .bt-open-new{display:flex;flex-direction:column}
@@ -1281,7 +1191,7 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-earlier-top .bt-soft{height:28px;font-size:12px;padding:0 12px}
 .bt-urow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;margin:6px 0}
 .bt-ububble{max-width:calc(var(--bt-msg-w) * 100%);background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:14px;line-height:24px;box-sizing:border-box;overflow-wrap:anywhere;text-wrap:pretty;text-autospace:normal}
-.bt-ububble [class*="_markdown"],.bt-ububble a{color:inherit!important}
+.bt-ububble .md_markdown,.bt-ububble a{color:inherit!important}
 .bt-ububble p{margin:0;line-height:24px}
 .bt-uimages{display:block;font-size:12px;opacity:.7}
 .bt-uattachments{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:6px}
@@ -1308,9 +1218,9 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-line{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font-size:11px;line-height:14px;color:var(--bt-ink-3)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
-[data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
+[data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--cue-composer-card-max-width,748px)}
 [data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
-.bt-btw-dock,.bt-btw-stack{display:flex;flex-direction:column;gap:6px;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
+.bt-btw-dock,.bt-btw-stack{display:flex;flex-direction:column;gap:6px;width:100%;max-width:var(--cue-composer-card-max-width,748px)}
 .bt-btw{box-sizing:border-box;width:100%;margin:6px auto;padding:8px 12px;border:1px solid var(--bt-line);border-radius:12px;background:var(--bt-card);color:var(--bt-ink)}
 .bt-btw-dock .bt-btw,.bt-btw-stack .bt-btw{margin:0}
 .bt-btw-compact{padding:6px 10px}
@@ -1334,143 +1244,10 @@ div:has(> nav [class*="_marks"]){display:none!important}
 
 // -------------------------------------------------------------------------
 
-// DSH's ClientModuleSystem claims every <style> without a `data-plugin` for the module
-// it is materializing and deletes a module's styles when it unloads. Ours carry our
-// module id from the start, so another plugin's claim or teardown never takes them.
-const PLUGIN_ID = 'ds-bot'
-
-// The part of a style sheet that only reaches DS Bot's own elements: selectors on a
-// `.bt-` class, the `--bt-*` variables on the page root, and the keyframes they run.
-// Rules that re-skin the shell's own elements (the `[class*=…]` overrides) drop out, so
-// Settings can show in Agent mode without dressing DSH's page in Bot mode.
-const ROOT_SELECTOR = /^(?:html\s+)?(?:body|:root)(?:\[[^\]]*\])*$/
-const ownSelector = selector => selector.includes('.bt-') && !/\[class[*^$]?=/.test(selector)
-function splitTopLevel(text, separator) {
-  const parts = []
-  let depth = 0
-  let start = 0
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]
-    if (char === '(' || char === '[') depth += 1
-    else if (char === ')' || char === ']') depth -= 1
-    else if (char === separator && depth === 0) { parts.push(text.slice(start, index)); start = index + 1 }
-  }
-  parts.push(text.slice(start))
-  return parts
-}
-export function botOwnCss(css) {
-  let out = ''
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let close = open + 1
-    while (close < css.length && depth > 0) {
-      if (css[close] === '{') depth += 1
-      else if (css[close] === '}') depth -= 1
-      close += 1
-    }
-    const head = css.slice(index, open).replace(/\/\*[\s\S]*?\*\//g, '').trim()
-    const body = css.slice(open + 1, close - 1)
-    index = close
-    if (head.startsWith('@keyframes') || head.startsWith('@font-face')) { out += `${head}{${body}}\n`; continue }
-    if (head.startsWith('@')) {
-      const inner = botOwnCss(body)
-      if (inner.trim() !== '') out += `${head}{${inner}}\n`
-      continue
-    }
-    const selectors = splitTopLevel(head, ',').map(part => part.trim())
-    if (selectors.every(selector => ROOT_SELECTOR.test(selector))) {
-      const custom = splitTopLevel(body, ';').map(part => part.trim()).filter(part => part.startsWith('--'))
-      if (custom.length > 0) out += `${head}{${custom.join(';')}}\n`
-      continue
-    }
-    const own = selectors.filter(ownSelector)
-    if (own.length > 0) out += `${own.join(',')}{${body}}\n`
-  }
-  return out
-}
-
 export function installStyles(text, tag) {
   const style = document.createElement('style')
-  style.dataset.dshBot = tag
-  style.dataset.plugin = PLUGIN_ID
+  style.dataset.cue = tag
   style.textContent = text
   document.head.appendChild(style)
   return style
-}
-
-// Shell chrome only exposes hashed CSS-module classes (`hem6sG_footArea`,
-// `_bubble_12mhf_1`), so the overrides above match on name fragments. Substring
-// attribute selectors bypass the style engine's class index, and ~20 of them made
-// every style recalc about ten times slower. Rewrite each one into the exact class
-// names defined by the loaded stylesheets; keep the substring form when none match.
-const FRAGMENT_SELECTOR = /\[class\*="(_[\w-]+)"\]/g
-const CLASS_TOKEN = /\.((?:\\.|[\w-])+)/g
-
-function sheetClassNames(sheet) {
-  const names = []
-  const visit = (rules) => {
-    for (const rule of rules) {
-      if (rule.selectorText) for (const match of rule.selectorText.matchAll(CLASS_TOKEN)) names.push(match[1])
-      if (rule.cssRules) visit(rule.cssRules)
-    }
-  }
-  try { visit(sheet.cssRules) } catch { /* cross-origin sheet */ }
-  return names
-}
-
-function compileFragmentSelectors(text, names) {
-  const compiled = new Map()
-  return text.replace(FRAGMENT_SELECTOR, (whole, fragment) => {
-    if (!compiled.has(fragment)) {
-      const exact = []
-      for (const name of names) if (name.includes(fragment)) exact.push(`.${name}`)
-      compiled.set(fragment, exact.length ? `:is(${exact.join(',')})` : whole)
-    }
-    return compiled.get(fragment)
-  })
-}
-
-export function installCompiledStyles(text, tag) {
-  const style = installStyles('', tag)
-  let disposed = false
-  const cache = new WeakMap()
-  const render = () => {
-    if (disposed) return
-    // A tag removed out from under us (not by the module system, which owns it) goes back.
-    if (!style.isConnected) document.head.appendChild(style)
-    const names = new Set()
-    for (const sheet of document.styleSheets) {
-      if (sheet.ownerNode?.dataset?.dshBot) continue
-      let list = cache.get(sheet)
-      if (!list) { list = sheetClassNames(sheet); cache.set(sheet, list) }
-      for (const name of list) names.add(name)
-    }
-    const next = compileFragmentSelectors(text, names)
-    if (style.textContent !== next) style.textContent = next
-  }
-  render()
-  // Lazily loaded shell features append their own sheets later.
-  let timer
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(render, 120) }
-  const onLoad = (event) => { if (event.target instanceof HTMLLinkElement) schedule() }
-  // Our own sheets name no shell classes, so adding one (the panel's first open adds the
-  // chat column's rule) recompiles nothing. Our own node coming out is a removal to undo,
-  // which render sees without a recompile.
-  const shell = node => node.dataset?.dshBot === undefined
-  const observer = new MutationObserver((records) => {
-    if (records.some(record => [...record.removedNodes].includes(style))) render()
-    if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(shell))) schedule()
-  })
-  observer.observe(document.head, { childList: true })
-  document.addEventListener('load', onLoad, true)
-  return () => {
-    disposed = true
-    observer.disconnect()
-    document.removeEventListener('load', onLoad, true)
-    clearTimeout(timer)
-    style.remove()
-  }
 }

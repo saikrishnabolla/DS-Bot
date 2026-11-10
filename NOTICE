@@ -1,5 +1,5 @@
-DS Bot
-Copyright 2026 Fei2411 and the DS Bot contributors
+Cue
+Copyright 2026 Fei2411 and the Cue contributors
 
 The view core and React components in ds-bot/src/view are derived from Deep View
 0.1.2 by Fei2411, licensed under the Apache License 2.0.
@@ -13,10 +13,6 @@ Third-party code in this repository
 DeepSeek Harness (https://github.com/deepseek-ai/deepseek-harness)
 MIT License, Copyright (c) 2026 DeepSeek
 
-  - ds-bot/dev/desktop-linux/launch.mts follows the steps of
-    apps/desktop/scripts/dev.ts in DeepSeek Harness and reuses a few of its
-    lines (the release record and the Electron launch arguments). It is a
-    developer script for screenshots on Linux and is not in the npm package.
   - ds-bot/src/office/skills/office/SKILL.md adapts the office routing skill
     (assets/office/SKILL.md in @deepseek-ai/dsh-skill-office): the routing body
     is kept, with one added row that routes package checks and in-place edits
@@ -39,10 +35,6 @@ MIT License, Copyright (c) 2026 DeepSeek
     apps/desktop/src/preload-browser.ts: the webview leases, the attachment
     checks and fixed guest preferences, the session policy and the new-window
     requests.
-  - .agents/skills/record-browser-gif/ comes from the skill of the same name
-    in DeepSeek Harness (.agents/skills/record-browser-gif/): SKILL.md is
-    adapted and translated for this repository; scripts/encode_gif.py and
-    scripts/test_encode_gif.py are copied unchanged.
   - ds-bot/src/engine/owned-proxy.js adapts the environment proxy resolution,
     loopback bypass and undici dispatcher from packages/util/http-proxy.
 
@@ -92,8 +84,7 @@ Apache License, Version 2.0, Copyright (c) Microsoft Corporation
     click, upload, type, select, press, tabs, back, screenshot). The
     session drives the browser through the Playwright API itself
     (ariaSnapshot({ mode: 'ai' }) and the aria-ref locators those refs
-    resolve to). The desktop app bundles playwright-core. The optional plugin
-    can use a Playwright installation selected by its host.
+    resolve to). Cue bundles playwright-core.
 
   The license is the same Apache License, Version 2.0 that covers this
   repository; see LICENSE for the text.
@@ -172,9 +163,8 @@ MIT License, DeepSeek AI
 
   MIT license text: see the DeepSeek Harness section above.
 
-No other third-party code is copied into this repository. At run time the
-plugin uses the @deepseek-ai/* packages of the DeepSeek Harness install it
-runs in; they are not bundled. The bundled ds-bot/office.js includes
+No other third-party code is copied into this repository. The bundled
+ds-bot/office.js includes
 @xmldom/xmldom (https://github.com/xmldom/xmldom, MIT License, Copyright (c)
 jindw and contributors) from npm. esbuild is a build tool only. The build of
 the desktop window (app/ui) bundles,
@@ -213,7 +203,7 @@ Copyright (c) 2020-present Silero Team, downloaded on first use.
 Projects that gave us ideas (no code copied)
 ==============================================================================
 
-We thank these projects for the designs they published. DS Bot learned from
+We thank these projects for the designs they published. Cue learned from
 their ideas; it does not contain their code.
 
   - AgentMemoryRepo (https://github.com/AgentMemoryRepo/agentmemoryrepo), MIT:
@@ -242,6 +232,6 @@ Agent logos (ds-bot/src/client/agent-logos.js)
 The logos name the agent CLI a Bot runs on. Each is a trademark of its owner:
 Claude (Anthropic), Cursor (Anysphere), Gemini (Google), OpenCode (SST),
 Cline (Cline Bot Inc.), Qwen (Alibaba Cloud), Devin (Cognition AI),
-OpenAI (OpenAI). DS Bot is not affiliated with or endorsed by these owners.
+OpenAI (OpenAI). Cue is not affiliated with or endorsed by these owners.
 Vector marks from Simple Icons (https://simpleicons.org), CC0-1.0.
 Devin and OpenAI marks from the vendors' application icons.

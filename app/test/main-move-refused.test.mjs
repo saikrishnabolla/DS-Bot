@@ -1,7 +1,7 @@
 // A folder that can no longer take the data once the engine has stopped (something was put in it
 // meanwhile) is refused on a card on the moving page, not in a message box, and the app starts
 // again on the old folder (start-window §5). The Electron parts are test doubles: no display, no
-// DSH, no data of the user.
+// Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

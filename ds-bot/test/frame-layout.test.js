@@ -2,13 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   RAIL_WIDTH, RAIL_SNAP, SIDEBAR_MIN, SIDEBAR_MAX, MIN_CHAT, FALLBACK_SIDEBAR_WIDTH,
-  frameLayout, dragColumn, toggledPref, userSidebarToggle, readSidebar, writeSidebar,
+  frameLayout, dragColumn, toggledPref, readSidebar, writeSidebar,
 } from '../src/client/frame-layout.js'
 import { createSource } from '../src/client/sources.js'
 import { teamActions } from '../src/client/team-actions.js'
 
-// The window, the shell sidebar's track width and what is open decide which left
-// column shows and how the Bot panel sits; the chat keeps MIN_CHAT.
+// The window, sidebar width and open panel decide the layout; the chat keeps MIN_CHAT.
 const at = (viewport, sidebarWidth, { pref = 'open', drawer = false, panel = null } = {}) =>
   frameLayout({ viewport, sidebarWidth, pref, drawer, panel })
 const details = (yielded = false) => ({ view: 'details', yielded })
@@ -57,7 +56,7 @@ test('a rail preference keeps the rail beside a shown panel', () => {
   assert.equal(layout.room, 1400 - RAIL_WIDTH)
 })
 
-test('a sidebar widened in Agent mode still folds the panel first', () => {
+test('a widened sidebar still folds the panel first', () => {
   // 420 + 320 + 420 = 1160 > 1100.
   const layout = at(1100, 420, { panel: details() })
   assert.deepEqual({ left: layout.left, panel: layout.panel }, { left: 'open', panel: 'folded' })
@@ -118,30 +117,6 @@ test('the saved column reads back, and anything unknown falls back to the open d
   assert.deepEqual(readSidebar(storage), { pref: 'open', shown: 'open', width: SIDEBAR_MAX })
   store.set('ds-bot:sidebar', 'rail')
   assert.deepEqual(readSidebar(storage), { pref: 'open', shown: 'open', width: FALLBACK_SIDEBAR_WIDTH })
-})
-
-// A flip of the shell's collapsed flag is the user's switch gesture only when we
-// did not request it and the window stayed on one side of the auto-collapse line.
-test('a sidebar flip we requested is not a user toggle', () => {
-  const before = { collapsed: false, viewport: 1400 }
-  assert.equal(userSidebarToggle({ before, after: { collapsed: true, viewport: 1400 }, requested: true }), false)
-})
-
-test('a flip across the auto-collapse line is the shell rule, not a gesture', () => {
-  const before = { collapsed: false, viewport: 1100 }
-  assert.equal(userSidebarToggle({ before, after: { collapsed: true, viewport: 1000 } }), false)
-})
-
-test('a flip right after a width change is the shell settling, not a gesture', () => {
-  const before = { collapsed: true, viewport: 1386 }
-  assert.equal(userSidebarToggle({ before, after: { collapsed: false, viewport: 1386 }, sinceResize: 120 }), false)
-  assert.equal(userSidebarToggle({ before, after: { collapsed: false, viewport: 1386 }, sinceResize: 800 }), true)
-})
-
-test('an unrequested flip on one side of the line is the user', () => {
-  const before = { collapsed: false, viewport: 1400 }
-  assert.equal(userSidebarToggle({ before, after: { collapsed: true, viewport: 1300 } }), true)
-  assert.equal(userSidebarToggle({ before: { collapsed: true, viewport: 800 }, after: { collapsed: false, viewport: 700 } }), true)
 })
 
 // A folded panel is open but not shown. The panel following the chat to another

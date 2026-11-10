@@ -8,7 +8,7 @@ const [mode, dataDir, savedBotId, savedApprovalId] = process.argv.slice(2)
 const uiDir = join(dataDir, 'ui')
 const sideEffectPath = join(dataDir, 'approval-side-effect.txt')
 await mkdir(uiDir, { recursive: true })
-await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
 const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
 const faux = fauxProvider()

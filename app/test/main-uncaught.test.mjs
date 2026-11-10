@@ -1,6 +1,6 @@
 // An error that nothing in the main process caught: Electron would show its own message box.
 // Before the hand-off the start window's failure page says it instead, and no box opens. The
-// Electron parts and the Host are test doubles: no display, no DSH, no data of the user.
+// Electron parts and the Host are test doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { app, state } from './helpers/fake-electron.mjs'

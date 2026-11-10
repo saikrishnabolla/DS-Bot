@@ -1,33 +1,33 @@
-// The --dv-* tokens the view styles read, mapped onto DeepSeek Harness's
-// documented --dsw-* aliases so light and dark both follow the shell theme.
+// The --dv-* tokens the view styles read, mapped onto Cue's
+// documented --cue-ui-* aliases so light and dark both follow the shell theme.
 export const THEME_CSS = `
 body{
---dv-ink:var(--dsw-alias-label-primary);
---dv-ink-2:var(--dsw-alias-label-secondary);
---dv-ink-3:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-caption));
---dv-line:color-mix(in srgb,var(--dsw-alias-label-primary) 8%,transparent);
---dv-line-2:color-mix(in srgb,var(--dsw-alias-label-primary) 15%,transparent);
---dv-card:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-1,var(--dsw-alias-bg-base)));
---dv-main:var(--dsw-alias-bg-base);
---dv-hover:var(--dsw-alias-interactive-bg-hover);
---dv-active:var(--dsw-alias-interactive-bg-active,var(--dsw-alias-interactive-bg-hover));
---dv-accent:var(--dsw-alias-state-business-primary);
---dv-accent-ink:var(--dsw-alias-label-primary-inverted,#fff);
---dv-green:var(--dsw-alias-state-success-primary);
---dv-star:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-warn-label));
---dv-danger:var(--dsw-alias-state-error-primary);
---dv-knob:var(--dsw-alias-label-primary-inverted,#fff);
---dv-tag-bg:var(--dsw-alias-interactive-bg-hover);
---dv-ink-tangerine:var(--dsw-alias-brand-text,var(--dsw-alias-state-warn-primary));
---dv-ink-green:var(--dsw-alias-state-success-primary);
---dv-ink-violet:color-mix(in srgb,var(--dsw-alias-state-business-primary) 60%,var(--dsw-alias-state-error-primary));
---dv-ink-sky:var(--dsw-alias-link,var(--dsw-alias-state-business-primary));
---dv-ink-rose:var(--dsw-alias-state-error-primary);
---dv-ink-yellow:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warn-primary));
---dv-ink-cyan:var(--dsw-alias-state-success-tertiary,var(--dsw-alias-state-success-primary));
---dv-ink-magenta:var(--dsw-alias-state-error-secondary,var(--dsw-alias-state-error-primary));
+--dv-ink:var(--cue-ui-alias-label-primary);
+--dv-ink-2:var(--cue-ui-alias-label-secondary);
+--dv-ink-3:var(--cue-ui-alias-label-tertiary,var(--cue-ui-alias-label-caption));
+--dv-line:color-mix(in srgb,var(--cue-ui-alias-label-primary) 8%,transparent);
+--dv-line-2:color-mix(in srgb,var(--cue-ui-alias-label-primary) 15%,transparent);
+--dv-card:var(--cue-ui-specific-menu,var(--cue-ui-alias-bg-layer-1,var(--cue-ui-alias-bg-base)));
+--dv-main:var(--cue-ui-alias-bg-base);
+--dv-hover:var(--cue-ui-alias-interactive-bg-hover);
+--dv-active:var(--cue-ui-alias-interactive-bg-active,var(--cue-ui-alias-interactive-bg-hover));
+--dv-accent:var(--cue-ui-alias-state-business-primary);
+--dv-accent-ink:var(--cue-ui-alias-label-primary-inverted,#fff);
+--dv-green:var(--cue-ui-alias-state-success-primary);
+--dv-star:var(--cue-ui-alias-state-warn-primary,var(--cue-ui-alias-state-warn-label));
+--dv-danger:var(--cue-ui-alias-state-error-primary);
+--dv-knob:var(--cue-ui-alias-label-primary-inverted,#fff);
+--dv-tag-bg:var(--cue-ui-alias-interactive-bg-hover);
+--dv-ink-tangerine:var(--cue-ui-alias-brand-text,var(--cue-ui-alias-state-warn-primary));
+--dv-ink-green:var(--cue-ui-alias-state-success-primary);
+--dv-ink-violet:color-mix(in srgb,var(--cue-ui-alias-state-business-primary) 60%,var(--cue-ui-alias-state-error-primary));
+--dv-ink-sky:var(--cue-ui-alias-link,var(--cue-ui-alias-state-business-primary));
+--dv-ink-rose:var(--cue-ui-alias-state-error-primary);
+--dv-ink-yellow:var(--cue-ui-alias-state-warn-label,var(--cue-ui-alias-state-warn-primary));
+--dv-ink-cyan:var(--cue-ui-alias-state-success-tertiary,var(--cue-ui-alias-state-success-primary));
+--dv-ink-magenta:var(--cue-ui-alias-state-error-secondary,var(--cue-ui-alias-state-error-primary));
 color-scheme:light}
-body[data-ds-dark-theme]{color-scheme:dark}
+body[data-cue-dark-theme]{color-scheme:dark}
 .dv-q-inline .dv-view{max-width:100%}
 `
 
@@ -35,8 +35,8 @@ body[data-ds-dark-theme]{color-scheme:dark}
 // question card (bt-q-*): list, options, key hints, fields, buttons, badge,
 // plus the menu, segmented buttons, switch and the shared keyframes.
 export const QUESTION_CSS = `
-.dv-q{margin:0 auto 8px;width:100%;max-width:var(--dsh-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--dv-q-edge:color-mix(in srgb,var(--dv-ink) 10%,transparent);--dv-q-rule:color-mix(in srgb,var(--dv-ink) 8%,transparent);--dv-q-rule-2:color-mix(in srgb,var(--dv-ink) 5%,transparent);background:var(--dv-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--dv-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--dv-ink);font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);animation:dv-veil-in .2s ease-out backwards}
-body[data-ds-dark-theme] .dv-q{--dv-q-edge:rgba(255,255,255,.16);--dv-q-rule:rgba(255,255,255,.12);--dv-q-rule-2:rgba(255,255,255,.08)}
+.dv-q{margin:0 auto 8px;width:100%;max-width:var(--cue-chat-content-width,748px);display:flex;flex-direction:column;gap:12px;--dv-q-edge:color-mix(in srgb,var(--dv-ink) 10%,transparent);--dv-q-rule:color-mix(in srgb,var(--dv-ink) 8%,transparent);--dv-q-rule-2:color-mix(in srgb,var(--dv-ink) 5%,transparent);background:var(--dv-card);box-shadow:0 1px 3px rgba(20,20,20,.04),inset 0 0 0 1px var(--dv-q-edge);border-radius:16px;padding:14px 16px;box-sizing:border-box;color:var(--dv-ink);font-family:var(--cue-ui-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);animation:dv-veil-in .2s ease-out backwards}
+body[data-cue-dark-theme] .dv-q{--dv-q-edge:rgba(255,255,255,.16);--dv-q-rule:rgba(255,255,255,.12);--dv-q-rule-2:rgba(255,255,255,.08)}
 .dv-q-settled{animation:none}
 .dv-q-x{flex:none;width:20px;height:20px;border:0;padding:0;border-radius:6px;background:none;color:var(--dv-ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .dv-q-x svg{width:14px;height:14px}
@@ -76,7 +76,7 @@ button.dv-q-opt:active{background:var(--dv-active)}
 .dv-q-btn:hover{background:var(--dv-active)}
 .dv-q-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px}
 .dv-q-foot-start{margin-right:auto;display:flex;align-items:center}
-.dv-menu{position:fixed;pointer-events:auto;z-index:60;min-width:200px;padding:6px;border-radius:12px;background:var(--dv-main);border:.5px solid var(--dv-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1),0 0 0 1px rgba(228,228,228,.04);display:flex;flex-direction:column;gap:2px;transform-origin:var(--dv-origin,top left);animation:dv-veil-in .14s ease-out;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);box-sizing:border-box}
+.dv-menu{position:fixed;pointer-events:auto;z-index:60;min-width:200px;padding:6px;border-radius:12px;background:var(--dv-main);border:.5px solid var(--dv-line-2);box-shadow:0 10px 20px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1),0 0 0 1px rgba(228,228,228,.04);display:flex;flex-direction:column;gap:2px;transform-origin:var(--dv-origin,top left);animation:dv-veil-in .14s ease-out;font-family:var(--cue-ui-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif);box-sizing:border-box}
 .dv-menu.dv-view-menu{position:absolute;z-index:4}
 .dv-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dv-ink);cursor:pointer;box-sizing:border-box}
 .dv-menu button:hover{background:var(--dv-hover)}

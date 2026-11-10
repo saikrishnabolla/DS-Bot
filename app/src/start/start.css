@@ -1,4 +1,4 @@
-/* DS Bot start window. Geometry in DIP of the 720 x 540 window content (40 px band on top). */
+/* Cue start window. Geometry in DIP of the 720 x 540 window content (40 px band on top). */
 /* tokens */
 /* Generated from the DeepSeek theme in ds-bot/src/client/themes.js, inks.js and styles.js by scripts/start-assets.mjs; do not edit. */
 :root{color-scheme:light dark;--bt-main:#fcfcfc;--bt-card:#ffffff;--bt-ink:#141414;--bt-ink-2:rgba(20,20,20,0.6);--bt-line:rgba(20,20,20,0.08);--bt-line-2:rgba(20,20,20,0.15);--bt-hover:rgba(119,119,119,.09);--bt-accent:#4d6bfe;--bt-accent-ink:#ffffff;--bt-ink-deepseek:#4D6BFE;--bt-green:#00c972;--bt-danger:#e02135}
@@ -21,7 +21,7 @@
 }
 /* /springs */
 
-/* The corners DSH gives every element (dsh-client-ui-theme corner-shape.css), so the buttons here
+/* The corners Cue gives every element (Cue-client-ui-theme corner-shape.css), so the buttons here
    are shaped like the plugin's; the circles stay round. */
 @supports (corner-shape:superellipse(1.5)){*,::before,::after{corner-shape:superellipse(1.5)}.whale-hit,.ripple,.drop{corner-shape:round}}
 [hidden]{display:none!important}
@@ -99,14 +99,6 @@ html[data-up] .pond{translate:0 -60px;scale:.62}
 .arc[data-state=active] .arc-glow{opacity:1;animation:bt-arc 1.8s cubic-bezier(.4,0,.2,1) infinite}
 .arc[data-state=done] .arc-fill{stroke-dashoffset:0}
 .arc[data-state=failed] .arc-base{stroke:color-mix(in srgb,var(--bt-danger) 60%,transparent)}
-/* The import's arc (a first start that copies a team, §6) is there only on such a start, and it
-   fills with the copy (--f, from the main process's share); a failed copy keeps what it reached,
-   in red. It lights up once the card has flown into it (data-caught). */
-.ring:not([data-n="4"]) .arc[data-phase=import]{display:none}
-.arc[data-phase=import]:is([data-state=active],[data-state=failed]) .arc-fill{stroke-dashoffset:calc(101 - var(--f,0) * 101);transition-duration:.3s;transition-timing-function:ease-out}
-.arc[data-phase=import][data-state=failed] .arc-fill{stroke:var(--bt-danger)}
-.arc[data-caught] .arc-base{stroke:var(--bt-ink-deepseek);stroke-opacity:.22;animation:bt-catch .42s ease-out}
-@keyframes bt-catch{from{stroke-width:5;stroke-opacity:1}}
 html[data-whale=pondering] .arc[data-state=active] .arc-glow{animation-duration:2.6s}
 @keyframes bt-arc{from{stroke-dashoffset:23}to{stroke-dashoffset:-101}}
 /* The hand-off: the gaps close into one circle, which swells once. */
@@ -124,7 +116,7 @@ html[data-resume] :is(.arc-fill,.ring-full){transition:none}
 .props>g{opacity:0;scale:.6;transform-origin:20px 36px;transition:opacity .16s ease-in,scale .16s ease-in}
 .props *{transform-box:fill-box}
 .props>g{transform-box:view-box}
-.pond:has(.arc[data-phase=data][data-state=active]) [data-p=data],.pond:has(.arc[data-phase=import][data-state=active]) [data-p=import],.pond:has(.arc[data-phase=engine][data-state=active]) [data-p=engine],.pond:has(.arc[data-phase=team][data-state=active]) [data-p=team]{opacity:1;scale:1;transition:opacity .2s ease-out,scale var(--spring-pop-ms) var(--spring-pop)}
+.pond:has(.arc[data-phase=data][data-state=active]) [data-p=data],.pond:has(.arc[data-phase=engine][data-state=active]) [data-p=engine],.pond:has(.arc[data-phase=team][data-state=active]) [data-p=team]{opacity:1;scale:1;transition:opacity .2s ease-out,scale var(--spring-pop-ms) var(--spring-pop)}
 .folder-back{fill:color-mix(in srgb,var(--bt-ink-deepseek) 40%,transparent)}
 .folder-front{fill:var(--bt-ink-deepseek)}
 .page rect{fill:var(--bt-card);stroke:var(--bt-line-2);stroke-width:1}
@@ -140,15 +132,6 @@ html[data-resume] :is(.arc-fill,.ring-full){transition:none}
 .gear-small{fill:color-mix(in srgb,var(--bt-ink-deepseek) 55%,transparent);animation:bt-turn 1.8s linear infinite reverse}
 [data-p=engine]{animation:bt-pulse 1.35s ease-in-out infinite}
 .pond:not(:has(.arc[data-phase=engine][data-state=active])) [data-p=engine]{animation:none}
-/* The import: a box is lifted off the old pile, tips forward along a dotted route and lands with a
-   squash on the new one, 1.6 s a trip. The pale pile is where the team was. */
-.box rect{fill:var(--bt-ink-deepseek)}
-.box path{fill:none;stroke:var(--bt-card);stroke-width:1.3;stroke-linecap:round}
-.box-from rect{fill:color-mix(in srgb,var(--bt-ink-deepseek) 35%,transparent)}
-.box-from path{stroke:color-mix(in srgb,var(--bt-card) 70%,transparent)}
-.route{fill:none;stroke:color-mix(in srgb,var(--bt-ink-deepseek) 55%,transparent);stroke-width:1.5;stroke-linecap:round;stroke-dasharray:0 3.4}
-.box-moving{transform-origin:50% 100%;animation:bt-carry 1.6s infinite}
-@keyframes bt-carry{0%{translate:0 0;rotate:0deg;scale:1;opacity:0;animation-timing-function:ease-out}12%{translate:0 -2px;opacity:1;animation-timing-function:cubic-bezier(.3,.6,.5,1)}38%{translate:10px -15px;rotate:14deg;animation-timing-function:cubic-bezier(.5,0,.8,.4)}62%{translate:21px -12px;rotate:0deg;scale:1.12 .86;animation-timing-function:ease-out}72%{scale:.96 1.05}80%,90%{translate:21px -12px;scale:1;opacity:1}100%{translate:21px -12px;opacity:0}}
 @keyframes bt-turn{to{rotate:360deg}}
 @keyframes bt-pulse{0%,100%{transform:none}15%{transform:scale(1.07)}35%{transform:none}}
 .mate circle{fill:var(--bt-ink-deepseek)}
@@ -158,7 +141,7 @@ html[data-resume] :is(.arc-fill,.ring-full){transition:none}
 [data-p=team]>g:nth-child(2) .mate{animation-delay:.2s}
 [data-p=team]>g:nth-child(3) .mate{opacity:.75;animation-delay:.4s}
 @keyframes bt-mate{0%,40%,100%{transform:none}15%{transform:translateY(-4px) scale(1.05,.95)}}
-html[data-whale=pondering] :is(.page,.mate,[data-p=engine],.box-moving){animation-duration:2.6s}
+html[data-whale=pondering] :is(.page,.mate,[data-p=engine]){animation-duration:2.6s}
 html[data-whale=pondering] .gear-big{animation-duration:4s}
 html[data-whale=pondering] .gear-small{animation-duration:2.667s}
 
@@ -200,21 +183,8 @@ html[data-sheet=none] .sheet{pointer-events:none}
 .foot{font-size:13px;line-height:18px;color:var(--bt-ink-2)}
 .card>.foot,.miss{margin-top:8px}
 .miss{font-size:13px;line-height:18px;color:var(--bt-danger)}
-:is(.miss,.banner,.log,.confirm,.models,.more,[data-u]):not([hidden]){transition:opacity .22s ease-out,filter .22s ease-out}
-@starting-style{:is(.miss,.banner,.log,.confirm,.models,.more,[data-u]):not([hidden]){opacity:0;filter:blur(6px)}}
-/* Opened, the import card's body fits the sheet at 540 px with these gaps; a model list
-   opened under it scrolls inside the card. */
-.more{margin-top:4px;padding-top:5px;border-top:1px solid var(--bt-line)}
-.more>*+*{margin-top:4px}
-.card[data-kind=import] .card-scroll>*+*{margin-top:4px}
-.extra-row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-.model-row{display:flex;gap:8px;align-items:baseline}
-.models{list-style:none}
-.models .btn{width:100%;justify-content:flex-start;border-radius:8px;background:none;height:30px;font-size:13px}
-.models .btn:hover{background:var(--bt-hover)}
-.opts{display:flex;gap:20px;font-size:13px;line-height:18px}
-.opts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-.opts input{margin:0;width:14px;height:14px;accent-color:var(--bt-accent)}
+:is(.miss,.banner,.log,.confirm,[data-u]):not([hidden]){transition:opacity .22s ease-out,filter .22s ease-out}
+@starting-style{:is(.miss,.banner,.log,.confirm,[data-u]):not([hidden]){opacity:0;filter:blur(6px)}}
 .bar{height:4px;border-radius:2px;background:var(--bt-hover);overflow:hidden}
 .bar-fill{display:block;height:100%;background:var(--bt-accent);transform-origin:0 50%;scale:0 1}
 .banner{border-radius:12px;background:var(--bt-hover);padding:12px 14px}
@@ -315,7 +285,7 @@ html[data-hidden] *{animation-play-state:paused!important}
 :root .props>g{scale:none!important;transition:opacity .12s!important}
 :root :is(.arc-fill,.ring-full){transition-duration:.12s!important}
 :root .voice>span{animation:none!important;background:none!important;color:var(--bt-ink)!important}
-:root :is(.voice,.caption>*,.card,.miss,.banner,.log,.confirm,.models,[data-u]){filter:none!important;scale:none!important;transition-property:opacity!important;transition-duration:.12s!important;transition-delay:0s!important}
+:root :is(.voice,.caption>*,.card,.miss,.banner,.log,.confirm,[data-u]){filter:none!important;scale:none!important;transition-property:opacity!important;transition-duration:.12s!important;transition-delay:0s!important}
 :root .btn:active{scale:none}
 :root[data-exit~=lane] .lane{opacity:0;transition:opacity .12s}
 }

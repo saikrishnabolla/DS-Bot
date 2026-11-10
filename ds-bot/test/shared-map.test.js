@@ -4,7 +4,7 @@ import { createBotBrowsers } from '../src/client/bot-browsers.js'
 import { noteLeft, setUnread, sharedMap, toggleReaction } from '../src/client/shared-map.js'
 import { STORAGE } from '../src/client/storage.js'
 
-// One browser storage that two windows (tabs of DSH Web, or Desktop windows) share.
+// One browser storage that two windows (tabs of web client, or Desktop windows) share.
 function sharedStorage() {
   const items = new Map()
   return {

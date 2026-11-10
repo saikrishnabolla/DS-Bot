@@ -5,13 +5,12 @@ import { defineConfig } from 'vite'
 const require = createRequire(import.meta.url)
 const primitives = fileURLToPath(new URL('./ui/src/primitives.js', import.meta.url))
 
-// The plugin's Bot views take DSH's interface primitives from one module; the window does
-// not load DSH's interface, so its own module stands in for that one.
+// The desktop bundle replaces the minimal source primitives with its rich renderer.
 const ownPrimitives = {
   name: 'ds-bot-primitives',
   enforce: 'pre',
   resolveId(source, importer) {
-    return source === './dsh-primitives.js' && importer?.replaceAll('\\', '/').includes('/ds-bot/src/client/') ? primitives : null
+    return source === './ui-primitives.js' && importer?.replaceAll('\\', '/').includes('/ds-bot/src/client/') ? primitives : null
   },
 }
 

@@ -7,6 +7,7 @@ const API_ROUTE = '/api/bot'
 const FEED_ROUTE = `${API_ROUTE}/feed`
 const UPLOAD_ROUTE = `${API_ROUTE}/upload`
 const ATTACHMENT_ROUTE = `${API_ROUTE}/attachment/`
+const PLUGIN_ROUTE = `${API_ROUTE}/plugin/`
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
 const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -14,7 +15,7 @@ const DEFAULT_MAX_FEED_CLIENTS = 32
 const DEFAULT_MAX_QUEUED_EVENTS = 512
 const DEFAULT_KEEPALIVE_MS = 20_000
 const COOKIE = 'dsbot_session'
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost'])
+const BIND_HOSTS = new Set(['127.0.0.1', '::1', 'localhost', '0.0.0.0'])
 
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -24,6 +25,7 @@ const CONTENT_TYPES = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.jpg', 'image/jpeg'],
   ['.js', 'text/javascript; charset=utf-8'],
+  ['.mjs', 'text/javascript; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
   ['.png', 'image/png'],
   ['.svg', 'image/svg+xml'],
@@ -99,18 +101,20 @@ const eventChunk = (event, data) => `event: ${event}\ndata: ${JSON.stringify(dat
 /**
  * Start the loopback HTTP boundary used by the desktop window.
  *
- * `dispatch` receives the existing DS Bot endpoint and payload. `subscribe` receives
+ * `dispatch` receives the existing Cue endpoint and payload. `subscribe` receives
  * a listener called as `(event, data)` and returns a disposer.
  */
 export async function startOwnedServer({
   dispatch,
   upload,
   attachment,
+  pluginAsset,
   subscribe = () => () => {},
   revision = () => 0,
   uiDir,
   host = DEFAULT_HOST,
   port = 0,
+  publicOrigin,
   launchToken = randomBytes(32).toString('base64url'),
   maxRequestBytes = DEFAULT_MAX_REQUEST_BYTES,
   maxUploadBytes = DEFAULT_MAX_UPLOAD_BYTES,
@@ -121,11 +125,21 @@ export async function startOwnedServer({
   if (typeof dispatch !== 'function') throw new TypeError('dispatch must be a function')
   if (upload !== undefined && typeof upload !== 'function') throw new TypeError('upload must be a function')
   if (attachment !== undefined && typeof attachment !== 'function') throw new TypeError('attachment must be a function')
+  if (pluginAsset !== undefined && typeof pluginAsset !== 'function') throw new TypeError('pluginAsset must be a function')
   if (typeof subscribe !== 'function') throw new TypeError('subscribe must be a function')
   if (typeof revision !== 'function') throw new TypeError('revision must be a function')
   if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
   if (typeof launchToken !== 'string' || launchToken.length < 16) throw new TypeError('launchToken must contain at least 16 characters')
-  if (typeof host !== 'string' || !LOOPBACK_HOSTS.has(host.toLowerCase())) throw new TypeError('host must be a loopback address')
+  if (typeof host !== 'string' || !BIND_HOSTS.has(host.toLowerCase())) throw new TypeError('host must be a supported bind address')
+  if (publicOrigin !== undefined) {
+    let parsed
+    try { parsed = new URL(publicOrigin) } catch { throw new TypeError('publicOrigin must be an HTTP origin') }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      throw new TypeError('publicOrigin must be an HTTP origin')
+    }
+    publicOrigin = parsed.origin
+  }
+  if (host === '0.0.0.0' && publicOrigin === undefined) throw new TypeError('publicOrigin is required for a wildcard bind')
 
   const root = resolve(uiDir)
   const session = randomBytes(32).toString('base64url')
@@ -302,6 +316,40 @@ export async function startOwnedServer({
         return
       }
 
+      if (url.pathname.startsWith(PLUGIN_ROUTE) && pluginAsset !== undefined) {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          response.writeHead(405, { allow: 'GET, HEAD' })
+          response.end()
+          return
+        }
+        let parts
+        try { parts = url.pathname.slice(PLUGIN_ROUTE.length).split('/').map(decodeURIComponent) } catch {
+          refusal(response, 404, 'bot/not-found', 'Plugin asset not found')
+          return
+        }
+        const fingerprint = parts.shift() ?? ''
+        const path = parts.join('/')
+        if (!/^[a-f0-9]{64}$/u.test(fingerprint) || path === '' || parts.some(part => part === '' || part === '.' || part === '..')) {
+          refusal(response, 404, 'bot/not-found', 'Plugin asset not found')
+          return
+        }
+        let stored
+        try { stored = await pluginAsset({ fingerprint, path }) } catch {
+          refusal(response, 404, 'bot/not-found', 'Plugin asset not found')
+          return
+        }
+        response.writeHead(200, {
+          'cache-control': 'private, max-age=31536000, immutable',
+          'content-length': stored.data.length,
+          'content-security-policy': "default-src 'none'",
+          'content-type': CONTENT_TYPES.get(extname(stored.path).toLowerCase()) ?? 'application/octet-stream',
+          'referrer-policy': 'no-referrer',
+          'x-content-type-options': 'nosniff',
+        })
+        response.end(request.method === 'HEAD' ? undefined : stored.data)
+        return
+      }
+
       if (url.pathname === FEED_ROUTE) {
         if (request.method !== 'GET') {
           response.writeHead(405, { allow: 'GET' })
@@ -378,7 +426,7 @@ export async function startOwnedServer({
 
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Owned server did not bind a TCP port')
-  origin = `http://${host.includes(':') ? `[${host}]` : host}:${address.port}`
+  origin = publicOrigin ?? `http://${host.includes(':') ? `[${host}]` : host}:${address.port}`
 
   const keepalive = setInterval(() => {
     for (const client of clients) write(client, ': keepalive\n\n')

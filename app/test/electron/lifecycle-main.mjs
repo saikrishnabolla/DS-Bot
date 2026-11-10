@@ -1,4 +1,4 @@
-// The window and the tray in a real Electron, with a fake Host: no DSH, no model, no data.
+// The window and the tray in a real Electron, with a fake Host: no Cue, no model, no data.
 // The check script drives it over stdin and reads the answers on stdout.
 import { app, BrowserWindow, Menu, nativeImage, powerMonitor, Tray } from 'electron'
 import { randomBytes } from 'node:crypto'
@@ -15,7 +15,7 @@ const assets = join(here, '..', '..', 'assets')
 // into the data of the user. The path is set before the app is ready.
 if (process.env.DS_BOT_SHELL_DATA !== undefined) app.setPath('userData', process.env.DS_BOT_SHELL_DATA)
 const token = randomBytes(16).toString('hex')
-const cookie = `dsh-auth=${token}`
+const cookie = `Cue-auth=${token}`
 let origin
 let requests = 0
 let hosts = 0
@@ -32,7 +32,7 @@ const host = createServer((request, response) => {
   }
   if ((request.headers.cookie ?? '').includes(cookie)) {
     response.writeHead(200, { 'content-type': 'text/html' })
-    response.end('<!doctype html><title>DS Bot</title><h1 id="ready">ready</h1>')
+    response.end('<!doctype html><title>Cue</title><h1 id="ready">ready</h1>')
     return
   }
   response.writeHead(401).end('unauthorized')
@@ -42,7 +42,7 @@ let mainWindow
 const shell = createShell({
   electron: { app, Menu, Tray, powerMonitor },
   platform: process.platform,
-  messages: () => ({ tooltip: 'DS Bot', open: 'Open DS Bot', quit: 'Quit DS Bot', notice: 'The app goes on.', noticeConfirm: 'OK' }),
+  messages: () => ({ tooltip: 'Cue', open: 'Open Cue', quit: 'Quit Cue', notice: 'The app goes on.', noticeConfirm: 'OK' }),
   trayImage: () => {
     const file = join(assets, process.platform === 'win32' ? 'tray.ico' : process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png')
     const image = nativeImage.createFromPath(file)

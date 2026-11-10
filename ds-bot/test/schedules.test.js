@@ -21,7 +21,7 @@ const TEAM = {
   questions: {},
 }
 
-// An in-memory stand-in for DSH's schedule service.
+// An in-memory stand-in for Cue's schedule service.
 function scheduleService() {
   const tasks = new Map()
   let next = 1
@@ -57,7 +57,7 @@ function scheduleService() {
   }
 }
 
-// The Host-wide service of DSH 0.2.2: each task has a delivery target and changes through edit().
+// The Host-wide service of the runtime: each task has a delivery target and changes through edit().
 function hostSchedule() {
   const tasks = new Map()
   let next = 1
@@ -165,8 +165,8 @@ test('a due reminder reaches a group as its prompts', () => {
   assert.equal(reminderText('plain text'), 'plain text')
 })
 
-// Fei2411/DS-Bot#814: DSH 0.2.2 keeps tasks Host-wide with a delivery target.
-test('on DSH 0.2.2 tasks target the Bot’s current part, list by target, delete by id and move in place', async (t) => {
+// Fei2411/DS-Bot#814: the runtime keeps tasks Host-wide with a delivery target.
+test('on the runtime tasks target the Bot’s current part, list by target, delete by id and move in place', async (t) => {
   const schedule = hostSchedule()
   const { ctx, home, call, rt } = setup({ schedule })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
@@ -199,8 +199,8 @@ test('on DSH 0.2.2 tasks target the Bot’s current part, list by target, delete
   assert.deepEqual(schedule.edits.at(-1), { id: 'schedule-2', action: 'delete' })
 })
 
-// DSH 0.2.2's task ids are Host-wide, so schedule_edit could reach another Bot's task.
-test('on DSH 0.2.2 a Bot reads and changes only the tasks of its own chat', async (t) => {
+// the runtime's task ids are Host-wide, so schedule_edit could reach another Bot's task.
+test('on the runtime a Bot reads and changes only the tasks of its own chat', async (t) => {
   const schedule = hostSchedule()
   const { ctx, home, rt } = setup({ schedule })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
@@ -244,7 +244,7 @@ test('on DSH 0.2.2 a Bot reads and changes only the tasks of its own chat', asyn
   assert.deepEqual(asked.at(-1), { limit: 4, offset: 0 })
   assert.deepEqual(both.result.value.items.map(task => task.id), ['own', 'own2'])
   assert.deepEqual((await run('w2', { offset: 5 })).result.value, { items: [], shown: 0, total: 2, limit: 100, offset: 5 })
-  // A page out of DSH's range goes to DSH as asked, and what comes back is still narrowed.
+  // A page out of Cue's range goes to Cue as asked, and what comes back is still narrowed.
   const wide = await run('w2', { limit: 501 })
   assert.deepEqual(asked.at(-1), { limit: 501 })
   assert.deepEqual(wide.result.value.items.map(task => task.id), ['own', 'own2'])

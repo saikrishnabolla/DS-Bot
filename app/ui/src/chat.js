@@ -2,7 +2,7 @@ import { createElement as h, useCallback, useEffect, useLayoutEffect, useMemo, u
 import { createPortal } from 'react-dom'
 import { call } from '../../../ds-bot/src/client/api.js'
 import { sessionMention } from '../../../ds-bot/src/client/at-menu.js'
-import { Bubbles, ChatRows, Shimmer } from '../../../ds-bot/src/client/cells.js'
+import { Bubbles, ChatRows, Shimmer, ToolCell } from '../../../ds-bot/src/client/cells.js'
 import { ComposerPlus, ComposerVoice } from '../../../ds-bot/src/client/composer.js'
 import { AppAccessDock, ComputerHandoffDock } from '../../../ds-bot/src/client/computer.js'
 import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.js'
@@ -13,10 +13,12 @@ import { ArrowUpIcon, CloseIcon } from '../../../ds-bot/src/client/icons.js'
 import { LearningDock } from '../../../ds-bot/src/client/learning-card.js'
 import { ModelChoiceDock } from '../../../ds-bot/src/client/model-menu.js'
 import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
+import { QueueDock } from '../../../ds-bot/src/client/queue-dock.js'
 import { SecretDock } from '../../../ds-bot/src/client/secret-card.js'
-import { MarkdownText } from '../../../ds-bot/src/client/dsh-primitives.js'
+import { MarkdownText } from '../../../ds-bot/src/client/ui-primitives.js'
 import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
 import { relativeShort } from '../../../ds-bot/src/client/text.js'
+import { FailureCell } from '../../../ds-bot/src/client/turn-error.js'
 import { WidgetDock } from '../../../ds-bot/src/client/widget-cell.js'
 import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
@@ -31,8 +33,8 @@ const sameItem = (a, b) => (a.entryId !== undefined && b.entryId !== undefined
 
 // A Bot's own chat: pages from the `chat` endpoint, new entries and the reply being
 // written from the feed. Entries that arrive while the first page loads wait for it.
-function useChat(botId, roomId, part, feed) {
-  const [view, setView] = useState({ sessionId: null, items: [], cursor: null, loading: botId !== undefined || roomId !== undefined, failed: false })
+function useChat(botId, roomId, agentSessionId, part, feed) {
+  const [view, setView] = useState({ sessionId: null, items: [], cursor: null, loading: botId !== undefined || roomId !== undefined || agentSessionId !== undefined, failed: false })
   const [stream, setStream] = useState(null)
   const [pending, setPending] = useState([])
   const ready = useRef(false)
@@ -41,12 +43,12 @@ function useChat(botId, roomId, part, feed) {
   const keep = useRef(null)
 
   const load = useCallback(async (cursor, scroller) => {
-    if (busy.current || (botId === undefined && roomId === undefined)) return
+    if (busy.current || (botId === undefined && roomId === undefined && agentSessionId === undefined)) return
     busy.current = true
     if (cursor === undefined) ready.current = false
     setView(current => ({ ...current, loading: true, failed: false }))
     try {
-      const page = await call('chat', chatRequest(botId, roomId, cursor))
+      const page = await call(agentSessionId === undefined ? 'chat' : 'agent-chat', chatRequest(botId, roomId, cursor, agentSessionId))
       if (cursor === undefined) {
         const later = early.current.filter(entry => entry.sessionId === page.sessionId && !page.items.some(item => sameItem(item, entry.item)))
         early.current = []
@@ -63,7 +65,7 @@ function useChat(botId, roomId, part, feed) {
     } finally {
       busy.current = false
     }
-  }, [botId, roomId])
+  }, [botId, roomId, agentSessionId])
 
   // A new part starts the chat over.
   useEffect(() => { void load(undefined) }, [load, part])
@@ -71,7 +73,7 @@ function useChat(botId, roomId, part, feed) {
   useEffect(() => feed.on((event, data) => {
     // The feed came back after a break: entries may have been missed.
     if (event === 'hello') { if (ready.current) void load(undefined); return }
-    if (!feedMatches(botId, roomId, data)) return
+    if (!feedMatches(botId, roomId, data, agentSessionId)) return
     if (event === 'message') {
       if (!ready.current) { early.current.push(data); return }
       setView(current => (data.sessionId !== current.sessionId || current.items.some(item => sameItem(item, data.item)) ? current : { ...current, items: [...current.items, data.item] }))
@@ -87,29 +89,58 @@ function useChat(botId, roomId, part, feed) {
       else if (data.phase === 'end') setStream(current => (current?.attemptId === data.attemptId ? null : current))
       else setStream(current => (current?.attemptId === data.attemptId ? { ...current, text: current.text + data.text } : current))
     }
-  }), [feed, botId, roomId, load])
+  }), [feed, botId, roomId, agentSessionId, load])
 
   // Shown at once: the message can come back on the feed before the request returns.
-  const send = async (text, attachments, references, actions, sessionId) => {
+  const send = async (text, attachments, references, actions, sessionId, queued = false) => {
     const entry = {
       kind: 'user', text, attachments, images: attachments.filter(item => item.type === 'image').length,
       ...(references.length > 0 ? { referenceLabels: references.map(reference => reference.label) } : {}),
       time: Date.now(),
     }
-    setPending(list => [...list, entry])
+    if (!queued) setPending(list => [...list, entry])
     actions.noteSent(sessionId)
     try {
       await actions.send(sessionId, text, attachments, references)
     } catch (error) {
-      setPending(list => list.filter(item => item !== entry))
+      if (!queued) setPending(list => list.filter(item => item !== entry))
       throw error
     }
   }
   return { view, stream, pending, load, send, keep }
 }
 
-// What the Bot views' voice button asks of a composer (DSH's composer in the plugin):
-// where the caret is, and text put in there.
+function useQueue(sessionId, feed) {
+  const [inbox, setInbox] = useState({ 'next-turn': [] })
+  const load = useCallback(async () => {
+    try { setInbox(await call('queue', { sessionId })) } catch { setInbox({ 'next-turn': [] }) }
+  }, [sessionId])
+  useEffect(() => { void load() }, [load])
+  useEffect(() => feed.on((event, data) => {
+    if (event === 'hello') { void load(); return }
+    if (event === 'queue' && data?.sessionId === sessionId && data.inbox) setInbox(data.inbox)
+  }), [feed, load, sessionId])
+  const update = useCallback(async (itemId, action) => {
+    try {
+      await call('queue-update', { sessionId, itemId: String(itemId), action })
+      await load()
+      return { ok: true }
+    } catch (error) {
+      await load()
+      return { ok: false, error: { code: error?.code ?? 'bot/error', message: error?.message ?? String(error) } }
+    }
+  }, [load, sessionId])
+  return { inbox, update }
+}
+
+const loadQueuedImage = async attachment => {
+  const id = String(attachment?.attachmentId ?? '')
+  if (!/^sha256:[a-f0-9]{64}$/.test(id)) throw new Error('Attachment is unavailable')
+  return `api/bot/attachment/${id.slice('sha256:'.length)}`
+}
+
+// What the Bot views' voice button asks of the composer: the caret position and
+// text inserted there.
 function useInput(field, setText) {
   return useMemo(() => ({
     captureInsertion: () => (field.current ? { start: field.current.selectionStart, end: field.current.selectionEnd } : null),
@@ -297,17 +328,6 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
     referenceRequest ? h(ChatReferencePicker, { sessionId, request: referenceRequest, actions, onPick: insertReference }) : null)
 }
 
-function ToolRow({ row }) {
-  const label = String(row.name ?? 'tool').replaceAll('_', ' ')
-  const argumentsText = row.arguments && Object.keys(row.arguments).length > 0 ? JSON.stringify(row.arguments, null, 2) : ''
-  const result = typeof row.result === 'string' ? row.result : row.details === undefined ? '' : JSON.stringify(row.details, null, 2)
-  return h('details', { className: 'dsb-tool-row', 'data-error': row.isError || row.error ? '' : undefined },
-    h('summary', null, row.result === undefined ? t('Using {name}…', { name: label }) : t('Used {name}', { name: label })),
-    argumentsText ? h('pre', null, argumentsText) : null,
-    result ? h('pre', null, result) : null,
-    row.error ? h('p', { role: 'alert' }, row.error) : null)
-}
-
 function ApprovalCard({ approval, bot, actions }) {
   const [busy, setBusy] = useState(false)
   const answer = (choice) => {
@@ -331,43 +351,84 @@ const rowKey = (row, index) => {
   return item?.entryId === undefined ? `${row.kind}:${row.callId ?? index}` : `${row.kind}:${item.entryId}:${item.block ?? ''}`
 }
 
-function Transcript({ items, sessionId, roster, actions, useUi, clock, showReasoning }) {
+function Transcript({ items, sessionId, roster, actions, hooks, clock, showReasoning }) {
   return transcriptSegments(items).map((row, index) => {
     const key = rowKey(row, index)
-    if (row.kind === 'chat') return h(ChatRows, { key, items: row.items, sessionId, roster, actions, useUi, clock })
+    if (row.kind === 'chat') return h(ChatRows, { key, items: row.items, sessionId, roster, actions, useUi: hooks.useUi, clock })
     if (row.kind === 'reasoning') return showReasoning ? h('details', { key, className: 'dsb-reasoning' },
       h('summary', null, t('Thought process')), row.redacted ? h('p', null, t('Reasoning was redacted.')) : h(MarkdownText, { text: row.text, variant: 'compact' }))
       : null
-    if (row.kind === 'tool') return h(ToolRow, { key, row })
-    return row.reason === 'aborted'
-      ? h('div', { key, className: 'dsb-stopped' }, t('Stopped'))
-      : h('div', { key, className: 'dsb-failure', role: 'alert' }, row.detail || t('This turn failed.'))
+    if (row.kind === 'tool') {
+      const done = row.result !== undefined
+      const root = {
+        kind: done ? 'tool-result' : 'tool-call',
+        name: row.name,
+        callId: row.callId,
+        argsRaw: JSON.stringify(row.arguments ?? {}),
+        content: row.content ?? [],
+        isError: row.isError === true,
+        ...(row.error === undefined ? {} : { error: { message: row.error } }),
+        ...(row.turn === undefined ? {} : { turn: row.turn }),
+      }
+      return h(ToolCell, {
+        key,
+        node: { key, data: { root }, ...(row.turn === undefined ? {} : { location: { turn: { turn: row.turn } } }) },
+        sessionId,
+        useRoster: hooks.useRoster,
+        useUi: hooks.useUi,
+        useWork: hooks.useWork,
+        useHeldCards: hooks.useHeldCards,
+        useBrowserHolds: hooks.useBrowserHolds,
+        useBrowserTabs: hooks.useBrowserTabs,
+        useBrowserPages: hooks.useBrowserPages,
+        useComputer: hooks.useComputer,
+        actions,
+      })
+    }
+    if (row.reason === 'aborted') return h('div', { key, className: 'dsb-stopped' }, t('Stopped'))
+    if (roster.byId?.[sessionId] !== undefined && typeof hooks.useTurnClock === 'function') {
+      const code = row.code ?? (row.reason === 'interrupted' ? 'INTERRUPTED' : 'UNKNOWN')
+      return h(FailureCell, {
+        key,
+        node: { data: { kind: 'turn-error', turn: row.turn, code, message: row.detail ?? '' } },
+        sessionId,
+        useRoster: hooks.useRoster,
+        useTurnClock: hooks.useTurnClock,
+        actions,
+      })
+    }
+    return h('div', { key, className: 'dsb-failure', role: 'alert' }, row.detail || t('This turn failed.'))
   })
 }
 
 // One conversation in the main view, drawn with the Bot views' own rows, cards and docks.
-export function Chat({ sessionId, team }) {
+export function Chat({ sessionId, team, pluginSlot = () => null }) {
   const { actions, hooks, chat: feed } = team
   const roster = hooks.useRoster(value => value)
   const bot = roster.byId[sessionId]
   const room = roster.roomsById[sessionId]
-  const name = bot?.name ?? room?.name ?? ''
-  const { view, stream, pending, load, send, keep } = useChat(bot?.id, room?.id, sessionId, feed)
+  const agent = roster.agentsById?.[roster.agentOf?.[sessionId]]
+  const agentSessionId = agent === undefined ? undefined : sessionId
+  const name = bot?.name ?? room?.name ?? agent?.name ?? ''
+  const { view, stream, pending, load, send, keep } = useChat(bot?.id, room?.id, agentSessionId, sessionId, feed)
+  const queue = useQueue(sessionId, feed)
   const scroller = useRef(null)
   const follow = useRef(true)
   const question = roster.questions?.[sessionId]
   const botRunning = hooks.useSessionStatus(map => map.get(sessionId)?.running === true)
   const useWork = hooks.useWork ?? (() => false)
-  const approvals = useWork(work => approvalsForConversation(work, bot?.id, room?.id))
+  const approvals = useWork(work => approvalsForConversation(work, bot?.id, room?.id, agentSessionId))
   const roomRunning = useWork(work => room !== undefined && (work.rooms?.[room.id] ?? []).length > 0)
   const running = botRunning || roomRunning
   const turnAt = useWork(work => work.turns?.[sessionId])
   useEffect(() => actions.noteChat?.(sessionId, view.items, running, turnAt), [actions, sessionId, view.items, running, turnAt])
   const stop = () => {
-    const request = stopRequest(bot?.id, room?.id)
+    const request = stopRequest(bot?.id, room?.id, agentSessionId)
     return request.endpoint === 'stop-bot-work'
       ? actions.stopBotWork(request.payload.botId)
-      : actions.stopRoomWork(request.payload.roomId)
+      : request.endpoint === 'stop-agent-work'
+        ? actions.stopAgentWork(request.payload.sessionId)
+        : actions.stopRoomWork(request.payload.roomId)
   }
 
   useLayoutEffect(() => {
@@ -386,23 +447,26 @@ export function Chat({ sessionId, team }) {
     : view.failed ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor ?? undefined, scroller.current) }, t('Couldn’t load earlier messages · Retry'))
       : view.cursor ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor, scroller.current) }, t('Load earlier')) : null
   const waiting = bot?.waiting === true
+  const useSession = team.sessionHook?.(sessionId) ?? (select => select({ pendingSubmissions: [], running, subagent: null }))
 
   return h('div', { className: 'dsb-chat' },
     h('div', { ref: scroller, className: 'dsb-scroll', 'data-conversation-scroll': '', onScroll },
       h('div', { className: 'dsb-column' },
         earlier ? h('div', { className: 'bt-earlier-top' }, earlier) : null,
+        pluginSlot('conversation.before', { sessionId, roster, bot, room, agent }),
         h('div', { className: 'dsb-flow', 'data-chat-flow': '', role: 'feed', 'aria-label': name, 'aria-busy': view.loading },
-          h(Transcript, { items: view.items, sessionId, roster, actions, useUi: hooks.useUi, clock: true, showReasoning: thinkingShown(roster.prefs) }),
+          h(Transcript, { items: view.items, sessionId, roster, actions, hooks, clock: true, showReasoning: thinkingShown(roster.prefs) }),
           pending.length ? h('div', { className: 'dsb-pending' }, h(ChatRows, { items: pending, sessionId, roster, actions })) : null,
           stream?.text ? h(Bubbles, { texts: [stream.text], roster, selfId: bot?.id, actions, streaming: true, sessionId }) : null,
           // The Bot views' activity row (from the header pill) draws itself in here.
           h('div', { 'data-chat-running': '' }),
-          question ? h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true, enterToSend: sendsOnEnter(roster.prefs) }) : null))),
+          question ? h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true, enterToSend: sendsOnEnter(roster.prefs) }) : null),
+        pluginSlot('conversation.after', { sessionId, roster, bot, room, agent }))),
     h('div', { className: 'dsb-composer-root' },
       approvals.length > 0 ? h('div', { className: 'bt-member-cards' }, approvals.map(approval => h(ApprovalCard, {
         key: approval.id,
         approval,
-        bot: roster.byId[approval.botId] ?? bot,
+        bot: roster.byId[approval.botId] ?? bot ?? agent ?? { name: t('Agent') },
         actions,
       }))) : null,
       h(ModelChoiceDock, { sessionId, useRoster: hooks.useRoster, actions }),
@@ -423,12 +487,19 @@ export function Chat({ sessionId, team }) {
         actions,
       }),
       h(LearningDock, { sessionId, useRoster: hooks.useRoster, actions }),
+      h(QueueDock, {
+        useSession,
+        useProjection: name => name === 'inbox' ? queue.inbox : undefined,
+        updateQueue: queue.update,
+        loadImage: loadQueuedImage,
+        actions,
+      }),
       h(Composer, {
         sessionId,
         disabled: waiting,
         running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),
-        onSend: (text, attachments, references) => send(text, attachments, references, actions, sessionId),
+        onSend: (text, attachments, references) => send(text, attachments, references, actions, sessionId, running),
         onStop: stop,
         actions,
         useUi: hooks.useUi,

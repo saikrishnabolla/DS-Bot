@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { apply } from '../index.js'
+import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
 const TEAM = {
@@ -28,6 +28,8 @@ function start({ pages = {}, services = {}, team = TEAM } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-feed-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(team))
   const ctx = fakeContext({ services })
+  const ownedFeed = new Set()
+  ctx.subscribeFeed = listener => { ownedFeed.add(listener); return () => ownedFeed.delete(listener) }
   ctx.sessionController = {
     resolveAgent: async sessionId => ({ agent: { session: { id: sessionId, seq: 100 } } }),
     // Two pages per Session, newest first, keyed by the cursor that asks for them.
@@ -39,7 +41,7 @@ function start({ pages = {}, services = {}, team = TEAM } = {}) {
     routes[options.path] = options
     return register(options)
   }
-  apply(ctx, { home })
+  createRuntime(ctx, { home })
   const call = async (endpoint, payload) => {
     const response = await routes['/api/bot'].fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))
     return response.json()
@@ -48,7 +50,13 @@ function start({ pages = {}, services = {}, team = TEAM } = {}) {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5 })
   }
-  return { ctx, call, stop, routes }
+  return {
+    ctx,
+    call,
+    stop,
+    routes,
+    publishOwnedFeed: (event, data) => { for (const listener of ownedFeed) listener(event, data) },
+  }
 }
 
 // Reads Server-Sent Events off a response, one `{ event, data }` per call.
@@ -88,7 +96,7 @@ test('the live feed tells a window about saves, new chat entries and the reply b
   assert.equal(saved.event, 'revision')
   assert.equal(saved.data.revision > TEAM.revision, true)
 
-  // The feed's own listener sits right before im's on session/event; the others need a live dsh.
+  // The feed's own listener sits right before im's on session/event; the others need a live Cue.
   const onEvent = ctx.listeners.get('session/event').at(-2)
   onEvent({ id: 'm1c' }, userMessage('hello', 60))
   assert.deepEqual(await next(), { event: 'message', data: { botId: 'm1', sessionId: 'm1c', item: { kind: 'user', text: 'hello', time: 60 } } })
@@ -117,6 +125,33 @@ test('the live feed tells a window about saves, new chat entries and the reply b
   for (const id of ['b2', 'm1c', 'b2']) onStatus({ agent: { id }, status: 'running' })
   onStatus({ agent: { id: 'not-a-bot' }, status: 'running' })
   assert.deepEqual(await next(), { event: 'live', data: {} })
+
+  abort.abort()
+  assert.equal(await next(), undefined)
+})
+
+test('the live feed carries plain Agent messages, status, queue and streams from the owned context', { timeout: 2_000 }, async (t) => {
+  const team = {
+    ...TEAM,
+    agents: { a1: { id: 'a1', name: 'Agent', sessions: ['s1'], createdAt: 4 } },
+  }
+  const { call, stop, routes, publishOwnedFeed } = start({ team })
+  t.after(stop)
+  await call('state')
+  const abort = new AbortController()
+  const response = await routes['/api/bot/feed'].fetch(new Request('http://localhost/api/bot/feed', { signal: abort.signal }))
+  const next = reader(response)
+  assert.equal((await next()).event, 'hello')
+
+  const item = { kind: 'bot', text: 'Agent answer', entryId: '11' }
+  publishOwnedFeed('message', { botId: 's1', sessionId: 's1', item })
+  publishOwnedFeed('status', { botId: 's1', sessionId: 's1', status: 'running' })
+  publishOwnedFeed('queue', { botId: 's1', sessionId: 's1', inbox: { 'next-turn': [] } })
+  publishOwnedFeed('stream', { botId: 's1', sessionId: 's1', attemptId: 'a1', phase: 'start' })
+  assert.deepEqual(await next(), { event: 'message', data: { botId: 's1', sessionId: 's1', item } })
+  assert.deepEqual(await next(), { event: 'status', data: { botId: 's1', sessionId: 's1', status: 'running' } })
+  assert.deepEqual(await next(), { event: 'queue', data: { botId: 's1', sessionId: 's1', inbox: { 'next-turn': [] } } })
+  assert.deepEqual(await next(), { event: 'stream', data: { botId: 's1', sessionId: 's1', attemptId: 'a1', phase: 'start' } })
 
   abort.abort()
   assert.equal(await next(), undefined)
@@ -160,6 +195,19 @@ test('the chat endpoint pages a Bot\'s own chat from the newest part back', asyn
   const third = (await call('chat', { botId: 'm1', cursor: second.cursor })).value
   assert.deepEqual([third.items, third.cursor], [[{ kind: 'user', text: 'long ago', time: 5, seq: 3 }], null])
   assert.equal((await call('chat', { botId: 'nobody' })).error.code, 'bot/not-found')
+})
+
+test('the chat endpoint keeps rich tool-result attachments', async (t) => {
+  const attachment = { type: 'image', attachment: { attachmentId: `sha256:${'a'.repeat(64)}` } }
+  const events = [
+    { type: 'tool/call', time: 70, seq: 41, data: { callId: 'shot', name: 'cua_driver_native__screenshot', arguments: '{}' } },
+    { type: 'tool/result', time: 71, seq: 42, data: { message: { toolCallId: 'shot', toolName: 'cua_driver_native__screenshot', content: [{ type: 'text', text: 'captured' }, attachment], isError: false } } },
+  ]
+  const { call, stop } = start({ pages: { 'm1c:end': { records: events.map(event => ({ event })), hasMore: false } } })
+  t.after(stop)
+  await call('state')
+  const page = (await call('chat', { botId: 'm1' })).value
+  assert.deepEqual(page.items.find(item => item.kind === 'tool-result').attachments, [attachment])
 })
 
 test('a show_view call in a part reads back as a view row with its blueprint', async (t) => {
@@ -252,7 +300,7 @@ test('a question or view card closed without an answer reads back in earlier his
   ])
 })
 
-test('the run-stats endpoint reads DSH\'s figures for the current part of a Bot\'s chat', async (t) => {
+test('the run-stats endpoint reads Cue\'s figures for the current part of a Bot\'s chat', async (t) => {
   const views = { sessionStats: { turns: 3 }, tokenUsage: { cacheReadTokens: 9 }, contextPressure: { contextWindow: 100 } }
   const read = []
   const sessionProjections = {
@@ -269,7 +317,7 @@ test('the run-stats endpoint reads DSH\'s figures for the current part of a Bot\
   assert.equal((await call('run-stats', { botId: 'nobody' })).error.code, 'bot/not-found')
 })
 
-test('without DSH\'s session projections the run-stats endpoint has nothing to show', async (t) => {
+test('without Cue\'s session projections the run-stats endpoint has nothing to show', async (t) => {
   const { call, stop } = start()
   t.after(stop)
   await call('state')

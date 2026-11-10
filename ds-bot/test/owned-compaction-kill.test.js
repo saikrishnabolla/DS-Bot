@@ -30,7 +30,7 @@ const waitForExit = process => new Promise((resolve, reject) => {
   process.once('exit', (code, signal) => resolve({ code, signal }))
 })
 
-test('SIGKILL after the compaction memo resumes with one DS Bot checkpoint', async t => {
+test('SIGKILL after the compaction memo resumes with one Cue checkpoint', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-compaction-kill-'))
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const first = child('prepare', dataDir)

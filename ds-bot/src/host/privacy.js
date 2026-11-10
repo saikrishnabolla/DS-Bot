@@ -1,6 +1,6 @@
 // Private Bots. A private Bot reads the team like any Bot, but no other Bot reads it, and
-// what it sends out waits for the user. DSH does not fence reads, so this closes the
-// tools DS Bot owns and checks the paths that the file tools and the shell are given;
+// what it sends out waits for the user. Cue does not fence reads, so this closes the
+// tools Cue owns and checks the paths that the file tools and the shell are given;
 // a shell can still reach any file the account can (see docs/plans).
 import { join, resolve } from 'node:path'
 import { within } from './folders.js'
@@ -31,7 +31,7 @@ export function install(rt) {
   // Deleting a private Bot does not make the files and memory it leaves behind public.
   const protectedBots = () => [...new Map([...(state.privateArchives ?? []), ...privateBots()].map(bot => [bot.id, bot])).values()]
   const sessionsOf = bot => [...new Set([bot.id, ...(bot.sessionIds ?? [rt.chatOf(bot.id), ...(bot.segments ?? []).map(segment => segment.sessionId), ...rt.groupSessionsOf(bot.id)])])]
-  const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
+  const dataRoots = () => [rt.dataDir, rt.home].filter(Boolean)
 
   // A path as it is and as the file system resolves it, folded for comparing. realBeyond
   // also resolves a link above a file that does not exist yet.
@@ -55,7 +55,7 @@ export function install(rt) {
   }
 
   // Where a private Bot keeps what must stay closed: its folder and its memory. Its
-  // Sessions and its id are in file names under DSH's and the team's data.
+  // Sessions and its id are in file names under Cue's and the team's data.
   const regionsOf = async bot => (await Promise.all([
     bot.workDir,
     join(rt.home, 'memory', 'bots', bot.id),
@@ -286,7 +286,7 @@ export function install(rt) {
         const bot = await ownerOfSession(id, self)
         if (bot) refuse(bot)
       }
-      // DSH scopes Session search to the caller's cwd. A subagent can have another cwd,
+      // Cue scopes Session search to the caller's cwd. A subagent can have another cwd,
       // so an unfiltered search is closed too; explicit safe ids still narrow it.
       if (name === 'session_search' && args.session_ids === undefined && args.parent_session_ids === undefined) {
         const closedBot = protectedBots().find(found => found.id !== self)
@@ -317,7 +317,7 @@ export function install(rt) {
 
   // Checks a change of `private` or of the folder of a Bot before it is written. A
   // private Bot's folder is no other Bot's, no group's and not the team workspace —
-  // a member's own pick in a group counts as that member's folder — because DSH
+  // a member's own pick in a group counts as that member's folder — because Cue
   // cannot be told which files of a shared folder to hide.
   async function checkChange(bot, { flag, moving, workDir }) {
     const makes = flag === undefined ? bot.private === true : flag

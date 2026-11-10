@@ -226,7 +226,7 @@ export function QuestionDock({ sessionId, useRoster, useCards, useHeldCards, act
 export function AnsweredCell({ node }) {
   const data = node.data ?? {}
   // The reply text is ds-bot's own payload and keeps each question's options; the
-  // pairs DSH reads out of it may drop them.
+  // pairs Cue reads out of it may drop them.
   let sent = null
   try { sent = typeof data.text === 'string' ? JSON.parse(data.text) : null } catch { sent = null }
   const asked = Array.isArray(sent?.questions) ? sent.questions.filter(item => typeof item?.id === 'string' && typeof item.question === 'string') : []

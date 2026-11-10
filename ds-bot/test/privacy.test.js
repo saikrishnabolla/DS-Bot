@@ -36,8 +36,9 @@ function seed({ diary, privateBot, archives = [], picked }) {
 async function start({ services = {}, privateBot = true, archives, memberPick = false } = {}) {
   // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-privacy-')))
-  const dsh = join(root, 'dsh')
-  const home = join(dsh, 'bot')
+  const dataDir = join(root, 'cue-data')
+  const Cue = dataDir
+  const home = join(dataDir, 'bot')
   const team = join(home, 'workspace')
   const project = join(root, 'project')
   const diary = join(root, 'diary')
@@ -45,8 +46,8 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
   for (const dir of [team, project, diary, ...(memberPick ? [picked] : [])]) mkdirSync(dir, { recursive: true })
   writeFileSync(join(diary, 'notes.txt'), 'secret')
   writeFileSync(join(home, 'state.json'), JSON.stringify(seed({ diary, privateBot, archives, picked: memberPick ? picked : undefined })))
-  const previousHome = process.env.DSH_HOME
-  process.env.DSH_HOME = dsh
+  const previousDataDir = process.env.CUE_DATA_DIR
+  process.env.CUE_DATA_DIR = Cue
 
   const ctx = fakeContext({ services })
   const agents = new Map()
@@ -67,7 +68,7 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
     }
     return agents.get(sessionId)
   }
-  const registry = new Map([['w1', { id: 'w1', path: team, title: 'DS Bot' }]])
+  const registry = new Map([['w1', { id: 'w1', path: team, title: 'Cue' }]])
   let created = 0
   Object.assign(ctx, {
     llm: { listProviders: () => [], listModels: async () => [], resolveModelInfo: async () => ({}) },
@@ -76,7 +77,7 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
       list: () => [...registry.values()],
       resolveByPath: async path => [...registry.values()].find(workspace => workspace.path === path),
       create: async (path) => {
-        const workspace = { id: 'w-new', path, title: 'DS Bot' }
+        const workspace = { id: 'w-new', path, title: 'Cue' }
         registry.set(workspace.id, workspace)
         return workspace
       },
@@ -118,13 +119,13 @@ async function start({ services = {}, privateBot = true, archives, memberPick = 
   }
   const stop = async () => {
     await ctx.dispose()
-    if (previousHome === undefined) delete process.env.DSH_HOME
-    else process.env.DSH_HOME = previousHome
+    if (previousDataDir === undefined) delete process.env.CUE_DATA_DIR
+    else process.env.CUE_DATA_DIR = previousDataDir
     rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
   // Loading once fills the Session-owner indexes.
   await tool('list_bots', {}, 'a')
-  return { rt, ctx, root, dsh, home, team, project, diary, picked, agentOf, call, tool, run, state, stop }
+  return { rt, ctx, root, Cue, home, team, project, diary, picked, agentOf, call, tool, run, state, stop }
 }
 
 const CLOSED = /private Bot/
@@ -243,7 +244,7 @@ test('other Bots cannot reach a private Bot through the tools between Bots', asy
 })
 
 test('other Bots cannot read, write or search what a private Bot keeps', async (t) => {
-  const { run, root, dsh, home, diary, team, project, stop } = await start()
+  const { run, root, Cue, home, diary, team, project, stop } = await start()
   t.after(stop)
   const notes = join(diary, 'notes.txt')
   const posix = path => path.replace(/\\/g, '/')
@@ -292,7 +293,7 @@ test('other Bots cannot read, write or search what a private Bot keeps', async (
     ['read', { file_path: join(project, 'a.txt') }],
     ['read', { file_path: 'a.txt' }],
     ['write', { file_path: join(team, 'a.txt'), content: 'x' }],
-    ['read', { file_path: join(dsh, 'sessions', 'b.jsonl') }],
+    ['read', { file_path: join(Cue, 'sessions', 'b.jsonl') }],
     ['read', { file_path: join(home, 'memory', 'team', 'MEMORY.md') }],
     ['glob', { pattern: '**/*', path: join(home, 'memory', 'team') }],
     ['glob', { pattern: '**/*', path: project }],
@@ -419,13 +420,13 @@ test('a write of a private Bot outside its folder that the user does not allow i
 })
 
 test('one private Bot reads its own data but not another private Bot\'s', async (t) => {
-  const { rt, run, dsh, home, diary, project, stop } = await start()
+  const { rt, run, Cue, home, diary, project, stop } = await start()
   t.after(stop)
   const other = await rt.createBot({ name: 'Other', workDir: project })
   await rt.updateBot(other.id, { private: true })
   assert.deepEqual(await run('read', { file_path: join(diary, 'notes.txt') }, P), { ran: true })
   assert.deepEqual(await run('read', { file_path: join(home, 'memory', 'bots', P, 'MEMORY.md') }, P), { ran: true })
-  assert.deepEqual(await run('read', { file_path: join(dsh, 'sessions', `${P}.jsonl`) }, P), { ran: true })
+  assert.deepEqual(await run('read', { file_path: join(Cue, 'sessions', `${P}.jsonl`) }, P), { ran: true })
   assert.deepEqual(await run('session_search', { query: 'x', session_ids: [P] }, P), { ran: true })
   assert.deepEqual(await run('session_search', { query: 'x', session_ids: ['b'] }, P), { ran: true })
   const search = await run('session_search', { query: 'x' }, P)

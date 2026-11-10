@@ -14,9 +14,9 @@ import { checkShownView, showViewDescription, showViewParameters } from '../view
 export const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] }
 export const GROUP_REF = { type: 'string', required: true, description: 'Exact group chat name from list_bots' }
 const BLOCKING_QUESTION_TOOL = 'ask_user_question'
-// DS Bot has its own group goals; DSH's session goal still does not survive conversation parts.
+// Cue has its own group goals; Cue's session goal still does not survive conversation parts.
 const GOAL_TOOLS = ['create_goal', 'update_goal', 'get_goal']
-// DSH's delegation tools start child agents the user cannot watch or stop, and they
+// Cue's delegation tools start child agents the user cannot watch or stop, and they
 // end with the conversation part that started them; Bots hand work to other Bots.
 // Agent Teams' teammates are such children too (#973).
 const DELEGATION_TOOLS = ['subagent', 'subagent_fork', 'subagent_codex', 'subagent_claude_code', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents', 'workflow', 'ralph', 'spawn_teammate', 'wait_agent', 'team_task_create', 'team_task_get', 'team_task_list', 'team_task_update']
@@ -24,13 +24,13 @@ const DELEGATION_TOOLS = ['subagent', 'subagent_fork', 'subagent_codex', 'subage
 // scope, so each group is masked on its own.
 const HIDDEN_TOOL_GROUPS = [[BLOCKING_QUESTION_TOOL, ...GOAL_TOOLS], DELEGATION_TOOLS]
 const HIDDEN_TOOLS = HIDDEN_TOOL_GROUPS.flat()
-// The guidance DSH writes into the prompt for the hidden tools. Agent Teams makes
+// The guidance Cue writes into the prompt for the hidden tools. Agent Teams makes
 // every root Session a Team Lead and tells it to spawn teammates in `team:policy`;
-// its `team:identity` context is required, so DSH puts it back after any filter.
+// its `team:identity` context is required, so Cue puts it back after any filter.
 const HIDDEN_SECTIONS = new Set([...HIDDEN_TOOLS.map(name => `tool:${name}`), 'tool:goal', 'team:policy'])
 const GOAL_REFUSAL = 'Bot chats do not run /goal. To give a group a goal, use Set a goal in its + menu.'
-// DSH 0.2.2's schedule tools can deliver to a new Session, which is outside the team and
-// has no Bot; a Bot's tasks deliver to its own chat, which DS Bot moves on with each part.
+// the runtime's schedule tools can deliver to a new Session, which is outside the team and
+// has no Bot; a Bot's tasks deliver to its own chat, which Cue moves on with each part.
 const SCHEDULE_TARGET_TOOLS = ['schedule_create', 'schedule_edit']
 const SCHEDULE_TARGET_REFUSAL = 'A Bot’s scheduled tasks run in its own chat. Use target "this_session".'
 const DELEGATION_REFUSAL = 'Bots do not start subagents, teammates or workflows. Do the work yourself, or hand it to another Bot with message_bot.'
@@ -223,7 +223,7 @@ export function install(rt) {
     const turn = rt.live.get(exec.agent?.id)
     return [rt.workOf(turn?.info), ...(turn?.joined ?? []).map(joined => rt.workOf(joined.info))].filter(Boolean)
   }
-  const tooLong = text => `Not sent: the message has ${text.length} characters, more than ${MESSAGE_INLINE_MAX}, and this DeepSeek Harness cannot send it as a file. Write it to a file in your working folder and send its path instead.`
+  const tooLong = text => `Not sent: the message has ${text.length} characters, more than ${MESSAGE_INLINE_MAX}, and this Cue host cannot send it as a file. Write it to a file in your working folder and send its path instead.`
 
   // Work for a group stays in it: from a group Session, message_bot calls a member there
   // exactly as an "@Name" line would, and never reaches a Bot outside the group.
@@ -294,7 +294,7 @@ export function install(rt) {
       const answer = (outcome) => {
         if (outcome.status === 'replay') return outcome.receipt
         if (outcome.status === 'conflict') refuse(`Not sent: request_id "${name}" was already used for a different request. A request_id names one request; send this one under a new name.`)
-        if (outcome.status === 'uncertain') refuse(`Not sent again: the outcome of request_id "${name}" is not known (the delivery failed, or DS Bot restarted while it was in flight), so it was not sent again. Check whether ${target.name} got it before sending it under a new name.`)
+        if (outcome.status === 'uncertain') refuse(`Not sent again: the outcome of request_id "${name}" is not known (the delivery failed, or Cue restarted while it was in flight), so it was not sent again. Check whether ${target.name} got it before sending it under a new name.`)
         if (outcome.status === 'expired') return `Nothing was sent again: request_id "${name}" was admitted before, but its receipt is no longer kept, so only the fact that it was sent is left. Send the work under a new request_id if it must be done again.`
         if (outcome.status === 'readonly') refuse(`Not sent: this window cannot save the Bot team, so it cannot record the request_id "${name}". Send it from the window that owns the team, or leave the request_id out.`)
         return outcome.receipt
@@ -410,7 +410,7 @@ export function install(rt) {
       role: { type: 'string', required: true, description: 'Two-to-four character role label shown under the name' },
       instructions: { type: 'string', required: true, description: 'What this Bot is responsible for and how it should work' },
       brief: { type: 'string', description: 'Why the user wants it, passed to the new Bot as its first context' },
-      model: { type: 'string', description: 'Model the Bot runs on, as provider/model or a model id. Only when the user names one; otherwise the team default model from DS Bot settings, or the model you run on.' },
+      model: { type: 'string', description: 'Model the Bot runs on, as provider/model or a model id. Only when the user names one; otherwise the team default model from Cue settings, or the model you run on.' },
       effort: { type: 'string', description: 'Thinking level for the model, as list_bot_models shows it. Only when the user names one.' },
       work_dir: WORK_DIR_PARAM,
       section: SECTION_PARAM,
@@ -426,7 +426,7 @@ export function install(rt) {
         const name = String(args.name ?? '').trim()
         await rt.approveFolder(exec, { path: workDir, who: { en: `the new Bot ${name}`, zh: `新 Bot ${name} ` } })
         // Without a named model the team's default applies; without one the new Bot
-        // takes its creator's: the DSH default may be a provider that has no key, and
+        // takes its creator's: the Cue default may be a provider that has no key, and
         // then the new Bot fails on its first reply.
         const creator = callerBot(exec)
         const served = new Set((await rt.catalog()).filter(entry => entry.needsKey !== true && rt.isLocalAgentRef?.(entry.ref) !== true).map(entry => entry.ref))
@@ -450,7 +450,7 @@ export function install(rt) {
       instructions: { type: 'string', description: 'Replacement instructions' },
       color: { type: 'string', description: `One of ${[...COLORS, ...EXTRA_COLORS].join(', ')}` },
       avatar: { ...AVATAR_PARAM, description: `${AVATAR_PARAM.description} An empty string removes the photo and shows the Bot's character again.` },
-      model: { type: 'string', description: 'Move the Bot to another model, as provider/model or a model id. It stays on what it runs on: only the user moves a Bot between DS Bot models and a local agent CLI, or between two CLIs, in its settings.' },
+      model: { type: 'string', description: 'Move the Bot to another model, as provider/model or a model id. It stays on what it runs on: only the user moves a Bot between Cue models and a local agent CLI, or between two CLIs, in its settings.' },
       effort: { type: 'string', description: 'Thinking level for the Bot\'s model, as list_bot_models shows; an empty string returns to the model\'s default' },
       work_dir: { ...WORK_DIR_PARAM, description: `${WORK_DIR_PARAM.description}; an empty string returns it to the team workspace` },
       section: { ...SECTION_PARAM, description: `${SECTION_PARAM.description}; an empty string removes the Bot from its section (Main Bot only)` },
@@ -488,14 +488,14 @@ export function install(rt) {
     },
   }))
 
-  // DSH's working_directory changes a Session's folder in place, and the next part starts in
+  // Cue's working_directory changes a Session's folder in place, and the next part starts in
   // the Bot's working folder again. A Bot that changes to a folder outside its working folder
   // sets its working folder instead, with update_bot's checks, and goes on in a fresh part
   // there; a folder inside it only moves this Session there. In a group without a folder of
   // its own the change holds only for that conversation: the Bot's folder, its other groups
   // and its own chat keep theirs (folders.js memberDirs).
   ctx.on('tools/execute', async (exec, next) => {
-    // Resolved as DSH gets it, untrimmed, so that both mean the same folder.
+    // Resolved as Cue gets it, untrimmed, so that both mean the same folder.
     const cd = exec.name === WORKING_DIRECTORY_TOOL && typeof exec.arguments?.cd === 'string' ? exec.arguments.cd : ''
     const session = exec.agent?.session
     if (cd === '' || session === undefined) return next()
@@ -847,12 +847,12 @@ export function install(rt) {
   // The team tools live in each Session's own scope, never in the global layer:
   // a Bot's chat and a member's group Session get all of them, a group's own
   // Session gets only its relay, and a Session ds-bot does not own gets none —
-  // so they never appear in a plain dsh conversation, and another plugin's
+  // so they never appear in a plain Cue conversation, and another plugin's
   // same-named global tool can neither collide with them at boot nor shadow
   // them inside these Sessions. What is scoped onto a Session is kept by its
   // disposers and goes with the ownership: indexSessions (store.js) runs
   // syncScopedTools on every save and adopt, so a deleted Bot's adopted
-  // Session, a member who left, or a deleted group shows the plain dsh surface
+  // Session, a member who left, or a deleted group shows the plain Cue surface
   // again — and the unload effect lifts whatever is left. The same sync scopes
   // the live Agents back: a reload lifts their scope while they are still
   // live, and agent/created does not fire for them again, so without the walk
@@ -988,7 +988,7 @@ export function install(rt) {
     if (held.filtered === true || typeof agent.ctx?.on !== 'function') return
     const dispose = agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
       const assembled = await next()
-      // DSH 0.2.2 adds the tool list after this waterfall (#814), so only an
+      // the runtime adds the tool list after this waterfall (#814), so only an
       // older assembly still carries tools to drop here.
       return {
         ...assembled,
@@ -1081,7 +1081,7 @@ export function install(rt) {
     }
   }
 
-  // dsh's own question tool holds the turn open until the user answers, and every
+  // Cue's own question tool holds the turn open until the user answers, and every
   // message from another Bot or a group round queues behind it. Bot Sessions ask
   // through ask_user instead, so it is taken out of their tool list, as are the goal
   // and delegation tools. The restricts are kept with the Session's scope, so they
@@ -1151,7 +1151,7 @@ export function install(rt) {
     const assembled = await next()
     const held = scoped.get(agent.session?.id)
     if (held?.unlisted === undefined || held.unlisted.size === 0) return assembled
-    // DSH 0.2.2 collects the scoped tools itself after this waterfall (#814).
+    // the runtime collects the scoped tools itself after this waterfall (#814).
     if (!Array.isArray(assembled.tools)) {
       held.unlisted.clear()
       return assembled
@@ -1186,7 +1186,7 @@ export function install(rt) {
   })
 
   // The /goal command stays open in every Session, so a goal started in a Bot chat or a
-  // group is blocked at once; DSH's round driver then starts no round for it.
+  // group is blocked at once; Cue's round driver then starts no round for it.
   let goals = null
   const attachGoals = (sub) => {
     const own = sub.goals
@@ -1250,9 +1250,9 @@ export function install(rt) {
       transport: { type: 'string', enum: ['stdio', 'streamable-http'], description: 'How to reach an MCP server: a local command or an HTTP URL' },
       command: { type: 'string', description: 'Program that starts a local MCP server' },
       args: { type: 'array', items: { type: 'string' }, description: 'Arguments for command' },
-      env: { type: 'object', additionalProperties: true, description: 'Environment variables for command; write $DSH_SECRET_<NAME> to insert a saved secret instead of the value' },
-      url: { type: 'string', description: 'MCP server URL; write $DSH_SECRET_<NAME> in the path or query to insert a saved secret, URL-encoded. Prefer headers for keys' },
-      headers: { type: 'object', additionalProperties: true, description: 'HTTP headers; write $DSH_SECRET_<NAME> to insert a saved secret instead of the value' },
+      env: { type: 'object', additionalProperties: true, description: 'Environment variables for command; write $CUE_SECRET_<NAME> to insert a saved secret instead of the value' },
+      url: { type: 'string', description: 'MCP server URL; write $CUE_SECRET_<NAME> in the path or query to insert a saved secret, URL-encoded. Prefer headers for keys' },
+      headers: { type: 'object', additionalProperties: true, description: 'HTTP headers; write $CUE_SECRET_<NAME> to insert a saved secret instead of the value' },
       content: { type: 'string', description: 'Skill instructions' },
       items: { type: 'array', items: { type: 'string' }, description: 'MCP server and skill names in the pack' },
     },
@@ -1264,7 +1264,7 @@ export function install(rt) {
       try {
         const item = await rt.capabilitySave(args, { botId: self })
         const approval = item.kind === 'mcp' && item.transport === 'stdio' && !item.approved
-          ? ' The user must allow this MCP server in DS Bot settings before it can work.'
+          ? ' The user must allow this MCP server in Cue settings before it can work.'
           : ''
         return `Saved ${item.name}. Bots with it attached use the change from their next message.${approval}`
       } catch (error) { return error.message }
@@ -1306,7 +1306,7 @@ export function install(rt) {
             : attached ? [attached] : []
           const approvals = members
             .filter(item => item.kind === 'mcp' && item.transport === 'stdio' && item.approved !== true)
-            .map(item => ` The user must allow ${item.name} in DS Bot settings before it can work.`)
+            .map(item => ` The user must allow ${item.name} in Cue settings before it can work.`)
             .join('')
           return `${verb} ${args.name} ${args.bot ? `to ${result.bot}` : 'to yourself'}. Changes apply from ${result.bot}'s next message.${endpoint === 'attach' ? approvals : ''}`
         } catch (error) { return error.message }

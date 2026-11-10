@@ -12,7 +12,7 @@ import { build } from 'esbuild'
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
 const { outputFiles } = await build({
   stdin: {
-    contents: "export { BotReturn, TeamSidebar } from './src/client/sidebar.js'\nexport { clientErrors } from './src/client/diagnostics.js'",
+    contents: "export { TeamSidebar } from './src/client/sidebar.js'\nexport { clientErrors } from './src/client/diagnostics.js'",
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
@@ -73,7 +73,6 @@ const sidebarProps = roster => ({
   useRoster: pick => pick(roster), useUi: pick => pick({ unread: {} }), useRegistry: pick => pick({}),
   useSessions: pick => pick({ ids: [], byId: {} }), useUpdate: () => ({}),
 })
-const returnProps = (mode, roster) => ({ wide: true, actions: {}, useSurface: pick => pick({ mode }), useRoster: pick => pick(roster) })
 
 // The team column's content sits inside the frame's column, under a Fragment.
 const drawsSide = node => node !== null && typeof node === 'object'
@@ -116,20 +115,6 @@ test('the report says where the Main Bot\'s whale is drawn', async () => {
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [[{ x: 98, y: 70, width: 60, height: 60, viewportWidth: 1280, viewportHeight: 800 }]])
 })
 
-test('the place is where the team column comes to rest, not where its slide-in has it', async () => {
-  // Measured as the column first draws: its slide has it 270 px off to the left (and, to catch
-  // either axis, 10 px up).
-  const column = { offsetLeft: 0, offsetTop: 0, getBoundingClientRect: () => ({ left: -270, top: -10 }) }
-  const mark = { checkVisibility: () => true, closest: selector => (selector === '.bt-leftcol' ? column : null), getBoundingClientRect: () => ({ left: -172, top: 60, width: 60, height: 60 }) }
-  const { calls, app } = readyCalls()
-  mount(page(app, {
-    querySelector: selector => (selector === '.bt-side [data-bot-id="main"] .bt-mark' ? mark : null),
-    documentElement: { clientWidth: 1280, clientHeight: 800, setAttribute() {}, removeAttribute() {} },
-  }).TeamSidebar)(sidebarProps(whaleTeam))
-  await setImmediate()
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [[{ x: 98, y: 70, width: 60, height: 60, viewportWidth: 1280, viewportHeight: 800 }]])
-})
-
 test('a Main Bot in another look or a photo reports no place', async () => {
   for (const avatar of [{ shape: 'star' }, { shape: 'whale', image: 'data:image/png;base64,AA' }]) {
     const { calls, app } = readyCalls()
@@ -137,20 +122,6 @@ test('a Main Bot in another look or a photo reports no place', async () => {
     await setImmediate()
     assert.deepEqual(calls, [[]], JSON.stringify(avatar))
   }
-})
-
-test('in Agent mode the return button reports what the team sidebar would', async () => {
-  const { calls, app } = readyCalls()
-  const { BotReturn, TeamSidebar } = page(app)
-  const button = mount(BotReturn)
-  assert.equal(button(returnProps('bot', TEAM)), null)
-  button(returnProps('agent', BEFORE_STATE))
-  await setImmediate()
-  assert.deepEqual(calls, [])
-  button(returnProps('agent', TEAM))
-  mount(TeamSidebar)(sidebarProps(TEAM))
-  await setImmediate()
-  assert.deepEqual(calls, [[]])
 })
 
 test('without the app bridge or its ready() the sidebar draws as before', async () => {
@@ -185,9 +156,7 @@ test('a whale handed over glides from where it was handed onto the Main Bot\'s a
     made.push(el)
     return el
   }
-  // The hand-off can come while the column still slides in: the copy goes where it comes to rest.
-  const column = { offsetLeft: 0, offsetTop: 0, getBoundingClientRect: () => ({ left: -40, top: 0 }) }
-  const mark = { ...element(), checkVisibility: () => true, closest: selector => (selector === '.bt-leftcol' ? column : null), getBoundingClientRect: () => ({ left: 58, top: 70, width: 60, height: 60 }), cloneNode: () => element() }
+  const mark = { ...element(), checkVisibility: () => true, getBoundingClientRect: () => ({ left: 58, top: 70, width: 60, height: 60 }), cloneNode: () => element() }
   const body = element()
   let handoff
   const calls = []
@@ -206,7 +175,7 @@ test('a whale handed over glides from where it was handed onto the Main Bot\'s a
   assert.equal(outer.style.position, 'fixed')
   assert.equal(mark.style.opacity, '0')
   const [across] = outer.animations
-  assert.equal(across.frames[0].transform, 'translateX(486px)')
+  assert.equal(across.frames[0].transform, 'translateX(526px)')
   assert.equal(across.timing.delay, 260)
   const [glide] = outer.children[0].animations
   assert.equal(glide.frames[0].transform, `translateY(237px) scale(${String(112 / 60)})`)

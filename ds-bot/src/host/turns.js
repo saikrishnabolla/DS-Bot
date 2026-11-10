@@ -11,15 +11,14 @@ import { splitRef, textOf } from './text.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { reminderText } from './schedules.js'
 
-// Failures only the user can fix: a key, a sign-in, a balance. They block the Bot
+// Failures only the user can fix: a key, a balance, or local-agent setup. They block the Bot
 // until it is fixed (`bot.blocked`, for the repair card).
-export const BLOCKING_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT'])
-// The ones a key set outside a turn can fix, and the ones a sign-in can (unblockBots).
+export const BLOCKING_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT'])
+// The ones a key set outside a turn can fix (unblockBots).
 // A balance only a turn that completes shows fixed, as Retry runs one.
 const KEY_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH'])
-const SIGN_IN_CODES = new Set(['ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID'])
 
-// A failed turn's `LlmFailure`, kept to what can be shown and logged. Like DSH's own
+// A failed turn's `LlmFailure`, kept to what can be shown and logged. The
 // error row, an AUTH failure loses its message: providers may echo part of the key.
 export function turnFailure(error) {
   const code = typeof error?.code === 'string' && error.code !== '' ? error.code : 'UNKNOWN'
@@ -80,7 +79,7 @@ export function answerSender(rt, id, source, text, long) {
   })
 }
 
-// A group's own Session never reaches a model, so the snapshot DSH prepared there
+// A group's own Session never reaches a model, so the snapshot Cue prepared there
 // rides with the user's queued message to the members who answer it.
 export function attachReference(queued, source, text) {
   const post = queued?.findLast(item => item.botId === undefined && item.kickoff !== true)
@@ -108,10 +107,10 @@ export const stripWrittenCalls = text => text
   .replace(new RegExp(`(?:${CLOSING_TAG}|${PARAMETER_TAG})\\s*`, 'g'), '')
   .trim()
 
-// Under DSH's PTC presentation the model calls only this tool; the program's sub-calls
+// Under Cue's PTC presentation the model calls only this tool; the program's sub-calls
 // are the tools it really runs.
 const PROGRAM_TOOL = 'run_code'
-// DSH's delegation tools, named by the tool instance: a spawn child and a fork.
+// Cue's delegation tools, named by the tool instance: a spawn child and a fork.
 const SUBAGENT_TOOLS = new Set(['subagent', 'subagent_fork'])
 // A settled child's closing text, or why it ended without one. A child that did
 // not finish says so: output it left behind can be partial, so the reason it
@@ -126,7 +125,7 @@ const subEndText = (data) => {
 const RETRY_TEXT = 'Your last reply wrote a tool call as plain text (<tool_call>…), so it did not run and nothing happened. Call the tool through the tool interface now, then reply as you meant to.'
 const RETRY_PROMISE_TEXT = 'Your last reply said you would start working, but you ended the turn without calling any tool, so nothing ran. Call the tools you need and do the work now. If your last reply already was your whole answer, reply [PASS]; it stays posted.'
 // The turn number a running turn gets when it started before this plugin was loaded and
-// dsh does not say which number it has. dsh numbers turns from 1, so this one is unused.
+// Cue does not say which number it has. Cue numbers turns from 1, so this one is unused.
 const RECOVERED_TURN = -1
 // A turn cut off at the model's output limit is not a finish. Whoever reads its answer
 // is told, so half an answer is not taken as the whole one and silence is not taken as
@@ -182,7 +181,7 @@ export function install(rt) {
   const queueRoomMessage = (roomId, item) => roomInbox.set(roomId, [...(roomInbox.get(roomId) ?? []), item])
   // Member turns of a group round the user stopped: what they end with stays out of the group.
   const stoppedRoomTurns = new Set()
-  // Running DSH subagents spawned by each Bot Session: parentSessionId → Map<childId, {childId, label?, since}>.
+  // Running Cue subagents spawned by each Bot Session: parentSessionId → Map<childId, {childId, label?, since}>.
   /** @type {Map<string, Map<string, {childId:string, label?:string, since:number}>>} */
   const subagentsByParent = new Map()
   /** @type {Map<string, string>} childId → parentSessionId */
@@ -276,12 +275,12 @@ export function install(rt) {
     return true
   }
 
-  // A plugin update replaces the files under a running dsh and loads the plugin again
+  // A plugin update replaces the files under a running Cue and loads the plugin again
   // in place: the process keeps its turns and child agents, while the maps above start
-  // empty. Adopt what dsh still runs from its live Agents, so Stop, the group view and
+  // empty. Adopt what Cue still runs from its live Agents, so Stop, the group view and
   // a late child settle still see it: a subagent child belongs to the Session in its
   // header, and a Bot Session whose Agent runs is mid-turn. A running call is not in
-  // dsh's registry, so an adopted turn shows as working without its call line.
+  // Cue's registry, so an adopted turn shows as working without its call line.
   async function adoptLiveWork() {
     const agents = ctx.get?.('agents')
     if (agents?.list === undefined) return
@@ -657,17 +656,16 @@ export function install(rt) {
     void rt.save().catch(() => {})
   }
 
-  // A key set (`ref`) or a sign-in may be the user's fix (models.js): the blocks it can
+  // A key set (`ref`) may be the user's fix (models.js): the blocks it can
   // fix lift, and a greeting held for one goes out again. A key lifts the key failures
   // of the providers that read it; one whose provider names no key, or that failed on
   // a provider not known, lifts on any key. A host that only reads the team leaves it
   // to the one that holds it.
-  function unblockBots({ ref, signedIn = false, keyed } = {}) {
+  function unblockBots({ ref, keyed } = {}) {
     if (rt.readOnly?.() !== undefined) return
     let refs
     try { refs = ref === undefined ? undefined : rt.keyRefs?.() } catch {}
-    const fixes = ({ code, provider }) => (signedIn && SIGN_IN_CODES.has(code))
-      || (ref !== undefined && KEY_CODES.has(code) && (refs?.get(provider) ?? ref) === ref)
+    const fixes = ({ code, provider }) => (ref !== undefined && KEY_CODES.has(code) && (refs?.get(provider) ?? ref) === ref)
       || (code === 'MISSING_CREDENTIAL' && provider !== undefined && keyed?.has(provider) === true)
     const lifted = Object.values(state.bots ?? {}).filter(bot => bot.blocked !== undefined && fixes(bot.blocked))
     if (lifted.length === 0) return
@@ -907,7 +905,7 @@ export function install(rt) {
             const info = { kind: SOURCE_KIND, role: 'reply', work: run.parent, replyTo: run.id, exchangeId: run.id, senderSessionId: source.senderSessionId }
             if (entry.turn === undefined) entry.pending = info
             else if (entry.info === undefined && !opened) {
-              // DSH opens the turn before it records the message that filled its
+              // Cue opens the turn before it records the message that filled its
               // inbox: a notice that opened the turn claims it, like the first
               // relay of a turn.
               entry.opened = true
@@ -1130,7 +1128,7 @@ export function install(rt) {
             else void rt.lateRoomReply?.(id, info, groupReply(), { shown })
           }
         } else if (!retry && speaksInGroup(id, info)) {
-          // A turn that failed before it took any input (DSH can turn it down before its
+          // A turn that failed before it took any input (Cue can turn it down before its
           // first step) never names its call, so the call waiting on this Session fails.
           const inRound = failure !== undefined && info === undefined && rt.failRoomTurn?.(id, failure) === true
           if (failure !== undefined) { if (!inRound) void rt.lateRoomFailure?.(id, info ?? {}, failure) }
@@ -1198,7 +1196,7 @@ export function install(rt) {
     if (entry?.turn !== undefined) entry.cut = { texts: entry.texts.length }
   }
 
-  // DSH's prompt admission wraps any unexpected failure as 'session/agent-busy' and
+  // Cue's prompt admission wraps any unexpected failure as 'session/agent-busy' and
   // keeps the real cause in details.reason, which the window never shows and the log
   // never saw (#424). For a Session this team owns, the reason is written to the
   // diagnostics and put into the error the user reads.

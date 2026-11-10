@@ -1,6 +1,6 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { MarkdownText, writeClipboard } from './dsh-primitives.js'
+import { MarkdownText, writeClipboard } from './ui-primitives.js'
 import { inkText } from './inks.js'
 import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel, clockLabel, messageClock } from './text.js'
 import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, GoalIcon, MemoryIcon } from './icons.js'
@@ -62,8 +62,8 @@ export function Bubbles({ texts, roster, selfId, actions, streaming, sessionId, 
     Number.isFinite(time) ? h('div', { className: 'bt-utime', title: clockLabel(time) }, messageClock(time)) : null)
 }
 
-// A folded message's last code block shows only its start; DS Bot draws its own
-// copy control for it, bound to the whole block. DSH's and the app's copy
+// A folded message's last code block shows only its start; Cue draws its own
+// copy control for it, bound to the whole block. Cue's and the app's copy
 // buttons live in the block's banner and their markup differs, so none of
 // theirs is intercepted or cloned.
 function FoldCodeCopy({ code, actions }) {
@@ -86,7 +86,7 @@ function FoldCodeCopy({ code, actions }) {
 
 // A folded message's last code block shows only its start. The start is not
 // given to the host's Markdown — its block would carry a copy bound to the
-// part shown — so DS Bot draws the part itself, with a copy bound to the
+// part shown — so Cue draws the part itself, with a copy bound to the
 // whole block. `body` renders the markdown before the block.
 const foldArea = (body, code, codeHead, actions) => (code === undefined ? body
   : h('div', { className: 'bt-fold-code' },
@@ -247,7 +247,7 @@ export function ThinkingRow({ text, live, at, ms, viewKey }) {
 }
 
 // The files a finished turn changed or delivered, linked from inline code in its
-// reply as in DSH's own chat. DSH resolves them for the step that closes the turn.
+// reply as in Cue's own chat. Cue resolves them for the step that closes the turn.
 function useFileMentions({ node, openFile, fileMentions, useTurnData }) {
   const tail = useTurnData?.('turn-tail')
   const location = node.location
@@ -279,7 +279,7 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts.length > 0 ? { text: true } : null)
   if (hidden) return h(CellEmpty)
   // A relay spliced mid-turn is a 'context' node, hidden from the chat flow on
-  // DSH 0.2; the step that answers it shows the event line where it was read,
+  // the runtime; the step that answers it shows the event line where it was read,
   // once, in the step's first cell.
   const relays = relayPart(data, groupPart) ? relaysBefore(contexts, steps, data) : []
   const activity = groupPart === 'response' ? [] : stepActivity(data)
@@ -808,12 +808,12 @@ export function openingTurn(turns, firstTurns, hiddenTurns) {
 // Began after the user last left the conversation and before this visit opened it.
 export const unseenSince = (visit, time) => typeof visit?.seen === 'number' && time > visit.seen && time <= visit.entered
 
-// An entry in DSH's own turn tail, after what other plugins put there (the cards of
+// An entry in Cue's own turn tail, after what other plugins put there (the cards of
 // the files a turn delivered). The tail sits right before the next turn's first row,
 // so the separator for a pause between turns renders here.
 export function TurnTailCell({ turn: location, sessionId, useTurnClock, useUi, actions }) {
   const turn = location.turn
-  // DSH builds the tail from the turn's end, so it is there.
+  // Cue builds the tail from the turn's end, so it is there.
   const time = location.end.time
   useEffect(() => { actions.noteTurnTime(sessionId, turn, 'end', time) }, [sessionId, turn, time])
   const label = useTurnClock((state) => {
@@ -1044,7 +1044,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
-const isComputerCall = name => name === 'cua' || name?.startsWith('cua_driver_native__') === true
+const isComputerCall = name => name?.startsWith('cua_driver_native__') === true
 const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
 const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])

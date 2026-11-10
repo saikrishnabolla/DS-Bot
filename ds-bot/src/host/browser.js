@@ -1,4 +1,4 @@
-// Bot browsers (DSH Desktop and the desktop app). Every Bot owns a browser panel there: an
+// Bot browsers (desktop app and the desktop app). Every Bot owns a browser panel there: an
 // Electron webview in its own storage partition, which the user steers. The page lives in
 // the app window, not here, so `read_browser` reaches it through the window: the client
 // holds a long poll open (`browser-wait`) that reports which Bots have a page open and
@@ -18,7 +18,7 @@ const TEXT_PAGE = 12_000
 const ITEMS_MAX = 80
 
 /**
- * The window side of the channel, without dsh: clients come and go, reads wait for one.
+ * The window side of the channel, without Cue: clients come and go, reads wait for one.
  * @param {{ now?: () => number, waitMs?: number, staleMs?: number, readTimeoutMs?: number, resendMs?: number }} [options]
  */
 export function createBrowserChannel({ now = Date.now, waitMs = WAIT_MS, staleMs = CLIENT_STALE_MS, readTimeoutMs = READ_TIMEOUT_MS, resendMs = RESEND_MS } = {}) {
@@ -146,7 +146,7 @@ export function createBrowserChannel({ now = Date.now, waitMs = WAIT_MS, staleMs
 
   function dispose() {
     for (const client of clients.values()) client.end?.()
-    for (const id of [...pending.keys()]) settle(id, { error: 'DS Bot stopped before the page was read.' })
+    for (const id of [...pending.keys()]) settle(id, { error: 'Cue stopped before the page was read.' })
     clients.clear()
     holds.clear()
   }
@@ -232,21 +232,20 @@ export function pageText(page, { from = 0, size = TEXT_PAGE, itemsMax = ITEMS_MA
   return lines.join('\n')
 }
 
-export const NO_BROWSER = 'Your browser panel is not open. It exists only in the desktop apps (DSH Desktop and DS Bot): ask the user to click your name at the top of your chat, open the browser from there, and load the page.'
+export const NO_BROWSER = 'Your browser panel is not open. It exists only in the Cue desktop app: ask the user to click your name at the top of your chat, open the browser from there, and load the page.'
 export const NO_PAGE = 'Your browser panel has no page open yet. Ask the user to load the page there first.'
 
 const OPEN_MAX = 64
 
 /**
- * Bot browsers are on where the window can show them: DSH Desktop's profile and the desktop
- * app (`DS_BOT_APP=1`); `config.browser` forces them on or off. The choice is fixed for the
+ * Bot browsers are on where the desktop app can show them (`DS_BOT_APP=1`);
+ * `config.browser` forces them on or off. The choice is fixed for the
  * life of the process, so the tool list, and with it the cached prompt prefix, never changes
  * under a running Session.
  */
 export function install(rt) {
   const { ctx, config } = rt
-  const enabled = typeof config.browser === 'boolean' ? config.browser
-    : ctx.get?.('profileContext')?.name === 'desktop' || process.env.DS_BOT_APP === '1'
+  const enabled = typeof config.browser === 'boolean' ? config.browser : process.env.DS_BOT_APP === '1'
   if (!enabled) {
     Object.assign(rt, { browserEnabled: false, browserChannel: undefined, browserOpen: () => ({}) })
     return

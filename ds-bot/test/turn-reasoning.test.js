@@ -42,7 +42,7 @@ test('the live step is the one still thinking', () => {
 })
 
 test('a `<signature>` block at the head of reasoning never shows', () => {
-  // A signature alone leaves nothing to show, like DSH's hidden reasoning row.
+  // A signature alone leaves nothing to show, like Cue's hidden reasoning row.
   assert.equal(turnReasoning([], step(1, [think('<signature>abc123</signature>')])), '')
   assert.equal(turnReasoning([], step(1, [think('<signature>abc123</signature>\n\nReal thought')])), 'Real thought')
   assert.equal(turnReasoning([], step(1, [think('<signature>abc123</signature>\r\n\r\nReal thought')])), 'Real thought')

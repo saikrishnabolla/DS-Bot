@@ -8,7 +8,7 @@ import { columnOpened, createSwitchWindow, drawerOpened, rightColumnOpen } from 
 
 const document = attrs => new JSDOM(`<!doctype html><body><div ${attrs}><div data-rightbar-col></div></div></body>`).window.document
 
-// 公开#456: the Bot drawer and DSH's right column never share the window; whichever
+// 公开#456: the Bot drawer and Cue's right column never share the window; whichever
 // the user asked for last wins. The column's state lives on the frame's attributes.
 test('the frame attributes read as the column state', () => {
   assert.equal(rightColumnOpen(document('')), true)

@@ -545,9 +545,9 @@ test('an answered handoff keeps its title and how it ended, and nothing to press
   assert.doesNotMatch(returned.props.children[0].props.className, /bt-q-dismissed/)
 })
 
-// The reply node as DSH 0.2.2-rc.1 builds it from a recorded ask_user answer: its
+// The reply node as the runtime builds it from a recorded ask_user answer: its
 // question pairs carry no options, the text still holds ds-bot's payload.
-test('an answered question card reads its options from the reply text when DSH drops them', () => {
+test('an answered question card reads its options from the reply text when Cue drops them', () => {
   const text = JSON.stringify({ kind: 'answer_to_pending_question', tool: 'ask_user', callId: 'call-2-1', questions: [{ id: 'q1', question: '接下来先做哪个？', options: [{ label: '写正文' }, { label: '改标题' }, { label: '先停' }], multiSelect: false }], answers: [{ id: 'q1', selected: ['改标题'] }] })
   const cell = AnsweredCell({ node: { data: { callId: 'call-2-1', outcome: 'answered', text, questions: [{ id: 'q1', question: '接下来先做哪个？' }], answers: [{ id: 'q1', selected: ['改标题'] }] } } })
   const settled = [cell.props.children].flat(2)[0]

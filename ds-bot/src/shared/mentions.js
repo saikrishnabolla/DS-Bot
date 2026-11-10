@@ -10,7 +10,7 @@ export const USER_NAMES = ['user', 'you']
 // never reads as the user.
 export const speakerOf = line => (line.botId !== undefined && USER_NAMES.includes(String(line.who ?? '').trim().toLowerCase()) ? `Bot "${line.who}"` : line.who)
 // A letter, digit, "_" or "-" after a name means a longer word ("@Mi" in "@MiniMax"),
-// and "/", "\" or a "." that goes on into a word mean a path: DSH writes a file
+// and "/", "\" or a "." that goes on into a word mean a path: Cue writes a file
 // reference as "@docs/guide.md", which must not call a Bot named Docs. A letter,
 // digit, "_", "." or "/" before "@" means an address ("a@b", "medium.com/@Writer").
 const NAME_GOES_ON = /^(?:[a-z0-9_\-/\\]|\.[a-z0-9_-])/i
@@ -32,7 +32,7 @@ export function nameProblem(name) {
   return undefined
 }
 
-// DSH writes each referenced conversation into the message once as "@label"; that one
+// Cue writes each referenced conversation into the message once as "@label"; that one
 // occurrence per listed label is a reference, not a call. Longest labels go first so
 // "@K notes" is never read as the label "K".
 export function referenceSpans(text, labels = []) {

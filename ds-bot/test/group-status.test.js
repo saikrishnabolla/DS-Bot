@@ -72,7 +72,7 @@ async function start() {
   }
   const tool = (name, args, sessionId, exec = {}) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId }, ...exec })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
-  const askApproval = (sessionId, extra = {}, next = () => 'from-dsh') => ctx.listeners.get('approval/request')[0]({ agent: { session: { id: sessionId } }, toolName: 'pwsh', reason: 'escalate sandbox', ...extra }, next)
+  const askApproval = (sessionId, extra = {}, next = () => 'from-Cue') => ctx.listeners.get('approval/request')[0]({ agent: { session: { id: sessionId } }, toolName: 'pwsh', reason: 'escalate sandbox', ...extra }, next)
   const stop = async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) }
   await tool('list_bots', {}, 'a')
   return { agentOf, emit, tool, call, askApproval, stop, archived, rt }
@@ -134,7 +134,7 @@ test('a group Session\'s approval waits in the team view, frees the round, and t
   assert.equal(text(post), '[Group post from Writer]\nCopied the doc to E:/docs.')
 })
 
-test('an own chat\'s approval races DSH\'s card and is listed while it waits', async (t) => {
+test('an own chat\'s approval races Cue\'s card and is listed while it waits', async (t) => {
   const host = await start()
   t.after(host.stop)
   let release
@@ -143,23 +143,23 @@ test('an own chat\'s approval races DSH\'s card and is listed while it waits', a
   assert.deepEqual([approval.botId, approval.roomId, approval.answerable], ['a', undefined, true])
   assert.equal((await host.call('approval-answer', { id: approval.id, choice: 'allow' })).ok, true)
   assert.equal(await outcome, 'allowed-once')
-  // DSH's card answering late is ignored once DS Bot settled the race.
+  // Cue's card answering late is ignored once Cue settled the race.
   release('rejected')
   assert.equal((await host.call('approval-answer', { id: approval.id, choice: 'allow' })).error.code, 'bot/stale')
   assert.deepEqual((await host.call('state', {})).value.work.approvals, [])
-  // Sessions off the team are not DS Bot's to answer.
-  assert.equal(await host.askApproval('elsewhere'), 'from-dsh')
+  // Sessions off the team are not Cue's to answer.
+  assert.equal(await host.askApproval('elsewhere'), 'from-Cue')
 })
 
-test('an own chat\'s approval propagates a DSH answerer failure and settles', async (t) => {
+test('an own chat\'s approval propagates a Cue answerer failure and settles', async (t) => {
   const host = await start()
   t.after(host.stop)
   const settled = []
   host.rt.onApproval((kind, payload) => { if (kind === 'settled') settled.push(payload) })
-  const outcome = host.askApproval('a', {}, () => Promise.reject(new Error('dsh card broke')))
+  const outcome = host.askApproval('a', {}, () => Promise.reject(new Error('Cue card broke')))
   const [approval] = host.rt.approvalsView()
   assert.equal(approval.answerable, true)
-  await assert.rejects(outcome, /dsh card broke/)
+  await assert.rejects(outcome, /Cue card broke/)
   assert.deepEqual((await host.call('state', {})).value.work.approvals, [])
   assert.deepEqual(settled.map(entry => [entry.id, entry.outcome]), [[approval.id, 'cancelled']])
 })

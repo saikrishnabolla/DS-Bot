@@ -26,7 +26,7 @@ test('a batch the host refuses does not stop the batches after it', async () => 
   const actions = {
     importAvatars: async (chunk) => {
       sent.push(chunk.map(photo => photo.name))
-      if (sent.length === 1) throw new Error('The Bot team is open in another dsh')
+      if (sent.length === 1) throw new Error('The Bot team is open in another Cue instance')
       return { imported: chunk.map(photo => ({ id: photo.name, name: photo.name })), duplicates: [], failed: [] }
     },
   }
@@ -41,7 +41,7 @@ test('a batch the host refuses does not stop the batches after it', async () => 
   // Every photo of the refused batch is named, so none of them is silently lost.
   assert.equal(result.failed.length, 20)
   assert.equal(result.failed[0].name, 'photo-0.png')
-  assert.match(result.failed[0].message, /open in another dsh/)
+  assert.match(result.failed[0].message, /open in another Cue instance/)
   // And nothing was sent twice.
   assert.equal(new Set(sent.flat()).size, 25)
 })

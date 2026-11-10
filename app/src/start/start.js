@@ -87,8 +87,7 @@ function varsOf(snap) {
   const update = snap.update ?? {}
   const vars = { ...card }
   if (snap.view === 'failed' || snap.view === 'viewFailed') vars.reason = snap.failure?.reason ?? 'other'
-  if ((card.kind === 'importFailed' || card.kind === 'moveFailed') && card.reason) vars.reason = say(`reason.copy.${card.reason}`)
-  if (card.kind === 'newerUpdating') vars.p = card.percent ?? 0
+  if (card.kind === 'moveFailed' && card.reason) vars.reason = say(`reason.copy.${card.reason}`)
   if (update.version) Object.assign(vars, { version: update.version, p: update.percent ?? 0, a: update.received ?? 0, b: update.total ?? 0 })
   return vars
 }
@@ -174,8 +173,7 @@ let sheetRun = 0
 function blockFor(snap) {
   if (snap.view === 'handoff') return shown
   if (snap.view === 'failed' || snap.view === 'viewFailed' || snap.view === 'watchdog') return snap.view
-  // The copy has no card: it is the ring's import arc (start-window §6).
-  if (snap.view === 'card') return snap.card?.kind === 'copying' ? '' : snap.card?.kind ?? ''
+  if (snap.view === 'card') return snap.card?.kind ?? ''
   return ''
 }
 // The edge and fill layers are pre-sized to the sheet; only their clip-path moves, so a card
@@ -251,7 +249,6 @@ async function showBlock(name, jump) {
   const wasCard = Boolean(shown)
   shown = name
   if (wasCard) leave(oldEl, jump)
-  if (!name && wasCard && s?.card?.kind === 'copying' && !jump && !reduced()) return flyIn(mine)
   const el = blockEl(name)
   if (name && el) {
     root.dataset.sheet = 'card'
@@ -279,63 +276,6 @@ async function showBlock(name, jump) {
   }
 }
 
-// 〔复制过来〕, 〔继续复制〕 or a retry: the card does not fold away. Its surface shrinks to a drop
-// that turns the whale's blue and jumps up into the import's arc, which lights up as it lands and
-// then fills with the copy; the pond comes back down after it (start-window §6). Reduced motion
-// folds the card as usual and turns the arc on at once.
-const FLIGHT_MS = 520
-const ARRIVE = 0.8
-async function flyIn(mine) {
-  let land = () => {}
-  director.flight(new Promise((resolve) => { land = resolve }))
-  try {
-    const box = sheet.getBoundingClientRect()
-    const target = importPoint()
-    const cx = box.width / 2, cy = edgeH / 2
-    // The surface is leaving: a card that comes meanwhile morphs in from nothing.
-    edgeH = 0
-    await sleep(60)
-    if (mine !== sheetRun) return
-    const dot = (r, k) => `inset(${cy - r + k}px ${cx - r + k}px ${box.height - cy - r + k}px ${cx - r + k}px round ${r}px)`
-    const dx = target.x - (box.left + cx), dy = target.y - (box.top + cy)
-    const blue = 'var(--bt-ink-deepseek)'
-    // Shrink and rise, then the hop onto the arc; the arc lights as the drop arrives, under its fade.
-    const flights = [edge, fill].map((layer, k) => {
-      const from = getComputedStyle(layer)
-      const frames = [
-        { clipPath: from.clipPath, translate: '0px 0px', backgroundColor: from.backgroundColor, opacity: 1, easing: 'cubic-bezier(.3,.7,.4,1)' },
-        { clipPath: dot(6, k), translate: `${(dx * 0.25).toFixed(1)}px ${(dy * 0.7).toFixed(1)}px`, backgroundColor: blue, opacity: 1, offset: 0.45, easing: 'cubic-bezier(.4,0,.6,1)' },
-        { clipPath: dot(5, k), translate: `${dx.toFixed(1)}px ${dy.toFixed(1)}px`, backgroundColor: blue, opacity: 1, offset: ARRIVE },
-        { clipPath: dot(3, k), translate: `${dx.toFixed(1)}px ${dy.toFixed(1)}px`, backgroundColor: blue, opacity: 0 },
-      ]
-      for (const a of layer.getAnimations()) a.cancel()
-      return play(layer, frames, { duration: FLIGHT_MS, easing: 'linear' })
-    })
-    setTimeout(() => { if (mine === sheetRun) land() }, FLIGHT_MS * ARRIVE)
-    await Promise.all(flights.map(a => a.done))
-    if (mine !== sheetRun) return
-    land()
-    const bottom = sheet.clientHeight
-    ;[edge, fill].forEach((layer, k) => {
-      layer.style.clipPath = [`inset(0px 0px ${bottom}px 0px round 12px)`, `inset(1px 1px ${bottom + 1}px 1px round 11px)`][k]
-      layer.style.opacity = '0'
-    })
-    for (const a of flights) a.cancel()
-    root.dataset.sheet = 'none'
-    if (document.activeElement?.closest?.('.sheet')) document.activeElement.blur()
-    if (root.hasAttribute('data-up')) shift(false)
-  } finally {
-    land()
-  }
-}
-// Where the import's arc is, as the page shows it now (the pond may be shrunk): the middle of the
-// arc on a ring of four, else the gap after the data folder's arc that it grows out of.
-function importPoint() {
-  const ring = $('.ring')
-  const a = ((ring.dataset.n === '4' ? 135 : 120) * Math.PI) / 180
-  return new DOMPoint(110 + 106 * Math.sin(a), 110 - 106 * Math.cos(a)).matrixTransform(ring.getScreenCTM())
-}
-
 // What a new card says to a screen reader: its first line and its first visible sentence (the
 // 180 s card has only buttons; the whale's line asks its question).
 function cardWords(el, name) {
@@ -359,7 +299,6 @@ function fillBlock(name) {
   for (const node of el.querySelectorAll('[data-t]')) if (!node.closest('.copied, [data-why][hidden]')) render(node, vars)
   if (name === 'missing') missing(el)
   if (name === 'recommend' || name === 'rejected') recommend(el)
-  if (name === 'import') importCard(el)
   if (name === 'failed') failed(el)
   if (name === 'moveFailed') el.querySelector('[data-old]').dataset.look = s.card?.why === 'copy' ? 'soft' : 'primary'
 }
@@ -391,31 +330,6 @@ function recommend(el) {
   for (const node of el.querySelectorAll('[data-rec]')) node.hidden = !rec
   for (const node of el.querySelectorAll('[data-norec]')) node.hidden = rec
   for (const node of el.querySelectorAll('[data-keep]')) node.hidden = !keep
-}
-function toggleMore(button, open = button.getAttribute('aria-expanded') !== 'true') {
-  button.setAttribute('aria-expanded', String(open))
-  button.closest('.card').querySelector('.more').hidden = !open
-  resize()
-}
-let modelsSig = ''
-function importCard(el) {
-  const card = s.card
-  for (const box of el.querySelectorAll('input[data-opt]')) box.checked = Boolean(card.options?.[box.dataset.opt])
-  const sig = JSON.stringify(card.models ?? [])
-  if (sig === modelsSig) return
-  modelsSig = sig
-  el.querySelector('.models').replaceChildren(...(card.models ?? []).map((model) => {
-    const button = Object.assign(document.createElement('button'), { className: 'btn', type: 'button', textContent: model.label })
-    Object.assign(button.dataset, { look: 'soft', act: 'importModel', detail: model.id })
-    const item = document.createElement('li')
-    item.append(button)
-    return item
-  }))
-}
-function toggleModels(button, open = button.getAttribute('aria-expanded') !== 'true') {
-  button.setAttribute('aria-expanded', String(open))
-  button.closest('.card').querySelector('.models').hidden = !open
-  resize()
 }
 const bars = new WeakMap()
 function bar(el, fraction, keep) {
@@ -470,16 +384,9 @@ document.addEventListener('click', (event) => {
   const name = button.dataset.act
   const value = button.dataset.detail
   if (name === 'toggleDetails') return toggleDetails(button)
-  if (name === 'toggleMore') return toggleMore(button)
-  if (name === 'toggleModels') return toggleModels(button)
   if (name === 'copyDetails') copiedLabel(button)
-  if (name === 'importModel') toggleModels(button.closest('.card').querySelector('[data-act=toggleModels]'), false)
   if (name === 'answer' || name === 'wait') director.nod()
   bridge?.act(name, value === undefined ? undefined : { value })
-})
-document.addEventListener('change', (event) => {
-  const box = event.target.closest?.('input[data-opt]')
-  if (box) bridge?.act('importOption', { option: box.dataset.opt, value: box.checked })
 })
 document.addEventListener('visibilitychange', () => root.toggleAttribute('data-hidden', document.hidden))
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => director.refresh())
@@ -501,9 +408,7 @@ function apply(next) {
   shimmer()
   placeUI(next.place)
   const name = blockFor(next)
-  // The import card comes once the data folder's arc has filled (start-window §6).
-  if (name === 'import' && name !== shown && !jump) director.through(0).then(() => { if (blockFor(s) === 'import') showBlock('import', false) })
-  else if (name !== shown) showBlock(name, jump)
+  if (name !== shown) showBlock(name, jump)
   else { fillBlock(name); resize() }
   timeUI()
   director.update(next)

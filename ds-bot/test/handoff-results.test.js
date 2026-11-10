@@ -99,7 +99,7 @@ async function startHost(home, team) {
     }
   }
   // Scoped Cordis events (subagent lifecycle, tool results) reach the plugin
-  // through a dispatch carrier DSH keys by the agent the event is for — that
+  // through a dispatch carrier Cue keys by the agent the event is for — that
   // carrier is what `this` is in a real listener call.
   const emitScoped = (parentId, name, ...args) => {
     const carrier = scopeTarget({}, agentOf(parentId))
@@ -404,7 +404,7 @@ test('a subagent a Bot delegated to hands its result into the work the turn answ
   const works = await worksIn(first)
   const [work] = Object.values(works).filter(entry => entry.to === 'b')
   assert.deepEqual(work.open, ['r1'])
-  // The child settles; its closing message is the sub-work's result. DSH opens
+  // The child settles; its closing message is the sub-work's result. Cue opens
   // the turn first, then records the notice that filled its inbox.
   emitScoped('b', 'subagent/end', { runId: 'r1', provider: 'spawn', id: 'sub1', local: true, stopReason: 'completed', lastAssistantMessage: textBlock('reviewed: three findings') })
   emit('b', 'turn/start', { turn: 2 })
@@ -545,7 +545,7 @@ test('parallel delegations get each call\'s own description for its child', asyn
   assert.ok(answer.includes('subagent deep review:\nthree findings'), `second child's own name: ${answer}`)
 })
 
-// A child that finished can be sent more to do: DSH starts a fresh run on the
+// A child that finished can be sent more to do: Cue starts a fresh run on the
 // same child id, with a new runId. Each run's result is its own, so the first
 // one's is not lost to the second's.
 test('a continued subagent hands up each run\'s own result', async (t) => {
@@ -563,7 +563,7 @@ test('a continued subagent hands up each run\'s own result', async (t) => {
   emit('b', 'tool/result', { callId: 'call1', message: { callId: 'call1', content: textBlock('started subagent sub1'), isError: false } })
   turns.end('b', 'subagent is on it')
   // The first run settles and the Bot reads its notice, then sends the same
-  // child more work: DSH opens a second run on the same child id.
+  // child more work: Cue opens a second run on the same child id.
   emitScoped('b', 'subagent/end', { runId: 'r1', provider: 'spawn', id: 'sub1', local: true, stopReason: 'completed', lastAssistantMessage: textBlock('COST: 42') })
   emit('b', 'turn/start', { turn: 2 })
   emit('b', 'user/message', { content: textBlock('Background subagent sub1 finished.\nIts closing message:\nCOST: 42'), source: { kind: 'subagent-settled', form: 'notice', summary: 'Background subagent sub1 finished.', senderSessionId: 'sub1' } })

@@ -488,7 +488,7 @@ test('a restart marks an entry that was still answering as failed', async (t) =>
   t.after(() => env.stop())
   const [live, old] = chatOf(env.rt, 'chat').entries
   assert.equal(live.status, 'failed')
-  assert.equal(live.error, 'DS Bot restarted before this answer finished.')
+  assert.equal(live.error, 'Cue restarted before this answer finished.')
   assert.equal(typeof live.finishedAt, 'number')
   assert.equal(old.status, 'done')
   const file = chatsFile(env.home)

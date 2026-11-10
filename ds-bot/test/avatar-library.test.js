@@ -252,7 +252,7 @@ test('the library answers page by page, so a big library is not one huge reply',
   assert.equal((await call('avatar-library', { offset: 60 })).value.items.length, 0)
 })
 
-test('another dsh that holds the team cannot change the library, but may read it', async (t) => {
+test('another Cue instance that holds the team cannot change the library, but may read it', async (t) => {
   const home = makeHome()
   t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }))
   // The test runner's parent process: alive, on this host, and not this process.

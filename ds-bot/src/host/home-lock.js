@@ -1,4 +1,4 @@
-// One writer per plugin home. dsh Web and dsh Desktop share ~/.dsh, and each host keeps
+// One writer per Cue data directory. The web client and desktop app can share it, and each host keeps
 // the team in memory and writes state.json whole, so two hosts at once would undo each
 // other's changes. The first host to load takes `state.lock`; a second one only reads.
 //

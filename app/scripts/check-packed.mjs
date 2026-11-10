@@ -14,10 +14,10 @@ const executable = given || packedExecutable()
 
 function packedExecutable() {
   const out = join(root, 'dist-pack')
-  if (process.platform === 'win32') return join(out, 'win-unpacked', 'DS Bot.exe')
+  if (process.platform === 'win32') return join(out, 'win-unpacked', 'Cue.exe')
   if (process.platform === 'linux') return join(out, 'linux-unpacked', 'dsbot')
   const dir = ['mac-arm64', 'mac'].find(name => existsSync(join(out, name))) ?? 'mac'
-  return join(out, dir, 'DS Bot.app', 'Contents', 'MacOS', 'DS Bot')
+  return join(out, dir, 'Cue.app', 'Contents', 'MacOS', 'Cue')
 }
 
 if (!existsSync(executable)) {
@@ -86,6 +86,19 @@ function checkFiles(app) {
     const speech = req('sherpa-onnx-node')
     assert.equal(typeof speech.OfflineRecognizer, 'function', 'the packaged speech native module did not load')
     ;(async () => {
+      const codemodeModule = await import(pathToFileURL(join(root, 'node_modules', '@earendil-works', 'pi-codemode', 'dist', 'index.js')).href)
+      const sandbox = new codemodeModule.CodemodeSandbox({
+        timeoutMs: 10_000,
+        tools: [{ name: 'double', execute: ({ value }) => value * 2 }],
+      })
+      try {
+        const result = await sandbox.execute('const value = await tools.double({ value: 21 }); text(value); return value')
+        assert.equal(result.ok, true, 'the packaged PTC sandbox failed: ' + JSON.stringify(result))
+        assert.equal(result.value, 42, 'the packaged PTC sandbox returned the wrong value')
+        assert.deepEqual(result.output, [{ type: 'text', text: '42' }], 'the packaged PTC sandbox returned the wrong output')
+      } finally {
+        await sandbox.close()
+      }
       const module = await import(pathToFileURL(join(${JSON.stringify(unpackedRoot)}, 'node_modules', '@trycua', 'cua-driver', 'dist', 'index.js')).href)
       const driver = module.CuaDriver.create({ embedded: true })
       try {
@@ -98,7 +111,7 @@ function checkFiles(app) {
         await driver.shutdown()
         driver.uniffiDestroy?.()
       }
-      console.log('check-packed: owned Host, UI, speech and a native computer call work without DeepSeek packages')
+      console.log('check-packed: owned Host, UI, speech, PTC code mode and a native computer call work without DeepSeek packages')
     })().catch(error => { console.error(error); process.exitCode = 1 })
   `
   const result = spawnSync(app, ['-e', script], {
@@ -379,7 +392,7 @@ try {
   await rendererValue(cdp, `(() => {
     window.__packedComputerAction = null
     window.dsBotApp.onComputerAction(action => { window.__packedComputerAction = action })
-    window.dsBotApp.computer({ rows: [{ botId: 'packed-bot', name: 'Packed Bot', label: 'Packed Bot', app: 'DS Bot' }], labels: { stop: 'Stop' } })
+    window.dsBotApp.computer({ rows: [{ botId: 'packed-bot', name: 'Packed Bot', label: 'Packed Bot', app: 'Cue' }], labels: { stop: 'Stop' } })
     return true
   })()`)
   const indicatorDeadline = Date.now() + 10_000

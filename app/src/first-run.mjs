@@ -4,7 +4,6 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { findTeam, userDshHome } from './import.mjs'
 import { installFolder } from './move-data.mjs'
 import { freeSpace } from './place.mjs'
 import { langOf, t } from './start/text.mjs'
@@ -56,7 +55,7 @@ export async function pickRoot(from, signal, ui) {
 }
 
 /** The places a first start offers. */
-export const defaultPlaces = () => ({ dataDir: join(homedir(), '.ds-bot'), workspace: join(homedir(), 'DS Bot') })
+export const defaultPlaces = () => ({ dataDir: join(homedir(), '.ds-bot'), workspace: join(homedir(), 'Cue') })
 
 /** The Bot team in a data folder, if it has one. */
 export function teamIn(dataDir) {
@@ -72,12 +71,7 @@ export function teamIn(dataDir) {
  * What the start window can say before the first-run questions: the team that a reinstall keeps.
  */
 export function teamsAt(dataDir = defaultPlaces().dataDir) {
-  const team = teamIn(dataDir)
-  return { team, offered: team === undefined && teamIn(userDshHome()) !== undefined }
-}
-
-function offerOf(dataDir) {
-  try { return teamIn(dataDir) === undefined ? findTeam(userDshHome()) : undefined } catch (error) { console.error(error); return undefined }
+  return { team: teamIn(dataDir) }
 }
 
 /**
@@ -123,8 +117,6 @@ export function chooseLocations() {
     return { dataDir: saved.dataDir, workspace: saved.workspace, freeAtStart: roomOf(saved.freeAtStart) }
   }
   const { dataDir, workspace } = defaultPlaces()
-  const offer = offerOf(dataDir)
-  if (offer !== undefined) return { dataDir, workspace, offer }
   saveLocations({ dataDir, workspace })
   return { dataDir, workspace }
 }

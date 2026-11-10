@@ -1,5 +1,5 @@
 // The hooks of the main process test: they put the test doubles in place of the packages
-// that would need a display, a DSH install or the network. These hooks run in the thread
+// that would need a display, a Cue install or the network. These hooks run in the thread
 // of the test (module.registerHooks).
 
 const here = new URL('./', import.meta.url)

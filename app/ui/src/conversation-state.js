@@ -143,7 +143,6 @@ export function createVoiceAdapter(speech) {
   let next = 0
   const bridge = speech && typeof speech === 'object' ? speech : undefined
   const remote = bridge === undefined ? undefined : {
-    owned: true,
     catalog: () => bridge.catalog(),
     prepare: providerId => bridge.prepare(providerId),
     transcribe(request, signal) {

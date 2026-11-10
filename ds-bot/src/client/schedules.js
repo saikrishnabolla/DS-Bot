@@ -1,5 +1,5 @@
 // Scheduled tasks: Settings → Scheduled tasks, a Bot's card in its settings, and the
-// line in its details panel. DSH runs the tasks (see src/host/schedules.js); a task
+// line in its details panel. Cue runs the tasks (see src/host/schedules.js); a task
 // sends its prompt to the Bot's chat when it is due.
 import { createElement as h, Fragment, useEffect, useState } from 'react'
 import { BotAvatar, RoomAvatar } from './mark.js'
@@ -218,9 +218,7 @@ export function BotSchedules({ bot, roster, actions }) {
     h('h3', null, t('Scheduled tasks')),
     h('div', { className: 'bt-set-card' },
       !view.available
-        ? h('div', { className: 'bt-set-row bt-bs-row' },
-            h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-set-hint' }, t('Switch on Automation tasks on the Plugins page in Settings.'))),
-            h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('dsh', 'plugins') }, t('Open Plugins')))
+        ? h('div', { className: 'bt-set-row bt-bs-row' }, h('span', { className: 'bt-set-copy' }, h('span', { className: 'bt-set-hint' }, t('Scheduled tasks are not available.'))))
         : [
             ...tasks.map(task => h(TaskRow, { key: task.id, task, actions, roster, onView: publish })),
             h('button', { key: 'new', type: 'button', className: 'bt-set-row bt-bs-row bt-gs-add', onClick: () => actions.openSettings('schedules', bot.id) }, h(PlusIcon), t('New task')),
@@ -234,7 +232,7 @@ export function ScheduleSummary({ bot, actions }) {
   return h('div', null,
     h('div', { className: 'bt-section-title' }, tasks.length === 0 ? t('Scheduled tasks') : t('Scheduled tasks · {count}', { count: tasks.length })),
     tasks.length === 0
-      ? h('button', { type: 'button', className: 'bt-more', onClick: () => actions.openSettings('schedules', bot.id) }, view?.available === false ? t('Switch on Automation tasks on the Plugins page in Settings.') : t('No scheduled tasks yet. Add one'))
+      ? h('button', { type: 'button', className: 'bt-more', onClick: () => actions.openSettings('schedules', bot.id) }, view?.available === false ? t('Automation tasks are not available in this build') : t('No scheduled tasks yet. Add one'))
       : h('div', { className: 'bt-task-list' }, tasks.slice(0, 3).map(task => h('button', { key: task.id, type: 'button', className: 'bt-task-line', onClick: () => actions.openSettings('schedules', `bot:${bot.id}`) },
 
           h(ClockIcon), h('span', { className: 'bt-task-line-title' }, task.title), h('span', { className: 'bt-task-line-when' }, timingText(task))))))

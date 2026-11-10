@@ -60,13 +60,12 @@ export function chatRows(roster, list, sessionId) {
   return [...bots, ...others]
 }
 
-// DSH's canonical session mention: `@[label](dsh-session:<base64url of the JSON id>)`.
-// The host turns it into "@label" plus a read-only snapshot of that Session.
+// Cue's session mention carries the encoded conversation id.
 export function sessionMention(sessionId, label) {
   let binary = ''
   for (const byte of new TextEncoder().encode(JSON.stringify(sessionId))) binary += String.fromCharCode(byte)
   const payload = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  return `@[${label.replace(/[\\\]]/g, mark => `\\${mark}`)}](dsh-session:${payload})`
+  return `@[${label.replace(/[\\\]]/g, mark => `\\${mark}`)}](cue-session:${payload})`
 }
 
 // `launched(sessionId)`: whether "+ → Reference a chat" opened the menu, so the chats

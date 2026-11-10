@@ -1,4 +1,4 @@
-// A JSON object in browser storage that every open window of DSH edits, one entry at a
+// A JSON object in browser storage that every open window of Cue edits, one entry at a
 // time. Each change applies to what is stored at that moment, never to the window's own
 // copy, so a window does not undo what another window saved after it loaded. Other
 // windows learn of a change from the `storage` event and read the object again.

@@ -65,7 +65,7 @@ test('an unknown preset is refused and the Bot keeps its own', async () => {
   assert.deepEqual(writes, [])
 })
 
-test('the catalog lists the presets DSH offers, or nothing without the presets service', () => {
+test('the catalog lists the presets Cue offers, or nothing without the presets service', () => {
   assert.deepEqual(runtime().rt.permissionCatalog(), { options: [{ value: 'workspace-write', name: 'workspace-write' }, { value: 'danger-full-access', name: 'danger-full-access' }], defaultPreset: 'workspace-write' })
   assert.equal(runtime({ presets: false }).rt.permissionCatalog(), undefined)
 })

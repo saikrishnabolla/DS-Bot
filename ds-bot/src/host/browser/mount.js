@@ -72,7 +72,7 @@ export function mountBrowserPlugin(ctx, { toolDefs, defineTool, keyOf, profileRo
   const names = new Set(toolDefs.map(tool => tool.name))
   // Tool results persist their rendered blocks, so changing render() cannot fix
   // old screenshots. Replace only this plugin's malformed image blocks through
-  // DSH's public surface API, keeping the original log for the transcript.
+  // Cue's public surface API, keeping the original log for the transcript.
   ctx.on?.('agent/pre-step', async ({ agent }, next) => {
     const session = agent.session
     let changed = false

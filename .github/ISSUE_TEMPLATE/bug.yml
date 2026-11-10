@@ -1,5 +1,5 @@
 name: Bug report / 报告 bug
-description: Something in DS Bot does not work as it should. / DS Bot 有功能不正常。
+description: Something in Cue does not work as it should. / Cue 有功能不正常。
 labels: [bug]
 body:
   - type: markdown
@@ -8,8 +8,8 @@ body:
         **Please add a screenshot.** A screenshot of the whole window tells us more than a paragraph. A report with only one sentence cannot be fixed and may be closed.
         **请附截图。** 一张整窗截图比一段文字有用得多。只有一句话的报告修不了，可能会被直接关闭。
 
-        Fastest: in DS Bot, **Settings → Feedback → Report on GitHub** fills in the diagnostics.
-        最快：在 DS Bot 里点 **设置 → 反馈 → 在 GitHub 上报告**，诊断信息会自动填好。
+        Fastest: in Cue, **Settings → Feedback → Report on GitHub** fills in the diagnostics.
+        最快：在 Cue 里点 **设置 → 反馈 → 在 GitHub 上报告**，诊断信息会自动填好。
 
         Security problems: **Security** tab → **Report a vulnerability**. Questions and ideas: [Discussions](https://github.com/Fei2411/DS-Bot/discussions).
         安全问题请在 **Security** 页私下报告；提问和建议请发到 [Discussions](https://github.com/Fei2411/DS-Bot/discussions)。
@@ -39,7 +39,7 @@ body:
     id: diagnostics
     attributes:
       label: Diagnostics / 诊断信息
-      description: In DS Bot, Settings → Feedback → Copy, then paste here. / 在 DS Bot 里点 设置 → 反馈 → 复制，粘贴到这里。
+      description: In Cue, Settings → Feedback → Copy, then paste here. / 在 Cue 里点 设置 → 反馈 → 复制，粘贴到这里。
     validations:
       required: true
   - type: checkboxes

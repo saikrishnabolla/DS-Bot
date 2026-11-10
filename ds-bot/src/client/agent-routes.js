@@ -39,7 +39,7 @@ export const isLocalRoute = ref => badgeOf(String(ref ?? '').split('/')[0]) !== 
 export const routeOf = ref => String(ref ?? '').split('/')[0]
 
 // The models a pick can go to from `ref`: a local agent lists only its own, and
-// everything else lists DS Bot's models. What a Bot runs on changes in its settings.
+// everything else lists Cue's models. What a Bot runs on changes in its settings.
 export function modelsFor(models, ref) {
   const list = models ?? []
   return isLocalRoute(ref)

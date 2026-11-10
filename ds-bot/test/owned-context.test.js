@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { createModels } from '@earendil-works/pi-ai/models'
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { createRuntime } from '../index.js'
 import { OwnedContext } from '../src/engine/owned-context.js'
@@ -15,7 +15,12 @@ const contextFixture = async (t, options = {}) => {
   const provider = options.provider ?? fauxProvider(options.providerOptions)
   const models = options.models ?? createModels()
   if (options.models === undefined) models.setProvider(provider.provider)
-  const ctx = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, settings: options.settings, transcriptWindow: options.transcriptWindow })
+  const ctx = await OwnedContext.open({
+    dataDir, models, workspacePath: dataDir,
+    settings: options.settings,
+    transcriptWindow: options.transcriptWindow,
+    logger: options.logger,
+  })
   return { ctx, dataDir, models, provider }
 }
 
@@ -60,6 +65,10 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.ok(feed.some(item => item.event === 'message' && item.data.item.kind === 'bot'))
   assert.ok(feed.some(item => item.event === 'stream' && item.data.phase === 'start'))
   assert.ok(feed.some(item => item.event === 'stream' && item.data.phase === 'end'))
+  const display = await ctx.sessionController.displayPage({ sessionId, limit: 20 })
+  assert.equal(display.sessionId, sessionId)
+  assert.deepEqual(display.items.map(item => [item.kind, item.text]), [['user', 'hello'], ['bot', 'durable answer']])
+  assert.equal(display.cursor, null)
   await ctx.close()
 
   const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir })
@@ -69,6 +78,32 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.deepEqual(after.records, page.records)
   const listed = await restarted.sessionController.list({})
   assert.equal(listed.items.some(item => item.sessionId === sessionId), true)
+})
+
+test('owned context publishes the same rich Pi entries live that displayPage returns', async t => {
+  const { ctx, provider } = await contextFixture(t)
+  t.after(() => ctx.close())
+  provider.setResponses([
+    fauxAssistantMessage([fauxThinking('checking'), fauxToolCall('echo_live', { text: 'hello' }, { id: 'call-live' })], { stopReason: 'toolUse' }),
+    fauxAssistantMessage('done'),
+  ])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  agent.ctx.tools.register(legacyTool('echo_live', async ({ text }) => `echoed: ${text}`))
+  await ctx.sessions.flush(agent.session)
+  const feed = []
+  ctx.subscribeFeed((event, data) => {
+    if (event === 'message' && data.sessionId === sessionId) feed.push(data.item)
+  })
+  ctx.resume()
+
+  agent.followup({ content: 'use the tool', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const display = await ctx.sessionController.displayPage({ sessionId, limit: 20 })
+  assert.deepEqual(feed, display.items)
+  assert.deepEqual(feed.map(item => item.kind), ['user', 'reasoning', 'tool-call', 'tool-result', 'bot'])
 })
 
 test('owned context preserves Pi turn outcomes in durable turn-end events', async t => {
@@ -91,6 +126,252 @@ test('owned context preserves Pi turn outcomes in durable turn-end events', asyn
     const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
     assert.deepEqual(page.records.findLast(record => record.event.type === 'turn/end').event.data.reason, item.expected)
   })
+})
+
+test('owned Agent presets change the real Pi tool and prompt configuration', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const tools = [
+    legacyTool('bash'),
+    legacyTool('read'),
+    legacyTool('write'),
+    legacyTool('web_search'),
+  ]
+  ctx.installTools(tools, {})
+  ctx.installAgentTools(tools)
+
+  const create = async (agentPreset) => {
+    const { sessionId } = await ctx.sessionController.create({ agentPreset })
+    await ctx.sessionController.resolveAgent(sessionId)
+    return ctx.harness.agent(sessionId)
+  }
+
+  const standard = await create('standard')
+  assert.deepEqual(standard.tools.map(tool => tool.name), ['bash', 'read', 'write', 'web_search'])
+  assert.equal(standard.callable.some(tool => tool.name === 'codemode'), false)
+
+  const ptc = await create('ptc')
+  assert.deepEqual(ptc.tools.map(tool => tool.name), ['codemode'])
+  assert.ok(ptc.callable.some(tool => tool.name === 'bash'))
+  assert.ok(ptc.callable.some(tool => tool.name === 'web_search'))
+
+  const minimal = await create('minimal')
+  assert.deepEqual(minimal.tools.map(tool => tool.name), ['bash'])
+  assert.equal(minimal.callable.some(tool => tool.name === 'write'), false)
+
+  const creator = await create('creator')
+  assert.deepEqual(creator.tools.map(tool => tool.name), ['bash', 'read', 'write', 'web_search', 'manage_agent_preset', 'manage_cue_plugin'])
+  assert.match(creator.instructions, /customize Cue/i)
+
+  await assert.rejects(ctx.sessionController.create({ agentPreset: 'unknown' }), /Unknown Agent preset/)
+})
+
+test('owned custom Agent presets persist and compose real tools and instructions', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-custom-preset-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const first = await contextFixture(t, { dataDir })
+  const tools = [legacyTool('read'), legacyTool('write'), legacyTool('web_search')]
+  first.ctx.installTools(tools, {})
+  first.ctx.installAgentTools(tools)
+
+  const saved = await first.ctx.get('agentPresets').save({
+    id: 'review',
+    name: 'Review mode',
+    description: 'Review code without changing it.',
+    tools: ['read', 'web_search'],
+    instructions: 'Report defects with file and line evidence. Do not edit files.',
+  })
+  assert.equal(saved.id, 'review')
+  assert.equal(saved.group, 'custom')
+
+  const { sessionId } = await first.ctx.sessionController.create({ agentPreset: 'review' })
+  await first.ctx.sessionController.resolveAgent(sessionId)
+  const configured = await first.ctx.harness.agent(sessionId)
+  assert.deepEqual(configured.tools.map(tool => tool.name), ['read', 'web_search'])
+  assert.match(configured.instructions, /Do not edit files/)
+  await first.ctx.close()
+
+  const second = await contextFixture(t, { dataDir })
+  t.after(() => second.ctx.close())
+  second.ctx.installTools(tools, {})
+  second.ctx.installAgentTools(tools)
+  const rows = await second.ctx.get('agentPresets').list()
+  assert.equal(rows.find(row => row.id === 'review')?.description, 'Review code without changing it.')
+
+  const restarted = await second.ctx.sessionController.create({ agentPreset: 'review' })
+  await second.ctx.sessionController.resolveAgent(restarted.sessionId)
+  assert.deepEqual((await second.ctx.harness.agent(restarted.sessionId)).tools.map(tool => tool.name), ['read', 'web_search'])
+
+  await second.ctx.get('agentPresets').remove('review')
+  await assert.rejects(second.ctx.sessionController.create({ agentPreset: 'review' }), /Unknown Agent preset/)
+})
+
+test('Creator mode installs a custom preset through its owned manager tool', async t => {
+  const provider = fauxProvider()
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('manage_agent_preset', {
+      action: 'save',
+      id: 'research',
+      name: 'Research mode',
+      description: 'Research with sources.',
+      tools: ['read', 'web_search'],
+      instructions: 'Use primary sources and cite them.',
+    }, { id: 'call-preset-save' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Research mode is installed.'),
+  ])
+  const { ctx } = await contextFixture(t, { provider })
+  t.after(() => ctx.close())
+  const tools = [legacyTool('read'), legacyTool('web_search')]
+  ctx.installTools(tools, {})
+  ctx.installAgentTools(tools)
+  const { sessionId } = await ctx.sessionController.create({ agentPreset: 'creator' })
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  agent.followup({ content: 'Create a research mode.', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const rows = await ctx.get('agentPresets').list()
+  assert.equal(rows.find(row => row.id === 'research')?.name, 'Research mode')
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 30 })
+  const result = page.records.find(record => record.event.type === 'tool/result' && record.event.data.callId === 'call-preset-save')
+  assert.equal(result.event.data.message.isError, false, JSON.stringify(result.event.data.message))
+  assert.match(JSON.stringify(result.event.data.message), /Research mode/)
+})
+
+test('Creator mode installs and verifies a persistent Cue plugin in the same conversation', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-creator-plugin-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const packagePath = join(dataDir, 'echo-package')
+  await mkdir(packagePath, { recursive: true })
+  await writeFile(join(packagePath, 'package.json'), `${JSON.stringify({
+    name: 'cue-echo-plugin',
+    version: '1.0.0',
+    cue: { plugins: ['./plugin.mjs'], client: ['./client.mjs'] },
+  })}\n`)
+  await writeFile(join(packagePath, 'plugin.mjs'), `
+export default async function setup(api) {
+  const dispose = await api.tools.register({
+    name: 'creator_echo',
+    description: 'Echo text from the installed Cue plugin.',
+    parameters: { text: { type: 'string', required: true } },
+    execute: async ({ text }) => 'echoed: ' + text,
+  })
+  return dispose
+}
+`)
+  await writeFile(join(packagePath, 'client.mjs'), 'export default api => api.ui.register("settings.page", { id: "echo", label: "Echo" }, () => null)\n')
+  const provider = fauxProvider()
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('manage_cue_plugin', {
+      action: 'install', source: packagePath,
+    }, { id: 'call-plugin-install' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage(fauxToolCall('creator_echo', {
+      text: 'installed',
+    }, { id: 'call-plugin-verify' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('The Cue plugin is installed and verified.'),
+  ])
+  const { ctx } = await contextFixture(t, { dataDir, provider })
+  t.after(() => ctx.close())
+  const { sessionId } = await ctx.sessionController.create({ agentPreset: 'creator' })
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  agent.followup({ content: 'Install and verify the local echo plugin.', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 40 })
+  const install = page.records.find(record => record.event.type === 'tool/result' && record.event.data.callId === 'call-plugin-install')
+  const verify = page.records.find(record => record.event.type === 'tool/result' && record.event.data.callId === 'call-plugin-verify')
+  assert.equal(install.event.data.message.isError, false, JSON.stringify(install.event.data.message))
+  assert.match(JSON.stringify(install.event.data.message), /cue-echo-plugin/)
+  assert.equal(verify.event.data.message.isError, false, JSON.stringify(verify.event.data.message))
+  assert.match(JSON.stringify(verify.event.data.message), /installed/)
+  assert.deepEqual((await ctx.get('pluginClient').list()).map(row => row.entries), [['client.mjs']])
+
+  await ctx.close()
+  const restarted = await contextFixture(t, { dataDir, provider: fauxProvider() })
+  t.after(() => restarted.ctx.close())
+  assert.equal((await restarted.ctx.get('pluginInventory').list()).global.some(row => row.title === 'cue-echo-plugin' && row.state === 'active'), true)
+  const { sessionId: next } = await restarted.ctx.sessionController.create({ agentPreset: 'standard' })
+  assert.equal((await restarted.ctx.harness.agent(next)).tools.some(tool => tool.name === 'creator_echo'), true)
+})
+
+test('owned PTC preset runs nested tools through Pi Durable code mode', async t => {
+  const requests = []
+  const warnings = []
+  const provider = fauxProvider()
+  provider.setResponses([
+    async context => {
+      requests.push(context)
+      return fauxAssistantMessage(fauxToolCall('codemode', {
+        code: 'const value = await tools.sum_values({ values: [2, 3] }); text(value); return value',
+      }, { id: 'call-codemode' }), { stopReason: 'toolUse' })
+    },
+    async context => {
+      requests.push(context)
+      return fauxAssistantMessage('The total is 5.')
+    },
+  ])
+  const { ctx } = await contextFixture(t, { provider, logger: { warn: message => warnings.push(message) } })
+  t.after(() => ctx.close())
+  const sum = {
+    ...legacyTool('sum_values', async ({ values }) => values.reduce((total, value) => total + value, 0)),
+    parameters: {
+      values: { type: 'array', items: { type: 'number' }, required: true },
+    },
+  }
+  ctx.installTools([sum], {})
+  ctx.installAgentTools([sum])
+  const { sessionId } = await ctx.sessionController.create({ agentPreset: 'ptc' })
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  agent.followup({ content: 'Add two and three.', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  assert.equal(requests.length, 2)
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 30 })
+  const result = page.records.find(record => record.event.type === 'tool/result' && record.event.data.callId === 'call-codemode')
+  assert.equal(result.event.data.message.isError, false, JSON.stringify(result.event.data.message))
+  assert.match(JSON.stringify(result.event.data.message), /5/)
+  assert.ok(page.records.some(record => record.event.type === 'assistant/message'
+    && record.event.data.message.content.some(block => block.type === 'text' && block.text === 'The total is 5.')))
+  assert.deepEqual(warnings, [])
+})
+
+test('owned context keeps a stable model failure code through events, feed and display', async t => {
+  const { ctx } = await contextFixture(t, { settings: { retry: { enabled: false } } })
+  t.after(() => ctx.close())
+  const scripted = ctx.llm.script('missing-key', () => {
+    throw new Error('No API key for provider: fixture')
+  })
+  t.after(() => scripted.dispose())
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: scripted.provider, model: scripted.model })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  const feed = []
+  ctx.subscribeFeed((event, data) => {
+    if (event === 'message' && data.sessionId === sessionId && data.item?.kind === 'failure') feed.push(data.item)
+  })
+  ctx.resume()
+
+  agent.followup({ content: 'run', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+  assert.deepEqual(page.records.findLast(record => record.event.type === 'turn/end').event.data.reason, {
+    kind: 'error',
+    error: { code: 'MISSING_CREDENTIAL', message: 'No API key for provider: fixture' },
+  })
+  const display = await ctx.sessionController.displayPage({ sessionId, limit: 20 })
+  const shown = display.items.findLast(item => item.kind === 'failure')
+  assert.equal(shown.code, 'MISSING_CREDENTIAL', JSON.stringify(display.items))
+  assert.equal(shown.detail, 'No API key for provider: fixture')
+  assert.deepEqual(feed.findLast(item => item.kind === 'failure'), shown)
 })
 
 test('owned context exposes a real folder browser', async t => {
@@ -500,9 +781,14 @@ test('owned context configures models, routes dispatch, publishes feed, aborts, 
 
   await ctx.sessionController.resolveAgent(sessionId)
   ctx.resume()
+  const failures = []
+  ctx.subscribeFeed((event, data) => {
+    if (event === 'message' && data.sessionId === sessionId && data.item?.kind === 'failure') failures.push(data.item)
+  })
   await ctx.sessionController.prompt({ sessionId, requestId: 'slow', content: 'write a very long answer' })
   await ctx.harness.abort(sessionId, { background: true })
   await ctx.harness.waitForIdle(sessionId)
+  assert.equal(failures.some(item => item.reason === 'aborted'), true)
   await ctx.close()
   await ctx.close()
 })
@@ -546,7 +832,7 @@ test('owned context applies legacy model middleware to main Pi generation', asyn
   assert.equal(page.records.find(record => record.event.type === 'assistant/message').event.data.message.content[0].text, 'Handoff received.')
 })
 
-test('owned context accepts the complete DS Bot host tool catalog', async t => {
+test('owned context accepts the complete Cue host tool catalog', async t => {
   const { ctx, dataDir } = await contextFixture(t)
   t.after(() => ctx.close())
   const rt = createRuntime(ctx, {
@@ -586,7 +872,12 @@ test('owned context provides host services and Pi-formatted bundled skills', asy
   assert.throws(() => permission.resolve('unknown'), /unknown preset/)
   const meter = ctx.get('tokenMeter')
   assert.ok(meter.estimateMessage({ role: 'user', content: [{ type: 'text', text: 'count me' }] }) > 0)
-  assert.deepEqual(await ctx.get('agentPresets').list(), [{ id: 'standard', name: 'Standard' }])
+  assert.deepEqual(await ctx.get('agentPresets').list(), [
+    { id: 'standard', name: 'Standard mode' },
+    { id: 'ptc', name: 'PTC mode' },
+    { id: 'minimal', name: 'Minimal mode' },
+    { id: 'creator', name: 'Creator mode' },
+  ])
 
   const skills = await ctx.get('skills').list()
   assert.deepEqual(skills.map(skill => skill.name).sort(), ['goal-grill', 'office', 'office-tools'])
@@ -984,6 +1275,10 @@ test('owned context keeps chat reference metadata and model snapshot across rest
     label: 'Chat with Researcher',
     text: '## Referenced sessions\n\n### Chat with Researcher\nUser: durable target fact',
   }]
+  const feed = []
+  ctx.subscribeFeed((event, data) => {
+    if (event === 'message' && data.sessionId === sessionId) feed.push(data.item)
+  })
   ctx.resume()
   await ctx.sessionController.prompt({
     sessionId,
@@ -997,6 +1292,9 @@ test('owned context keeps chat reference metadata and model snapshot across rest
 
   assert.equal(requests.length, 1)
   assert.ok(requests[0].messages.some(message => message.content.some(block => block.type === 'text' && block.text.includes('durable target fact'))))
+  assert.equal(feed.filter(item => item.kind === 'user').length, 1)
+  assert.deepEqual(feed.find(item => item.kind === 'user').referenceLabels, ['Chat with Researcher'])
+  assert.equal(feed.some(item => item.text?.includes('durable target fact')), false)
   const before = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
   const sent = before.records.find(record => record.event.type === 'user/message' && record.event.data.source?.kind === 'user')
   assert.deepEqual(sent.event.data.referenceLabels, ['Chat with Researcher'])

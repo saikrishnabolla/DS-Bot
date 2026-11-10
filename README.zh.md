@@ -1,12 +1,12 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="DS Bot" width="260"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg"><img src="docs/images/logo.svg" alt="Cue" width="260"></picture></p>
 
-# DS Bot
+# Cue
 
 [English](README.md) | 中文
 
-![版本](https://img.shields.io/badge/版本-v0.3_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
+![版本](https://img.shields.io/badge/版本-v0.3_预览-blue) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
-DS Bot 是一个开源的 bot 团队应用。你可以创建 bot，和它们对话、工作。桌面应用使用自己的 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable) 运行环境，也可以作为 DeepSeek Harness（dsh）插件使用。
+Cue 是一个开源的 bot 团队应用。你可以创建 bot，和它们对话、工作。Cue 使用 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable) 运行。
 
 ![和 Chief 说一句话，它就把 bot 和群聊建好](docs/images/team.zh.png)
 
@@ -18,18 +18,6 @@ DS Bot 是一个开源的 bot 团队应用。你可以创建 bot，和它们对�
 
 如果安装或打开时提示未签名拦截：Windows 点 **更多信息** → **仍要运行**；macOS 在 **系统设置** → **隐私与安全性** 里点 **仍要打开**。
 
-**作为 dsh 插件**
-
-先装好 dsh，并在 dsh 里配好至少一个模型。ds bot 直接使用 dsh 里的模型。
-
-- **dsh Desktop**：侧栏点 **插件** → **添加插件**，包名填 `ds-bot`（在中国大陆，安装源选 **中国大陆镜像源**），点 **安装** 并 **立即启用**。
-- **dsh Web**（需要 Node.js `22.19` 以上和 pnpm）：
-
-```sh
-npx @deepseek-ai/dsh@0.2.2-rc.1 plugin --profile web add ds-bot
-npx @deepseek-ai/dsh@0.2.2-rc.1 web
-```
-
 **Docker（NAS、Linux 服务器）**
 
 见 [`docker/README.md`](docker/README.md)。
@@ -40,7 +28,7 @@ npx @deepseek-ai/dsh@0.2.2-rc.1 web
 
 ### 网页搜索
 
-DS Bot 会把 `auto` 搜索 provider 选为整个 profile 的后端。禁用 `web-search-auto` 时，也要为该 profile 选择另一个已注册的搜索 provider。详见[网页搜索说明](ds-bot/README.md#web-search)和[恢复步骤](docs/known-issues.zh.md#关掉-web-search-auto-后所有会话的网页搜索都失败)。
+Cue 会根据模型 provider 和你配置的 key 选择搜索路由。详见[网页搜索说明](ds-bot/README.md#web-search)。
 
 ## 功能
 
@@ -84,11 +72,11 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 每个 bot 有自己独立的浏览器，登录状态互不干扰，也支持从文件或本机浏览器导入 Cookie。在 设置 → 浏览器 里开启操作插件后，bot 可以自己打开和操作网页；发帖、上传、下载、删除需要你批准，遇到登录、验证码或付款会发卡片交给你处理，你随时可以接管再交还。
 
-浏览器功能仅桌面应用和 dsh Desktop 可用（dsh Web 没有），且只有桌面应用在退出后会保留网页登录状态、支持导入 Cookie。Windows 上 Chrome 和 Edge 开启了 v20 加密的新 Cookie 无法直接读取，需要先用浏览器扩展导出成文件再导入。
+浏览器功能仅桌面应用可用。退出后会保留网页登录状态，也支持导入 Cookie。Windows 上 Chrome 和 Edge 开启了 v20 加密的新 Cookie 无法直接读取，需要先用浏览器扩展导出成文件再导入。
 
 ### 电脑操控
 
-在 设置 → 电脑操控 里打开开关后，bot 可以在你允许的范围内操作电脑上的应用。你可以给每个 bot 单独设档位（只看、后台操作、可以动前台）和允许使用的应用，操作时屏幕顶部有指示条，随时能暂停或接管；系统设置、密码管理这类应用永远不会交给 bot。
+在桌面应用的 设置 → 电脑操控 里打开开关后，bot 可以在你允许的范围内操作电脑上的应用。你可以给每个 bot 单独设档位（只看、后台操作、可以动前台）和允许使用的应用，操作时屏幕顶部有指示条，随时能暂停或接管；系统设置、密码管理这类应用永远不会交给 bot。
 
 所有 bot 和你共用同一个桌面，同一个应用或前台鼠标同一时间只能有一个 bot 用。Windows 上 Chrome、Electron 这类应用在后台常收不到点击和输入，需要设为“可以动前台”，且无法操作管理员权限的应用；macOS 需要 14 及以上并开启辅助功能与屏幕录制权限；Linux 支持 X11，Wayland 受限。
 
@@ -106,7 +94,7 @@ ds bot 拥有群聊功能。群聊是非常好的多 bot 协作方式，但它�
 
 ### Office 文件
 
-bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx`）和 Excel（`.xlsx`）文档，还能把页面渲染成图片来检查排版。桌面应用已经自带完整的运行环境，开箱即用；dsh Web 没有打包这套环境，只能检查和修改已有文档，从零建文件和渲染页面需要用桌面应用或 dsh Desktop。
+bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx`）和 Excel（`.xlsx`）文档，还能把页面渲染成图片来检查排版。桌面应用自带完整的运行环境。
 
 ### 用量
 
@@ -116,17 +104,16 @@ bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx
 
 ## 数据
 
-所有数据都在你自己的电脑上：桌面应用存在首次启动选定的位置（默认 `~/.ds-bot`），插件版存在 dsh 主目录（默认 `~/.dsh`）的 `bot/` 和 `sessions/` 里。卸载应用或插件不会删除这些数据。
+所有数据都在你自己的电脑上，存在首次启动选定的位置（默认 `~/.cue`）。Docker 把同样的数据放在 `/data` 挂载里。卸载 Cue 不会删除这些数据。
 
 ## 开发
 
-插件源码在 [`ds-bot/`](ds-bot/)。配置项和内部结构见 [`ds-bot/README.md`](ds-bot/README.md)，开发、测试和协作方式见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+核心功能和自有 host 在 [`ds-bot/`](ds-bot/)。配置项和内部结构见 [`ds-bot/README.md`](ds-bot/README.md)，开发和测试方式见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 致谢
 
-- [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)：运行桌面应用里的持久对话和模型工具。
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：运行可选的 dsh 插件。
-- [esbuild](https://esbuild.github.io/)：用来打包插件的界面代码。
+- [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)：运行 Cue 里的持久对话和模型工具。
+- [esbuild](https://esbuild.github.io/)：构建 Cue 的生成资源。
 - 感谢下面这些项目公开的设计思路。ds bot 参考了它们的思路，没有使用它们的代码：
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo)：bot 记忆的 Markdown 格式。
   - [OpenAI Codex](https://github.com/openai/codex)：压缩时把用户原话留在摘要旁边，以及搜索聊天记录用的消息锚点。
@@ -141,6 +128,6 @@ bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx
 
 ## 声明
 
-ds bot 是独立的社区项目，**不是 DeepSeek 官方产品**，与 DeepSeek 没有隶属、认可或赞助关系。“DeepSeek”和“DeepSeek Harness”是其所有者的商标，这里只用来说明可选插件的运行环境。
+Cue 是独立的社区项目，不隶属于任何模型 provider，也没有获得它们的认可。DeepSeek 是 Cue 支持的模型 provider 之一。
 
 bot 会消耗你自己的模型额度，也会按你的要求读写文件、运行命令。重要的操作请自己检查。

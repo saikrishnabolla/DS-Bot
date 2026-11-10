@@ -3,7 +3,7 @@
 // once the team view is ready (start-window.mjs). Closing
 // the team window hides it; the tray brings it back and its Quit ends the app (shell.mjs). Only
 // what the start window and the tray need is imported up front; the rest loads once the start
-// window is up (docs/plans/2026-10-26-start-window.md §11).
+// window is up.
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell as electronShell, systemPreferences, Tray, WebContentsView } from 'electron'
 import { createComputerIndicator, indicatorHtml } from './computer-indicator.mjs'
 import { createComputerCursor } from './computer-cursor.mjs'
@@ -35,7 +35,7 @@ const { rm } = disk.promises
 
 const IPC = {
   caption: 'ds-bot:caption-colors', nativeTheme: 'ds-bot:native-theme', fullscreen: 'ds-bot:fullscreen',
-  dataLocation: 'ds-bot:data-location', moveData: 'ds-bot:move-data', teamWorkspace: 'ds-bot:team-workspace',
+  dataLocation: 'ds-bot:data-location', moveData: 'ds-bot:move-data', openSettingsFile: 'ds-bot:open-settings-file', teamWorkspace: 'ds-bot:team-workspace',
   ready: 'ds-bot:ready', handoffReady: 'ds-bot:handoff-ready', motion: 'ds-bot:motion',
   card: 'ds-bot:app-card', cardShown: 'ds-bot:app-card-shown', cardAnswer: 'ds-bot:app-card-answer',
   browserAcquire: 'ds-bot:browser-acquire', browserRelease: 'ds-bot:browser-release', browserForget: 'ds-bot:browser-forget',
@@ -84,7 +84,6 @@ const frameFile = join(app.getPath('userData'), 'start-frame.json')
 // Loaded once the start window is up (loadModules).
 let BotBrowserGuests, partitionOf, BotViews, isBotId, importFromBrowser, listSources, applyCookies, CookieImports, parseCookieFile
 let downloadSaver, chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx, HostProcess
-let importTeam, teamInUseForImport, teamSizes, userDshHome, ImportFlow
 let copyData, copyReason, moveProblem, teamInUse
 let watchReleases, watchUpdates, RELEASE_PAGE, electronUpdater
 
@@ -115,8 +114,6 @@ let proposed
 let moveTo
 // Takes the answer of the card that askCard() put up.
 let answering
-let importOffer
-let importFlow
 // The new version that the failure page's update banner offers.
 let offered
 // A retry or a start over is stopping the old engine: no second one starts meanwhile.
@@ -205,7 +202,7 @@ if (canonical !== undefined) {
   logs = new LogFile({ dir: join(app.getPath('userData'), 'logs') })
   rawOutput = captureStdio(logs)
   app.once('will-quit', () => { logs.flush() })
-  console.log(`DS Bot ${app.getVersion()} (${process.platform} ${process.arch}), Electron ${process.versions.electron}`)
+  console.log(`Cue ${app.getVersion()} (${process.platform} ${process.arch}), Electron ${process.versions.electron}`)
   startWindow = new StartWindow({
     electron: { BrowserWindow, ipcMain, screen, shell: electronShell, clipboard, nativeTheme, systemPreferences },
     // 〔保存日志…〕 on the start window's failure cards.
@@ -228,7 +225,6 @@ if (canonical !== undefined) {
       if (answering !== undefined) { answering(value); return }
       (startWindow.kind === 'later' ? moveAnswer(value) : placeAnswer(value)).catch(fail)
     },
-    onImport: (name, value) => { importFlow?.act(name, value) },
     onUpdate: (name) => { updateAct(name) },
   })
   // A second launch shows the window that is showing: the start window until the hand-off
@@ -264,7 +260,7 @@ if (canonical !== undefined) {
 
 function stopHost() {
   stopping = true
-  cancelComputerRequests(new Error('DS Bot is stopping'))
+  cancelComputerRequests(new Error('Cue is stopping'))
   hostStop ??= Promise.allSettled([host?.stop(), stopSpeech(), computerDriver.stop()]).then((results) => {
     for (const result of results) if (result.status === 'rejected') console.error(result.reason)
   }).finally(() => { stopped = true })
@@ -312,10 +308,10 @@ async function prepare() {
 }
 
 async function loadModules() {
-  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, imports, flows, moves, updatesModule, updater] = await Promise.all([
+  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, moves, updatesModule, updater] = await Promise.all([
     import('./bot-browser.mjs'), import('./bot-views.mjs'), import('./browser-sources.mjs'), import('./cookie-import.mjs'),
     import('./cookie-parse.mjs'), import('./downloads.mjs'), import('./first-run.mjs'), import('./host-process.mjs'),
-    import('./import.mjs'), import('./import-flow.mjs'), import('./move-data.mjs'), import('./updates.mjs'), import('electron-updater'),
+    import('./move-data.mjs'), import('./updates.mjs'), import('electron-updater'),
   ])
   ;({ BotBrowserGuests, partitionOf } = browser)
   ;({ BotViews, isBotId } = views)
@@ -325,8 +321,6 @@ async function loadModules() {
   ;({ downloadSaver } = downloads)
   ;({ chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx } = firstRun)
   ;({ HostProcess } = hostProcess)
-  ;({ importTeam, teamInUse: teamInUseForImport, teamSizes, userDshHome } = imports)
-  ;({ ImportFlow } = flows)
   ;({ copyData, copyReason, moveProblem, teamInUse } = moves)
   ;({ watchReleases, watchUpdates, RELEASE_PAGE } = updatesModule)
   electronUpdater = updater.default
@@ -344,8 +338,7 @@ function run() {
   boot(mine).catch((error) => { if (mine === attempt) void fail(error) })
 }
 
-// The engine starts again after a failure or the 180 s question; the places stay. A first run's
-// copy goes on to its end first: an engine started beside it would run on a half-copied team.
+// The engine starts again after a failure or the 180 s question; the places stay.
 async function retry() {
   const mine = (attempt += 1)
   forgetHost()
@@ -353,7 +346,6 @@ async function retry() {
   proposed = undefined
   restarting = true
   try {
-    await copying?.catch(() => {})
     if (copyAbort.signal.aborted || stopping || mine !== attempt) return
     await stopOld()
     if (stopping || mine !== attempt) return
@@ -426,8 +418,7 @@ async function boot(mine) {
     }
     const where = chooseLocations()
     setPlaces({ dataDir: where.dataDir, workspace: where.workspace })
-    importOffer = where.offer
-    if (first) startWindow.explain(explainOf({ offered: importOffer !== undefined, team: teamIn(where.dataDir) }))
+    if (first) startWindow.explain(explainOf({ team: teamIn(where.dataDir) }))
     else tellLowSpace(where.freeAtStart)
   }
   // Also the check that the data folder can be written.
@@ -515,7 +506,7 @@ async function pickAndPlace() {
     return
   }
   if (root.reason !== undefined) {
-    console.log(`DS Bot: the place ${root.at} cannot be used (${root.reason})`)
+    console.log(`Cue: the place ${root.at} cannot be used (${root.reason})`)
     proposed = undefined
     startWindow.card({ kind: 'rejected', reason: root.reason, path: root.at })
     return
@@ -557,7 +548,7 @@ async function startOver(root) {
     if (stopping || mine !== attempt) return
     setPlaces({ dataDir: root.dataDir, workspace: root.workspace })
     saveLocations(places)
-    console.log(`DS Bot: the data goes to ${places.dataDir}`)
+    console.log(`Cue: the data goes to ${places.dataDir}`)
   } finally {
     restarting = false
   }
@@ -588,7 +579,7 @@ function newHost() {
     entry: join(here, 'host.mjs'),
     // A packaged `here` is inside app.asar, which cannot be an operating-system working directory.
     cwd: places.dataDir,
-    env: { ...process.env, DS_BOT_DATA_DIR: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', ...(app.isPackaged && process.platform === 'darwin' ? { DS_BOT_COMPUTER_HELPER_HOME: join(app.getPath('userData'), 'computer-use') } : {}), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
+    env: { ...process.env, DS_BOT_DATA_DIR: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
     onFailure: (error) => { cancelComputerRequests(error); void computerDriver.stop(); if (mine === attempt) void fail(error) },
     output: hostOutput,
   })
@@ -596,10 +587,6 @@ function newHost() {
 
 /** @returns {Promise<{ url: string }>} the Host's launch URL */
 async function startEngine(mine) {
-  if (importOffer !== undefined) {
-    const outcome = await importStep(mine)
-    if (outcome === undefined || mine !== attempt) return undefined
-  }
   if (!updatesStarted) {
     updatesStarted = true
     updates = startUpdates()
@@ -638,38 +625,6 @@ async function startEngine(mine) {
   const engine = await activeHost.start()
   if (mine === attempt) startWindow.card(undefined)
   return engine
-}
-
-async function importStep(mine) {
-  const offer = importOffer
-  const signal = copyAbort.signal
-  const sizes = await teamSizes(offer.from, offer.team).catch((error) => { console.error(error); return { sessions: 0 } })
-  const flow = new ImportFlow({
-    offer: {
-      from: offer.from, bots: offer.bots, rooms: offer.rooms,
-      names: Object.values(offer.team.bots ?? {}).map(bot => bot?.name).filter(name => typeof name === 'string' && name !== ''),
-      sessions: sizes.sessions, sizes, profiles: [],
-    },
-    ask: (card, options) => askCard(card, { signal, ...options }),
-    show: card => { startWindow.card(card) },
-    inUse: () => teamInUseForImport(offer.from),
-    until,
-    warmed: async () => undefined,
-    copy: options => importTeam({ from: offer.from, to: places.dataDir, workspace: places.workspace, ...options }),
-    reasonOf: copyReason,
-    lang: lang(),
-    signal,
-  })
-  importFlow = flow
-  copying = startWindow.asking(flow.run())
-  let result
-  try { result = await copying } finally { copying = undefined; importFlow = undefined }
-  if (result.outcome === 'gone' || result.outcome === 'pick' || signal.aborted || mine !== attempt) return undefined
-  importOffer = undefined
-  saveLocations(places)
-  if (result.outcome === 'copied') startWindow.done('import')
-  startWindow.card(undefined)
-  return result
 }
 
 function handleIpc() {
@@ -749,6 +704,11 @@ function handleIpc() {
     assertWindow(event)
     return fixed ? false : moveData(typeof workspace === 'string' && isAbsolute(workspace) ? workspace : places.workspace)
   })
+  ipcMain.handle(IPC.openSettingsFile, async (event) => {
+    assertWindow(event)
+    const error = await electronShell.openPath(join(places.dataDir, 'bot', 'state.json'))
+    return error === '' ? { ok: true } : { ok: false, error }
+  })
   // ds-bot's Bot browsers: one webview per lease, in the storage of the Bot's key.
   ipcMain.handle(IPC.browserAcquire, (event, key) => {
     assertWindow(event)
@@ -798,7 +758,7 @@ function handleIpc() {
   ipcMain.handle(IPC.browserImportLive, async (event, sourceId, close) => {
     assertWindow(event)
     const source = (await listSources()).find((item) => item.id === sourceId)
-    if (!source) throw new Error('DS Bot: an unknown browser profile')
+    if (!source) throw new Error('Cue: an unknown browser profile')
     let outcome
     try {
       outcome = await importFromBrowser(source, { close: close === true })
@@ -815,9 +775,9 @@ function handleIpc() {
   })
   ipcMain.handle(IPC.browserImportApply, async (event, key, id) => {
     assertWindow(event)
-    if (typeof key !== 'string' || !key.startsWith('bot:')) throw new Error('DS Bot: a Bot storage key is required')
+    if (typeof key !== 'string' || !key.startsWith('bot:')) throw new Error('Cue: a Bot storage key is required')
     const pending = cookieImports.take(typeof id === 'string' ? id : '')
-    if (!pending) throw new Error('DS Bot: this import is no longer pending')
+    if (!pending) throw new Error('Cue: this import is no longer pending')
     const storage = session.fromPartition(partitionOf(key))
     return applyCookies(storage, pending.cookies)
   })
@@ -846,7 +806,7 @@ function handleIpc() {
       void electronShell.openExternal(state.page)
     }
   })
-  // The plugin keeps the team workspace; the app remembers it for its own checks.
+  // The host keeps the team workspace; the app remembers it for its own checks.
   ipcMain.on(IPC.teamWorkspace, (event, path) => {
     if (fixed || !fromWindow(event) || typeof path !== 'string' || !isAbsolute(path)) return
     places = { ...places, workspace: path }
@@ -904,7 +864,7 @@ async function pickMove() {
 function moveCard(to) {
   const reason = moveReason(to)
   if (reason !== undefined) {
-    console.log(`DS Bot: the data cannot move to ${to} (${reason})`)
+    console.log(`Cue: the data cannot move to ${to} (${reason})`)
     startWindow.card({ kind: 'rejected', reason, path: to })
     return
   }
@@ -1055,7 +1015,7 @@ function startUpdates() {
     const debArch = { x64: 'amd64', arm64: 'arm64' }[process.arch] ?? process.arch
     return watchReleases({
       current: app.getVersion(), arch: process.arch, feed, ask: throwaway ? undefined : (version) => downloadPrompt.prompt(version), open: url => electronShell.openExternal(url),
-      asset: version => `DS-Bot-${version}-linux-${debArch}.deb`,
+      asset: version => `Cue-${version}-linux-${debArch}.deb`,
     })
   }
   if (process.platform === 'win32' || process.platform === 'linux') {
@@ -1207,7 +1167,7 @@ function createWindow() {
     // The window never squeezes the chat: RAIL_WIDTH + MIN_CHAT from ds-bot's
     // src/client/frame-layout.js is the avatar rail plus the smallest chat column.
     ...startWindow.mainBounds(), minWidth: 508, minHeight: 480,
-    title: 'DS Bot', show: false, icon: iconFile,
+    title: 'Cue', show: false, icon: iconFile,
     backgroundColor: material ? '#00000000' : dark ? '#1b1b1c' : '#ffffff',
     // The window controls overlay the page's band. On Windows the
     // caption buttons keep the sidebar's colors until the page sends the colors of the surface
@@ -1388,7 +1348,7 @@ function shellText() {
 function assertWindow(event) {
   const contents = mainWindow?.webContents
   if (contents === undefined || event.sender !== contents || event.senderFrame !== contents.mainFrame
-    || !event.senderFrame.url.startsWith(`${origin}/`)) throw new Error('DS Bot: rejected IPC from an unknown page')
+    || !event.senderFrame.url.startsWith(`${origin}/`)) throw new Error('Cue: rejected IPC from an unknown page')
 }
 
 function fromWindow(event) {

@@ -43,7 +43,7 @@ function team({ group = false } = {}) {
   }
 }
 
-// The plugin in a home of its own, with a stand-in DSH around it. The seed is written the
+// The plugin in a home of its own, with a stand-in Cue around it. The seed is written the
 // first time; a later boot keeps the state the first run saved.
 async function boot(home, seed) {
   if (seed !== undefined) writeFileSync(join(home, 'state.json'), JSON.stringify(seed))
@@ -203,8 +203,8 @@ test('a request whose delivery failed is not sent again', async (t) => {
 
   const writer = agentOf('b')
   const steer = writer.steer
-  writer.steer = () => { throw new Error('dsh is down') }
-  await assert.rejects(tool('message_bot', { to: 'Writer', message: 'do the thing', request_id: 'r-1' }, 'a'), /dsh is down/)
+  writer.steer = () => { throw new Error('Cue is down') }
+  await assert.rejects(tool('message_bot', { to: 'Writer', message: 'do the thing', request_id: 'r-1' }, 'a'), /Cue is down/)
   writer.steer = steer
   // The outcome of that admission is not known, so it is not sent again.
   await assert.rejects(tool('message_bot', { to: 'Writer', message: 'do the thing', request_id: 'r-1' }, 'a'), /outcome of request_id "r-1" is not known/)
@@ -265,10 +265,10 @@ test('a request with an id in a group calls the member once', async (t) => {
   assert.equal(posts, 1)
 })
 
-test('a request that was in the air when DS Bot stopped is not sent again', async (t) => {
+test('a request that was in the air when Cue stopped is not sent again', async (t) => {
   const home = tempHome()
   const first = await boot(home, team())
-  // The delivery hangs, as it would when DS Bot stops in the middle of it.
+  // The delivery hangs, as it would when Cue stops in the middle of it.
   first.ctx.sessions.flush = async () => new Promise(() => {})
   const inFlight = first.tool('message_bot', { to: 'Writer', message: 'do the thing', request_id: 'r-1' }, 'a')
   inFlight.catch(() => {})

@@ -8,10 +8,9 @@ import { useEscape } from './overlay-hooks.js'
 import { t } from './i18n.js'
 import { openCapture, preparationStep, speechCatalog, transcribeWave, turnDetector } from './speech.js'
 
-// Voice chat: listen, send what the user said, read the Bot's answer aloud, listen
-// again. With DSH's Voice Input plugin on, its recognizer hears the user: one
-// recording ends after a pause and is transcribed whole. Otherwise the browser's
-// own speech recognition does. The browser's speech synthesis reads the answer.
+// Voice chat listens, sends what the user said, reads the Bot's answer aloud, then
+// listens again. Cue's local recognizer ends one recording after a pause and
+// transcribes it whole. The browser speech service is the fallback.
 const plainSpeech = text => stripHeader(text).replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#>|~-]+/g, ' ').replace(/\s+/g, ' ').trim()
 const VOICE_LABELS = {
   listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking', paused: 'Paused',
@@ -106,7 +105,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
     const entry = Array.isArray(outline) ? outline[outline.length - 1] : undefined
     return entry ? `${outline.length}|${entry.turn}` : '0|'
   })
-  // The Voice Input plugin's Remote, read once: the engine does not change mid-chat.
+  // Read the local speech service once; the engine does not change mid-chat.
   const [speech] = useState(() => actions.speech())
   const [phase, setPhase] = useState(speech ? 'starting' : speechApi() ? 'listening' : 'unsupported')
   const [catalog, setCatalog] = useState(null)
@@ -161,7 +160,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
   useEffect(() => {
     if (phase !== 'listening') dictation.stop()
   }, [phase])
-  // The plugin's recognizer: record one utterance, end it after a pause, transcribe it.
+  // Record one utterance, end it after a pause, then transcribe it.
   useEffect(() => {
     if (!speech || !catalog || !listen) return undefined
     const own = turn.current
@@ -261,8 +260,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
     window.speechSynthesis?.cancel()
     setPhase('paused')
   }
-  // A 'preparing' phase follows the speech Remote's own catalog until the
-  // provider is usable; the plugin-manager path navigates away instead.
+  // A 'preparing' phase follows the speech service catalog until the provider is usable.
   useEffect(() => {
     if (phase !== 'preparing' || !speech) return undefined
     let stopped = false

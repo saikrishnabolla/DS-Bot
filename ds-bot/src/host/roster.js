@@ -50,7 +50,7 @@ export function install(rt) {
 
   let bootstrapping = null
 
-  // The team folder is DS Bot's own: deleted, it is made again before a Session needs it.
+  // The team folder is Cue's own: deleted, it is made again before a Session needs it.
   async function keepTeamFolder() {
     const team = rt.teamFolder()
     if (team !== undefined) await mkdir(team, { recursive: true }).catch(error => rt.warn('ds-bot: team folder %s not made again: %s', team, error))
@@ -64,13 +64,13 @@ export function install(rt) {
     }
     const path = rt.defaultTeamFolder()
     await mkdir(path, { recursive: true })
-    const workspace = await ctx.workspaceRegistry.resolveByPath(path) ?? await ctx.workspaceRegistry.create(path, 'DS Bot')
+    const workspace = await ctx.workspaceRegistry.resolveByPath(path) ?? await ctx.workspaceRegistry.create(path, 'Cue')
     state.workspaceId = workspace.id
     await rt.save()
     return workspace.id
   }
 
-  // Under the PTC preset (DSH Desktop's default) a model may call only run_code, which
+  // Under the PTC preset (desktop app's default) a model may call only run_code, which
   // turns down the group_relay call that a group chat's Session is given. A Session
   // keeps the preset it is made with.
   async function botPreset() {
@@ -81,10 +81,10 @@ export function install(rt) {
   }
 
   // `dir` is a working folder outside the team workspace. Such a Session is made by cwd
-  // alone, so it joins no DSH workspace and the user's own project lists stay as they are —
+  // alone, so it joins no Cue workspace and the user's own project lists stay as they are —
   // unless the folder is already registered as a workspace, which it then joins (#710).
   async function createSession(title, { dir } = {}) {
-    // A Bot's tools run here too; while another dsh holds the team, a new Session would
+    // A Bot's tools run here too; while another Cue instance holds the team, a new Session would
     // belong to no saved Bot.
     const readOnly = rt.readOnly()
     if (readOnly !== undefined) throw new Error(readOnly)
@@ -185,7 +185,7 @@ export function install(rt) {
 
   async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false, section, sectionId }) {
     const cleanAvatarValue = cleanAvatar(avatar)
-    // The model is fixed at creation, so a later change of the DSH default leaves it alone.
+    // The model is fixed at creation, so a later change of the Cue default leaves it alone.
     const modelRef = model ? await rt.resolveModel(model) : pickModel ? undefined : await rt.defaultBotModel()
     // A thinking level needs a model to resolve against; with none it would be dropped
     // silently, so the create fails before a Session is made.
@@ -382,7 +382,7 @@ export function install(rt) {
       : await rt.resolveModel(patch.model)
     // What a Bot runs on changes only from its settings, after the user confirmed: every
     // conversation of the Bot starts a new part for it. A Bot without a model runs on the
-    // one it last ran on, and one that never ran runs on DS Bot's models.
+    // one it last ran on, and one that never ran runs on Cue's models.
     const engineBefore = rt.engineOf === undefined ? undefined : rt.engineOfBot(bot) ?? 'model'
     if (modelRef === null && engineBefore !== undefined && engineBefore !== 'model') throw new Error(`${bot.name} runs on a local agent and keeps a model of it`)
     const engineChanged = !!modelRef && engineBefore !== undefined && rt.engineOf(modelRef) !== engineBefore
@@ -919,7 +919,7 @@ export function install(rt) {
   // A deletion whose save fails stays in memory, and the next save writes it, so its
   // Sessions are stopped anyway: left armed, their scheduled tasks would keep running
   // with nothing in the team to show or delete them. Only a host that lost the team
-  // to another dsh keeps them, since the other host's copy still has them.
+  // to another Cue instance keeps them, since the other host's copy still has them.
   async function saveForDelete() {
     try {
       await rt.save()

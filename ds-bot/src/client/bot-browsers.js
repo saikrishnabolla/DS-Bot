@@ -1,4 +1,4 @@
-// Bot browsers in DSH Desktop and the desktop app: per Bot, a tab strip of pages. Each tab
+// Bot browsers in desktop app and the desktop app: per Bot, a tab strip of pages. Each tab
 // is one Electron webview in the Bot's own storage partition (`browser.acquire('bot:<id>')`
 // on either one's bridge — the same key always yields the same partition, so cookies and logins
 // never cross Bots while a Bot may hold several pages). Moving a webview to another
@@ -195,8 +195,7 @@ export function createBotBrowsers({ bridge, createSource, storage = globalThis.l
     if (layer?.isConnected) return layer
     layer = doc.createElement('div')
     layer.className = 'bt-browser-layer'
-    // Inline, not in BROWSER_CSS: Agent mode withdraws the Bot styles, and the
-    // webviews must stay out of the page flow then too.
+    // Inline so webviews stay out of the page flow before styles load.
     Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '41', pointerEvents: 'none' })
     doc.body.append(layer)
     return layer

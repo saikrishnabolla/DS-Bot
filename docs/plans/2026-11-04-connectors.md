@@ -12,11 +12,11 @@ OAuth 登录的顺序是定的：目录里写的客户端 → CIMD → DCR → �
 
 ## 网关
 
-凭据永远不进 mcp-client 的配置，因为 `@deepseek-ai/dsh-mcp-client` 只接受静态 headers，没有 OAuth 也没有刷新。所以每个远程连接器在插件进程里挂的是 `http://127.0.0.1:<port>/c/<id>` 加一次性的随机 nonce；网关在转发时才注入真凭据（Bearer、key header 或 key query、目录里的静态 headers），转发 `Mcp-Session-Id`、`MCP-Protocol-Version`、`Accept` 等头，回传 `Mcp-Session-Id`，SSE 原样透传，下游断开就销毁上游。上游 401 且还没回字节时：刷新一次、重试一次；并发 401 共享一次刷新；刷新轮换时写新 refresh token，写失败留旧的；`invalid_grant` 转「需要重新登录」；只读窗口不刷新、只重读密钥。非 https 的上游一律拒绝（本机回环 http 除外，给本地自定义服务器）。每个远程连接器有「Read-only」开关：打开后网关把 `tools/list` 过滤到 `readOnlyHint` 工具，写 `tools/call` 在本地拒绝（批请求整体拒掉），stdio 连接器不显示这个开关。
+凭据永远不进 mcp-client 的配置，因为 `@modelcontextprotocol/client` 只接受静态 headers，没有 OAuth 也没有刷新。所以每个远程连接器在 Cue 进程里挂的是 `http://127.0.0.1:<port>/c/<id>` 加一次性的随机 nonce；网关在转发时才注入真凭据（Bearer、key header 或 key query、目录里的静态 headers），转发 `Mcp-Session-Id`、`MCP-Protocol-Version`、`Accept` 等头，回传 `Mcp-Session-Id`，SSE 原样透传，下游断开就销毁上游。上游 401 且还没回字节时：刷新一次、重试一次；并发 401 共享一次刷新；刷新轮换时写新 refresh token，写失败留旧的；`invalid_grant` 转「需要重新登录」；只读窗口不刷新、只重读密钥。非 https 的上游一律拒绝（本机回环 http 除外，给本地自定义服务器）。每个远程连接器有「Read-only」开关：打开后网关把 `tools/list` 过滤到 `readOnlyHint` 工具，写 `tools/call` 在本地拒绝（批请求整体拒掉），stdio 连接器不显示这个开关。
 
 ## 状态与密钥
 
-密钥在 DS Bot 密钥里，首次写入 `scope: []`（不进任何 Bot shell）：GitHub 仍用 `GITHUB_TOKEN`，其他 `CONNECTOR_<ID>_TOKEN / _REFRESH / _CLIENT_SECRET / _KEY`，邮箱 `MAIL_<地址>_PASSWORD / _TOKEN / _REFRESH`。非密状态在 `state.connectors[id]`（账号、连接时间、client 元信息、token 过期、readOnly、offFor、custom）。令牌变化不触发重挂（指纹不含令牌）。
+密钥在 Cue 密钥里，首次写入 `scope: []`（不进任何 Bot shell）：GitHub 仍用 `GITHUB_TOKEN`，其他 `CONNECTOR_<ID>_TOKEN / _REFRESH / _CLIENT_SECRET / _KEY`，邮箱 `MAIL_<地址>_PASSWORD / _TOKEN / _REFRESH`。非密状态在 `state.connectors[id]`（账号、连接时间、client 元信息、token 过期、readOnly、offFor、custom）。令牌变化不触发重挂（指纹不含令牌）。
 
 ## 每个 Bot 的开关
 
@@ -32,12 +32,12 @@ OAuth 登录的顺序是定的：目录里写的客户端 → CIMD → DCR → �
 
 ## 导入与自定义
 
-`connector-import-scan` 只读扫 Claude Desktop、Cursor、VS Code 的 MCP 配置（不改源文件），返回名称和 env 名；`connector-import` 把 env 值移进 DS Bot 密钥（`CONNECTOR_<ID>_<ENV>`），配置里留 `$DSH_SECRET_` 引用。自定义 id 从名字派生，唯一、≤32 字符、不占目录 id；能力名校验同样拒绝连接器 id。
+`connector-import-scan` 只读扫 Claude Desktop、Cursor、VS Code 的 MCP 配置（不改源文件），返回名称和 env 名；`connector-import` 把 env 值移进 Cue 密钥（`CONNECTOR_<ID>_<ENV>`），配置里留 `$CUE_SECRET_` 引用。自定义 id 从名字派生，唯一、≤32 字符、不占目录 id；能力名校验同样拒绝连接器 id。
 
 ## 不做
 
 - 不加 Google 的 Gmail/Drive/Calendar MCP（开发者预览条款），不引入任何厂商 logo。
-- 不把凭据放进 Bot shell 或 mcp-client 配置；不改 DSH。
+- 不把凭据放进 Bot shell 或 mcp-client 配置。
 
 ## 已知限制
 

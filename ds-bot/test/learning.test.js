@@ -453,7 +453,7 @@ test('a changed AGENTS proposal stays open, can be declined, and is included in 
   assert.match(JSON.stringify(runtime.requests.at(-1)), /Keep the report concise/)
 })
 
-test('folders without a project marker, DSH data folders, and agentsMd:false are not reviewed', async t => {
+test('folders without a project marker, Cue data folders, and agentsMd:false are not reviewed', async t => {
   const cases = [
     { folder: projectFolder(t, { git: false, agents: null }), config: {} },
     { folder: projectFolder(t, { agents: `# ${'x'.repeat(16_000)}` }), config: {} },

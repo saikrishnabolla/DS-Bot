@@ -18,7 +18,7 @@ test('withLogTail attaches the stderr tail so the real cause reaches the box', (
 
 test('withLogTail redacts launch tokens and skips an empty tail', () => {
   assert.equal(
-    host.withLogTail('The DS Bot Host stopped (exit 1)', 'launch http://127.0.0.1:43117/?token=abc123 other'),
-    'The DS Bot Host stopped (exit 1):\nlaunch http://127.0.0.1:43117/?token=<hidden> other')
-  assert.equal(host.withLogTail('The DS Bot Host stopped (exit 0)', '   \n'), 'The DS Bot Host stopped (exit 0)')
+    host.withLogTail('The Cue Host stopped (exit 1)', 'launch http://127.0.0.1:43117/?token=abc123 other'),
+    'The Cue Host stopped (exit 1):\nlaunch http://127.0.0.1:43117/?token=<hidden> other')
+  assert.equal(host.withLogTail('The Cue Host stopped (exit 0)', '   \n'), 'The Cue Host stopped (exit 0)')
 })

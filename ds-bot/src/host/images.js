@@ -53,7 +53,7 @@ export function install(rt) {
   }
 
   // The configured `ocrModel` first, then served models that declare image input, the
-  // DSH default among them first. A provider with no key set is skipped.
+  // Cue default among them first. A provider with no key set is skipped.
   async function ocrRoute() {
     const models = (await rt.catalog()).filter(entry => entry.needsKey !== true && rt.isLocalAgentRef?.(entry.ref) !== true)
     const served = new Set(models.map(entry => entry.ref))

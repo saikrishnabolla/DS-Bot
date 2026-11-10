@@ -185,7 +185,7 @@ export function install(rt) {
   }
 
   const abandoned = botId => disposing || dropped.has(botId) || rt.botOf(botId) === undefined
-  const stopError = (botId) => new Error(disposing && !dropped.has(botId) && rt.botOf(botId) !== undefined ? 'DS Bot is stopping.' : 'Unknown Bot')
+  const stopError = (botId) => new Error(disposing && !dropped.has(botId) && rt.botOf(botId) !== undefined ? 'Cue is stopping.' : 'Unknown Bot')
 
   // Wait until every targeted flight has left. A call still inside resolveAgent
   // has no `done` yet; yielding lets it notice disposal and drop the slot.

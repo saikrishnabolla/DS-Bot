@@ -1,5 +1,4 @@
-// The start window (docs/plans/2026-10-26-start-window.md §1, §8, §11; windows-onboarding §3): the
-// app's own small window that shows start/start.html while the engine boots. It holds the
+// The app's own small window shows start/start.html while the engine boots. It holds the
 // start's state and sends the page the whole of it on every change; at the end it grows into the
 // team window's rect, and the hidden team window shows on the same rect. The rect maths, the
 // growth, the snapshot and the checks are plain functions, so the tests run without Electron.
@@ -17,12 +16,7 @@ export const SHORT_START_SIZE = { width: 720, height: 500 }
 const SHORT_WORK_AREA = 588
 export const MAIN_SIZE = { width: 1320, height: 860 }
 export const PHASES = ['data', 'engine', 'team']
-// A start that copies a team from DSH gets a stage of its own for the copy once the copy runs
-// (§6): the ring has three arcs while the import card asks, and goes back to three when the copy
-// stops or the start goes on without it.
-export const IMPORT_PHASES = ['data', 'import', 'engine', 'team']
-const COPY_CARDS = ['copying', 'importFailed']
-export const phasesOf = state => (state.done.includes('import') || COPY_CARDS.includes(state.card?.kind) ? IMPORT_PHASES : PHASES)
+export const phasesOf = () => PHASES
 export const START_KINDS = ['first', 'later', 'moving']
 export const WATCHDOG_MS = 180_000
 export const TEAM_VIEW_MS = 20_000
@@ -61,9 +55,6 @@ const ACT_VIEWS = {
   // (「会放在…」, a place that cannot be used).
   pick: ['boot', 'card', 'watchdog'],
   answer: ['card'],
-  // The import card's model and options, and the copying card's stop (windows-onboarding §4).
-  importModel: ['card'],
-  importOption: ['card'],
   // The failure page's update banner: 〔下载〕 or 〔重试〕 on it, and 「手动下载」.
   installUpdate: ['failed'],
   manualDownload: ['failed'],
@@ -196,7 +187,7 @@ const REASONS = [
   ['permission', /\b(?:EACCES|EPERM)\b|permission denied|operation not permitted|access is denied/iu],
   ['space', /\b(?:ENOSPC|EDQUOT)\b|no space left|not enough space|disk (?:is )?full/iu],
   ['files', /\b(?:MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND)\b|cannot find (?:module|package)|could not load its own bundles|not a valid Win32 application|0xC0000135|3221225781/iu],
-  ['engine', /DS Bot Host stopped|engine's web server/iu],
+  ['engine', /Cue Host stopped|engine's web server/iu],
 ]
 
 // Only a missing file of the program's own says that the install is incomplete: a data folder
@@ -229,12 +220,9 @@ export function mainBotName(state) {
   return typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined
 }
 
-// What the start knows about the team it opens. The ring page no longer shows it (no greeting or
-// hint lines since 2026-10-30); the snapshot keeps it for now. previewNotice: DSH shows its
-// preview notice when the Session is ready and the main view has no non-empty Session, which a
-// data folder without a team always has.
-export function explainOf({ offered = false, team } = {}) {
-  if (offered) return { mode: 'import', nextStep: false, previewNotice: false }
+// What the start knows about the team it opens. The ring page no longer shows it, but the
+// snapshot keeps it for reinstall and first-run transitions.
+export function explainOf({ team } = {}) {
   if (team !== undefined) {
     const name = mainBotName(team.team)
     return { mode: 'reinstall', bots: team.bots, groups: team.rooms, ...(name === undefined ? {} : { name }), nextStep: false, previewNotice: false }
@@ -272,13 +260,11 @@ export function startSnapshot(state, now) {
   return snapshot
 }
 
-export const detailsText = ({ version, platform, arch, reason, lines }) => [`DS Bot ${version} (${platform} ${arch})`, `reason: ${reason}`, '', ...lines].join('\n')
+export const detailsText = ({ version, platform, arch, reason, lines }) => [`Cue ${version} (${platform} ${arch})`, `reason: ${reason}`, '', ...lines].join('\n')
 
-const note = message => { console.log(`DS Bot: start window: ${message}`) }
+const note = message => { console.log(`Cue: start window: ${message}`) }
 // The page sends a button's detail as { value }; anything else counts as none.
 const valueOf = payload => (payload !== null && typeof payload === 'object' && typeof payload.value === 'string' ? payload.value.slice(0, 40) : undefined)
-// An option of the import card: its name and whether it is ticked.
-const optionOf = payload => (payload !== null && typeof payload === 'object' && typeof payload.option === 'string' ? { option: payload.option.slice(0, 40), value: payload.value === true } : undefined)
 
 export class StartWindow {
   #o
@@ -320,14 +306,12 @@ export class StartWindow {
    *   onPick?: (value?: string) => void, onAnswer?: (value?: string) => void,
    *   saveAs?: (win: any, name: string) => Promise<string | undefined>,
    *   onUpdate?: (name: 'installUpdate' | 'manualDownload') => void,
-   *   onImport?: (name: 'importModel' | 'importOption', value: unknown) => void,
    * }} options `lang` is asked at each open; `program` names the folders of the app's own files;
    *   `onClose` runs when the user closes the start window before the hand-off; `onPick` when
    *   the page asks for the folder picker ('changePlace' from its place line, nothing from a
    *   card's 〔重新选〕; on a later start the line's button moves the data), `onAnswer` with a
-   *   card's answer ('use' for 〔继续〕 on 「会放在…」), `onUpdate` with a button of the failure
-   *   page's update banner, `onImport` with the import card's model and options and the copying
-   *   card's stop.
+   *   card's answer ('use' for 〔继续〕 on 「会放在…」), and `onUpdate` with a button of the failure
+   *   page's update banner.
    */
   constructor(options) {
     this.#o = options
@@ -360,7 +344,7 @@ export class StartWindow {
     const win = new BrowserWindow({
       ...rect,
       useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, minimizable: true,
-      show: false, title: 'DS Bot', icon: this.#o.icon,
+      show: false, title: 'Cue', icon: this.#o.icon,
       backgroundColor: material ? '#00000000' : colors.main,
       // Frameless with the system window controls over the page's empty 40 px band.
       ...frameOptions(process.platform, material, { color: material ? '#00000000' : colors.main, symbolColor: colors.ink }),
@@ -483,8 +467,7 @@ export class StartWindow {
   /**
    * A card on the sheet while the start boots or the data moves (the clock stands still), or
    * none: back to the boot or the move. The cards of a place (「会放在…」, a place that cannot be
-   * used, a later start's 「搬到这个文件夹？」), of the first run's import and of a move that did
-   * not go through.
+   * used, a later start's 「搬到这个文件夹？」), and of a move that did not go through.
    * @param {{ kind: string, [field: string]: unknown } | undefined} card
    * @returns {boolean} whether the window shows it: not on the failure page or at the hand-off
    */
@@ -562,9 +545,9 @@ export class StartWindow {
     this.#viewLate = false
   }
 
-  /** The data folder, the import or the engine is ready; the engine also again after a retry. */
+  /** The data folder or engine is ready; the engine also again after a retry. */
   done(phase) {
-    if (!this.#open() || !['data', 'import', 'engine'].includes(phase)) return
+    if (!this.#open() || !['data', 'engine'].includes(phase)) return
     const again = this.#state.done.includes(phase)
     if (again && (phase !== 'engine' || this.#engineUp)) return
     if (phase === 'engine') this.#engineUp = true
@@ -572,16 +555,6 @@ export class StartWindow {
     this.#phaseAt = Date.now()
     // The engine came up while the 180 s question was open: the question goes.
     this.#update({ ...(again ? {} : { done: [...this.#state.done, phase] }), ...(this.#state.view === 'watchdog' ? { view: 'boot' } : {}) })
-  }
-
-  /**
-   * The engine that warmed up while the import card waited has stopped for the copy: its stage
-   * is open again until the engine of the copied team is up.
-   */
-  engineDown() {
-    if (!this.#open() || !this.#state.done.includes('engine')) return
-    this.#engineUp = false
-    this.#update({ done: this.#state.done.filter(phase => phase !== 'engine') })
   }
 
   /** The engine's page started loading in the hidden team window: it has 20 s to call ready(). */
@@ -781,8 +754,6 @@ export class StartWindow {
     else if (name === 'pick') this.#o.onPick?.(valueOf(payload))
     else if (name === 'answer') this.#o.onAnswer?.(valueOf(payload))
     else if (name === 'installUpdate' || name === 'manualDownload') this.#o.onUpdate?.(name)
-    else if (name === 'importOption') this.#o.onImport?.(name, optionOf(payload))
-    else if (name === 'importModel') this.#o.onImport?.(name, valueOf(payload))
     return true
   }
 
@@ -826,7 +797,7 @@ export class StartWindow {
     const reason = this.#state.failure?.reason ?? 'other'
     const text = detailsText({ version, platform: process.platform, arch: process.arch, reason, lines: this.#o.log.tail(SAVED_LINES) })
     try {
-      const filePath = await saveAs(this.#window, 'DS-Bot-log.txt')
+      const filePath = await saveAs(this.#window, 'Cue-log.txt')
       if (!filePath) return
       await writeFile(filePath, text, 'utf8')
       note(`the log was saved to ${filePath}`)

@@ -6,9 +6,9 @@ import { test } from 'node:test'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
-// DSH asks for an explicit range before a request that would not fit, and a model switch
-// is one of those. A Bot conversation is condensed by DS Bot itself, so the range goes
-// through DS Bot's checkpoint instead of being refused: a refusal there ended the switch
+// Cue asks for an explicit range before a request that would not fit, and a model switch
+// is one of those. A Bot conversation is condensed by Cue itself, so the range goes
+// through Cue's checkpoint instead of being refused: a refusal there ended the switch
 // with MODEL_SWITCH_COMPACTION_FAILED and the Bot stayed on the model it had.
 
 const TEAM = {
@@ -35,7 +35,7 @@ function start({ summarize = true, outlet = false, stream } = {}) {
     async compactIfNeeded() { return null },
     async compactNow(target, signal, commandId) { bench.nows.push([target?.session?.id, commandId]) },
     // `outlet` is compaction-basic's own shape: the range is condensed through the
-    // engine's summarize, which is the hook DS Bot wraps.
+    // engine's summarize, which is the hook Cue wraps.
     async compactRegion(start, end, agent, signal) {
       bench.regions.push([start, end, agent?.session?.id])
       if (outlet) bench.checkpoints.push(await this.summarize({ messages: [] }, agent, signal))
@@ -88,7 +88,7 @@ test('a model switch compacts a Bot conversation instead of refusing the range',
   t.after(stop)
   adoptFor('b2')
   const signal = new AbortController().signal
-  // DSH's model-switch pressure calls exactly this entry point.
+  // Cue's model-switch pressure calls exactly this entry point.
   await compaction.compactRegion(3, 9, agentOf('b2'), signal)
   assert.deepEqual(bench.regions, [[3, 9, 'b2']])
 })

@@ -1,12 +1,12 @@
 // The Agent Client Protocol engine: one child process per route, ACP over
-// stdio. A process multiplexes sessions: each DS Bot Session maps to one ACP
+// stdio. A process multiplexes sessions: each Cue Session maps to one ACP
 // session, created or resumed with our loopback MCP server attached.
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
 import { cleanEnv, spawnAgent } from './discover.js'
 import { acpMode } from './engines.js'
 
 const CLIENT = { name: 'ds-bot', version: '1' }
-// DS Bot's loopback MCP server, which carries the Bot's team tools.
+// Cue's loopback MCP server, which carries the Bot's team tools.
 const MCP_SERVER = 'dsbot'
 
 // Events a driver reports, normalized for the adapter:
@@ -62,14 +62,14 @@ export class AcpEngine {
     return peer
   }
 
-  sessionFor(dshSessionId) {
-    let session = this.sessions.get(dshSessionId)
+  sessionFor(cueSessionId) {
+    let session = this.sessions.get(cueSessionId)
     // A session whose process exited keeps its queue and, with it, the pump
     // still waiting there: a reopened session needs a fresh one.
     if (session === undefined || session.dead) {
       const queue = new EventQueue()
-      session = { dshSessionId, acpSessionId: undefined, dead: false, modes: [], toolCalls: new Map(), push: event => queue.push(event), next: () => queue.next() }
-      this.sessions.set(dshSessionId, session)
+      session = { cueSessionId, acpSessionId: undefined, dead: false, modes: [], toolCalls: new Map(), push: event => queue.push(event), next: () => queue.next() }
+      this.sessions.set(cueSessionId, session)
     }
     return session
   }
@@ -112,7 +112,7 @@ export class AcpEngine {
       if (session === undefined) return Promise.reject({ code: -32603, message: 'unknown session' })
       const options = (params?.options ?? []).map(option => ({ optionId: option.optionId, name: option.name, kind: option.kind }))
       const call = callOf(session, params?.toolCall)
-      // Cursor and Devin ask before every MCP tool call. A call to DS Bot's own server
+      // Cursor and Devin ask before every MCP tool call. A call to Cue's own server
       // is approved once here: toolsFor() already narrowed what the Bot may call.
       // Other tools, and an agent that offers no one-time allow, still ask.
       const once = ownToolCall(call) ? options.find(option => option.kind === 'allow_once') : undefined
@@ -136,10 +136,10 @@ export class AcpEngine {
     return Promise.reject({ code: -32601, message: `method not found: ${method}` })
   }
 
-  // A new or resumed ACP session for one DS Bot Session.
-  async open(dshSessionId, { cwd, mcp, resumeId, preset, model }) {
+  // A new or resumed ACP session for one Cue Session.
+  async open(cueSessionId, { cwd, mcp, resumeId, preset, model }) {
     const peer = await this.ensure()
-    const session = this.sessionFor(dshSessionId)
+    const session = this.sessionFor(cueSessionId)
     const mcpServers = serversFor(mcp)
     if (mcp !== undefined && this.caps.mcpHttp === false) throw Object.assign(new Error(`${this.engine.name} cannot use HTTP MCP servers; the team tools cannot reach it`), { code: 'NOT_SUPPORTED' })
     const params = { cwd, mcpServers }
@@ -200,8 +200,8 @@ export class AcpEngine {
 
   // The adapter stopped reading this session: a later open starts a new queue, or
   // the pump that waits on this one would swallow its first event.
-  forget(dshSessionId) {
-    this.sessions.delete(dshSessionId)
+  forget(cueSessionId) {
+    this.sessions.delete(cueSessionId)
   }
 
   async close() {

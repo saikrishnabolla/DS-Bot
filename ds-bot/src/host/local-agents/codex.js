@@ -1,5 +1,5 @@
 // The Codex app-server engine: `codex app-server --listen stdio://`, one
-// JSON-RPC process per route that multiplexes threads. DS Bot Sessions map to
+// JSON-RPC process per route that multiplexes threads. Cue Sessions map to
 // threads; turns stream item notifications back.
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
 import { cleanEnv, spawnAgent } from './discover.js'
@@ -17,14 +17,14 @@ export class CodexEngine {
     this.threads = new Map()
   }
 
-  threadFor(dshSessionId) {
-    let thread = this.threads.get(dshSessionId)
+  threadFor(cueSessionId) {
+    let thread = this.threads.get(cueSessionId)
     // A thread whose process exited keeps its queue and, with it, the pump
     // still waiting there: a resumed thread needs a fresh one.
     if (thread === undefined || thread.dead) {
       const queue = new EventQueue()
-      thread = { dshSessionId, threadId: undefined, dead: false, push: event => queue.push(event), next: () => queue.next() }
-      this.threads.set(dshSessionId, thread)
+      thread = { cueSessionId, threadId: undefined, dead: false, push: event => queue.push(event), next: () => queue.next() }
+      this.threads.set(cueSessionId, thread)
     }
     return thread
   }
@@ -105,18 +105,18 @@ export class CodexEngine {
       })
     }
     // Codex asks before every MCP tool call under `on-request`. A refusal reads as
-    // "user rejected MCP tool call", so DS Bot's own loopback server is approved
+    // "user rejected MCP tool call", so Cue's own loopback server is approved
     // here: toolsFor() already narrowed what the Bot may call. Other servers and
-    // real form elicitations keep the refusal; they are not DS Bot's to approve.
+    // real form elicitations keep the refusal; they are not Cue's to approve.
     if (method === 'mcpServer/elicitation/request' && params?.serverName === MCP_SERVER && params?._meta?.codex_approval_kind === 'mcp_tool_call') {
       return Promise.resolve({ action: 'accept', content: null, _meta: null })
     }
     return Promise.reject({ code: -32601, message: `method not found: ${method}` })
   }
 
-  async open(dshSessionId, { cwd, mcp, resumeId, mode, instructions, model }) {
+  async open(cueSessionId, { cwd, mcp, resumeId, mode, instructions, model }) {
     const peer = await this.ensure()
-    const thread = this.threadFor(dshSessionId)
+    const thread = this.threadFor(cueSessionId)
     if (resumeId !== undefined) thread.threadId = resumeId
     // Codex 0.166 reads `ThreadStartParams` from the top level and takes the MCP
     // servers from `config`; it drops unknown keys without a word. So the fields keep
@@ -172,8 +172,8 @@ export class CodexEngine {
 
   // The adapter stopped reading this thread: a later open starts a new queue, or
   // the pump that waits on this one would swallow its first event.
-  forget(dshSessionId) {
-    this.threads.delete(dshSessionId)
+  forget(cueSessionId) {
+    this.threads.delete(cueSessionId)
   }
 
   async listModels() {
@@ -185,7 +185,7 @@ export class CodexEngine {
         name: String(entry.displayName ?? entry.name ?? entry.id ?? entry.model),
       }
       // The app-server advertises the levels each model takes. Its default is
-      // left out on purpose: DSH would send it on every turn, and the level the
+      // left out on purpose: Cue would send it on every turn, and the level the
       // user set in their Codex config (model_reasoning_effort) would stop
       // applying. A Bot without a level of its own keeps the CLI's.
       const efforts = (entry.supportedReasoningEfforts ?? []).map(option => ({

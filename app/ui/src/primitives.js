@@ -1,5 +1,4 @@
-// The window's own versions of the DSH interface primitives the Bot views draw with (see
-// ds-bot/src/client/dsh-primitives.js and vite.config.js).
+// The window's rich versions of the shared Cue interface primitives.
 import { createElement as h, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -29,8 +28,7 @@ export const IconUserOutlineMedium = icon('M10 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-
 export const IconDownloadOutlineRegular = icon('M10 3v9m-3-3 3 3 3-3M4 16h12')
 export const IconLoadingOutlineRegular = icon('M10 3a7 7 0 1 1-6.1 3.6')
 
-// writeClipboard in the plugin is DSH's (navigator.clipboard with an execCommand
-// fallback off-HTTPS); the window keeps the same contract.
+// Keep an execCommand fallback for contexts without navigator.clipboard.
 export const writeClipboard = text => (navigator.clipboard === undefined
   ? Promise.resolve(document.execCommand('copy', false, text))
   : navigator.clipboard.writeText(text).then(() => true, () => false))
@@ -100,7 +98,7 @@ const elements = labels => ({
   pre: ({ children }) => h(CodeBlock, { labels }, children),
 })
 
-// The class keeps the `_markdown` stem that the Bot views' styles give DSH's Markdown.
+// The class keeps the `_markdown` stem used by the Bot view styles.
 export function MarkdownText({ text, labels, variant }) {
   // New element types on every render would remount each code block as a reply streams in.
   const components = useMemo(() => elements(labels), [labels?.code?.copyLabel, labels?.code?.copiedLabel])

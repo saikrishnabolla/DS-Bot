@@ -138,7 +138,7 @@ function start(t, home) {
   return call
 }
 
-test('while another dsh holds the team, the channel reads it, refuses changes, then takes over', async (t) => {
+test('while another Cue instance holds the team, the channel reads it, refuses changes, then takes over', async (t) => {
   const home = tempHome(t)
   writeFileSync(join(home, 'state.json'), JSON.stringify(TEAM))
   // The test runner's parent process: alive, on this host, and not this process.
@@ -147,7 +147,7 @@ test('while another dsh holds the team, the channel reads it, refuses changes, t
 
   const view = (await call('state', {})).value
   assert.deepEqual(view.bots.map(bot => bot.name), ['Chief'])
-  assert.match(view.readOnly, new RegExp(`open in another dsh \\(Web or Desktop, pid ${process.ppid} on `))
+  assert.match(view.readOnly, new RegExp(`open in another Cue instance \\(pid ${process.ppid} on `))
   const refused = await call('set-prefs', { theme: 'dark' })
   assert.equal(refused.error.code, 'bot/read-only')
   assert.equal(JSON.parse(readFileSync(join(home, 'state.json'), 'utf8')).prefs, undefined)
@@ -184,7 +184,7 @@ test('a reading host follows the other host\'s keys, never writes them, and keep
   assert.deepEqual(await names(), ['FIRST_KEY'])
   assert.equal((await call('secret-set', { name: 'MINE', value: 'mine-value-1' })).error.code, 'bot/read-only')
   const asked = await rt.teamTools.find(d => d.name === 'request_secret').execute({ name: 'MINE', purpose: 'x' }, { agent: { id: 'm1' } })
-  assert.match(asked, /^No card can be shown now\. The Bot team in .* is open in another dsh/)
+  assert.match(asked, /^No card can be shown now\. The Bot team in .* is open in another Cue instance/)
   assert.deepEqual((await call('state', {})).value.secretRequests, {})
 
   // The other host saves a second key; this one follows instead of keeping its first copy.

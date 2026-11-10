@@ -164,13 +164,40 @@ test('uploads require authentication and the upload header and have an independe
   assert.equal(uploads.length, 1)
 })
 
-test('Host and Origin headers must name the bound loopback server', async t => {
+test('approved client plugin modules are authenticated, typed, immutable, and path-bounded', async t => {
+  const calls = []
+  const fingerprint = 'a'.repeat(64)
+  const { server } = await fixture(t, {
+    pluginAsset: async input => {
+      calls.push(input)
+      if (input.fingerprint !== fingerprint || input.path !== 'client/index.mjs') throw new Error('not found')
+      return { path: input.path, data: Buffer.from('export default () => {}') }
+    },
+  })
+  const route = `${server.origin}/api/bot/plugin/${fingerprint}/client/index.mjs`
+  assert.equal((await fetch(route)).status, 401)
+
+  const cookie = await authenticate(server)
+  const response = await fetch(route, { headers: { cookie } })
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'text/javascript; charset=utf-8')
+  assert.equal(response.headers.get('cache-control'), 'private, max-age=31536000, immutable')
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(await response.text(), 'export default () => {}')
+  assert.deepEqual(calls, [{ fingerprint, path: 'client/index.mjs' }])
+
+  const traversal = await fetch(`${server.origin}/api/bot/plugin/${fingerprint}/%2e%2e/index.mjs`, { headers: { cookie } })
+  assert.equal(traversal.status, 404)
+  assert.equal(calls.length, 1)
+})
+
+test('Host and Origin headers must name the configured server', async t => {
   await assert.rejects(startOwnedServer({
     uiDir: tmpdir(),
     host: '0.0.0.0',
     launchToken,
     dispatch: async () => ({ ok: true }),
-  }), /loopback/)
+  }), /publicOrigin/)
   const { server, calls } = await fixture(t)
   const cookie = await authenticate(server)
   const badOrigin = await fetch(`${server.origin}/api/bot`, {

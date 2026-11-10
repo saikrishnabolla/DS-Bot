@@ -14,7 +14,7 @@ export const presetOf = (address) => {
 
 // 163 and 126 answer "Unsafe Login" without the IMAP ID command (RFC 2971);
 // sending it for every server that supports ID is harmless elsewhere.
-export const IMAP_ID = { name: 'ds-bot', version: '0.1', vendor: 'DS Bot' }
+export const IMAP_ID = { name: 'ds-bot', version: '0.1', vendor: 'Cue' }
 
 export const mailSecretName = (address, suffix) => {
   const safe = String(address ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '_')

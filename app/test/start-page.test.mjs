@@ -56,32 +56,28 @@ test('the page binds window.dsBotStart through onState and act only', () => {
 
 // The acts the main process must accept from the start window (its allowlist).
 test('the page sends only the acts of the start window', () => {
-  const local = new Set(['toggleDetails', 'toggleMore', 'toggleModels'])
+  const local = new Set(['toggleDetails'])
   const sent = new Set([
     ...[...html.matchAll(/data-act="(\w+)"/gu)].map(match => match[1]),
     ...[...code['start.js'].matchAll(/\bact: '(\w+)'|\bact\('(\w+)'/gu)].map(match => match[1] ?? match[2]),
     ...[...code['whale.js'].matchAll(/\bact\('(\w+)'\)/gu)].map(match => match[1]),
   ].filter(name => !local.has(name)))
-  assert.deepEqual([...sent].sort(), ['answer', 'copyDetails', 'freshStart', 'handoffDone', 'handoffShow', 'importModel', 'importOption', 'installUpdate', 'manualDownload', 'painted', 'pick', 'reloadView', 'retry', 'saveLog', 'wait'])
+  assert.deepEqual([...sent].sort(), ['answer', 'copyDetails', 'freshStart', 'handoffDone', 'handoffShow', 'installUpdate', 'manualDownload', 'painted', 'pick', 'reloadView', 'retry', 'saveLog', 'wait'])
   // Every act the main process takes is one that the page sends, under the same name.
   for (const name of START_ACTS) assert.ok(sent.has(name), `the main process takes ${name}, which the page never sends`)
 })
 
 // The progress is a ring of arcs round the whale, one per stage: radius 106 round the centre of
 // a 220 box, from the top, clockwise, 10 degrees apart, with one circle that closes the ring at the
-// hand-off. Three arcs of 120 degrees; a first start that copies a team has a fourth stage, the
-// import, and four arcs of 90 degrees (whale.js arcPath draws them again). The rings that the
-// whale left at its stops and the elapsed clock are gone.
-test('the start page draws the progress as a ring of three or four arcs and a closing circle', () => {
+// hand-off. The rings that the whale left at its stops and the elapsed clock are gone.
+test('the start page draws the progress as a ring of three arcs and a closing circle', () => {
   const arcs = [...html.matchAll(/<g class="arc" data-phase="(\w+)" data-state="pending">(.*?)<\/g>/gu)]
-  assert.deepEqual(arcs.map(match => match[1]), ['data', 'engine', 'team', 'import'])
+  assert.deepEqual(arcs.map(match => match[1]), ['data', 'engine', 'team'])
   const point = (deg) => {
     const a = (deg * Math.PI) / 180
     return [110 + 106 * Math.cos(a), 110 + 106 * Math.sin(a)]
   }
-  // The import's arc is the second of four; it is drawn that way from the start, and shows only
-  // on a ring of four (start.css .ring[data-n]).
-  const layout = [[0, 3], [1, 3], [2, 3], [1, 4]]
+  const layout = [[0, 3], [1, 3], [2, 3]]
   arcs.forEach(([, , arc], k) => {
     const [at, n] = layout[k]
     const span = 360 / n
@@ -95,7 +91,6 @@ test('the start page draws the progress as a ring of three or four arcs and a cl
     assert.ok(near([x0, y0], point(-90 + at * span + 5)), `arc ${String(k)} starts elsewhere`)
     assert.ok(near([x1, y1], point(-90 + (at + 1) * span - 5)), `arc ${String(k)} ends elsewhere`)
   })
-  assert.match(read('start.css'), /\.ring:not\(\[data-n="4"\]\) \.arc\[data-phase=import\]\{display:none\}/u)
   // The director draws the same arcs.
   const source = code['whale.js']
   const arcD = source.match(/^export function arcD\(from, to\) \{$[\s\S]*?^\}$/mu)[0].replace('export ', '')
@@ -103,9 +98,7 @@ test('the start page draws the progress as a ring of three or four arcs and a cl
   const arcPath = new Function(`${arcD}\n${arcPathOf}\nreturn arcPath`)()
   assert.equal(arcPath(0, 3), arcs[0][2].match(/d="([^"]+)"/u)[1])
   assert.equal(arcPath(2, 3), arcs[2][2].match(/d="([^"]+)"/u)[1])
-  assert.equal(arcPath(1, 4), arcs[3][2].match(/d="([^"]+)"/u)[1])
-  // The hidden stage list has the import's stage too, shown only on such a start.
-  assert.match(html, /<li class="station" data-phase="data"[^>]*>.*\r?\n<li class="station" data-phase="import" data-state="pending" hidden>.*\r?\n<li class="station" data-phase="engine"/u)
+  assert.match(html, /<li class="station" data-phase="data"[^>]*>.*\r?\n<li class="station" data-phase="engine"/u)
   assert.equal(html.match(/<circle class="ring-full" cx="110" cy="110" r="106" pathLength="100" transform="rotate\(-90 110 110\)"\/>/gu)?.length, 1)
   // The ring, the water, the whale and its hit box move as one block when a card comes.
   assert.match(html, /<div class="pond">\r?\n<svg class="ring"[\s\S]*?<div class="water"[\s\S]*?<div class="lane">[\s\S]*?<span class="spout"><svg class="plume"[^>]*\shidden>[\s\S]*?<div class="whale-hit"[\s\S]*?<div class="fx" aria-hidden="true"><span class="ripple"><\/span><\/div>\r?\n<\/div>/u)
@@ -147,27 +140,17 @@ test('an empty or hidden arc leaves no dot: no dash touches its path', () => {
   for (const at of run) assert.equal(touches(dashes(glow), at), false, `the glow touches its arc at ${String(at)}`)
   const draw = Number(css.match(/@keyframes bt-ring-draw\{from\{stroke-dashoffset:(-?[\d.]+)\}\}/u)[1])
   assert.equal(touches(dashes(base), draw), false, 'the ring touches its arcs before it draws in')
-  // The import's arc fills with the copy (--f from 0 to 1): empty at 0, whole at 1.
-  const share = css.match(/\.arc\[data-phase=import\]:is\(\[data-state=active\],\[data-state=failed\]\) \.arc-fill\{stroke-dashoffset:calc\(([\d.]+) - var\(--f,0\) \* ([\d.]+)\)/u).slice(1).map(Number)
-  assert.equal(touches(dashes(fill), share[0]), false, 'an empty import arc touches its arc')
-  assert.equal(share[0] - share[1], 0, 'a full import arc is not whole')
   // Shown, they cover the arc.
   assert.equal(touches(dashes(fill), 0), true)
   assert.equal(touches(dashes(base), offsetOf(base)), true)
 })
 
-// A stage done while nobody could see it still gets its turn: the data folder, usually done before
-// the page has painted, and the engine, which warms up while the import card waits (or comes up
-// while the copy runs). Its arc turns active, its prop in view, and holds for HOLD before it
-// fills; a stage seen running fills at once. While the import card waits, the ring holds after
-// the first arc.
-test('every stage is seen active before it fills, even one done before the page painted or while a card waited', () => {
+// A stage done while nobody could see it still gets its turn before it fills.
+test('every stage is seen active before it fills', () => {
   const whale = code['whale.js']
   const legs = whale.slice(whale.indexOf('async function runLegs()'), whale.indexOf('function failStation()'))
   assert.match(legs, /while \(D\.at < want\.station && want\.view !== 'handoff'\) \{[\s\S]*?if \(!resume && !failure\(\) && stationEl\(i\)\.dataset\.state === 'pending'\) \{\s*clearTimeout\(activeTimer\)\s*showActive\(i\)/u)
   assert.doesNotMatch(legs, /if \(!ran\) \{/u, 'only the first stage gets its turn')
-  assert.match(whale, /if \(holding\(\)\) station = Math\.min\(station, 1\)/u)
-  assert.match(whale, /\(holding\(\) && i >= 1\)\) return/u)
   // The team's arc, when the team view was ready before it turned active: at the hand-off of a
   // first start, inside the main process's 2.5 s fallback.
   const handoff = whale.slice(whale.indexOf('async function handoff()'), whale.indexOf('root.dataset.ring = \'closed\''))
@@ -205,7 +188,7 @@ test('the footer is the place line alone, centred with a grey button, on first a
 })
 
 // A move that does not go through says why on the moving page (start-window §5): a place that
-// cannot be used after all, another DSH on the data, a copy that failed. Each variant shows its own
+// cannot be used after all, another Cue on the data, a copy that failed. Each variant shows its own
 // parts only; 〔用原来的位置启动〕 is on all three, 〔重试〕 and the details only after a failed copy.
 // start-window §7: a recovery card says what happened and what to do, and folds out the log.
 const cardOf = kind => html.match(new RegExp(`<section class="card" data-kind="${kind}" hidden>.*?</section>`, 'u'))?.[0] ?? ''
@@ -229,13 +212,6 @@ test('the team view that did not load says what happened and what to do, and fol
   recovers(card, 'viewFailed')
 })
 
-test('a failed copy says what happened and what to do, retries or starts without the team, and folds out the log', () => {
-  const card = cardOf('importFailed')
-  assert.match(card, /<p class="lead" data-t="card\.importFailed\.lead"><\/p><p class="small do" data-t="card\.importFailed\.do"><\/p>/u)
-  assert.match(card, /data-look="primary" data-act="answer" data-detail="retry".*?data-act="answer" data-detail="startWithout"/u)
-  recovers(card, 'importFailed')
-})
-
 test('a move that does not go through has one card with three variants', () => {
   const card = html.match(/<section class="card" data-kind="moveFailed" hidden>.*?<\/section>/u)?.[0]
   assert.ok(card, 'the moveFailed card is missing')
@@ -246,16 +222,20 @@ test('a move that does not go through has one card with three variants', () => {
   assert.match(code['start.js'], /if \(name === 'moveFailed'\) el\.querySelector\('\[data-old\]'\)\.dataset\.look = s\.card\?\.why === 'copy' \? 'soft' : 'primary'/u)
 })
 
-// docs/plans/2026-10-29-start-copy.md §2: the first part of a key says where the line is.
+// The first part of a key says where the line is.
 const LAYERS = ['voice', 'say', 'hint', 'card', 'reason', 'btn', 'note', 'foot', 'status', 'dialog', 'picker']
 const layerOf = key => key.split('.')[0]
 // {name} and {name|one|many} (an English count) both name one placeholder.
 const PLACEHOLDER = /\{(\w+)(?:\|[^}]*)?\}/gu
 
-test('zh and en carry the same keys and the same placeholders', () => {
+test('all locales carry the same keys and the same placeholders', () => {
   const placeholders = text => [...text.matchAll(PLACEHOLDER)].map(match => match[1]).sort().join()
-  assert.deepEqual(Object.keys(TEXT.en).sort(), Object.keys(TEXT.zh).sort())
-  for (const [key, zh] of Object.entries(TEXT.zh)) assert.equal(placeholders(TEXT.en[key]), placeholders(zh), `${key}: placeholders differ`)
+  const zhKeys = Object.keys(TEXT.zh).sort()
+  for (const [lang, table] of Object.entries(TEXT)) {
+    if (lang === 'zh') continue
+    assert.deepEqual(Object.keys(table).sort(), zhKeys, `${lang}: keys differ`)
+    for (const [key, zh] of Object.entries(TEXT.zh)) assert.equal(placeholders(table[key]), placeholders(zh), `${lang}.${key}: placeholders differ`)
+  }
 })
 
 test('every text key starts with one of the eleven layers', () => {
@@ -278,7 +258,6 @@ test('each layer ends its lines as its rule says', () => {
   // Not sentences: picker titles, progress lines and labels.
   const NOT_SENTENCES = new Set([
     'card.update.slow', 'card.update.downloading', 'dialog.pickRoot', 'dialog.pickMove', 'dialog.pickCookies', 'dialog.saveAs', 'dialog.saveLog',
-    'card.import.line', 'card.import.model', 'card.import.optRegen', 'card.import.optSkipWork',
   ])
   for (const key of Object.keys(TEXT.zh)) {
     const zh = TEXT.zh[key]
@@ -325,10 +304,10 @@ test('a button that opens the system picker ends with …', () => {
   }
 })
 
-// docs/plans/2026-10-26-windows-onboarding.md, 用词: proper names and units only.
+// 用词: proper names and units only.
 test('the zh copy shows no English but the allowed names and units', () => {
-  const NAMES = ['DS Bot', 'DSH Desktop', 'DSH Web']
-  const WORDS = new Set(['DeepSeek', 'Bot', 'API', 'Key', 'Harness', 'DSH', 'Agent', 'MCP', 'Windows', 'PowerShell', 'GitHub', 'SmartScreen', 'OneDrive', 'cookie', 'HTTP', 'SOCKS', 'KB', 'MB', 'GB'])
+  const NAMES = ['Cue']
+  const WORDS = new Set(['Bot', 'API', 'Key', 'Agent', 'MCP', 'Windows', 'PowerShell', 'GitHub', 'SmartScreen', 'OneDrive', 'cookie', 'HTTP', 'SOCKS', 'KB', 'MB', 'GB'])
   const english = []
   for (const [key, value] of Object.entries(TEXT.zh)) {
     let rest = value.replace(PLACEHOLDER, ' ')
@@ -355,9 +334,9 @@ test('every text key that the page uses exists', () => {
     for (const [, prefix] of text.matchAll(/`([\w.]+\.)\$\{/gu)) assert.ok(keys.some(key => key.startsWith(prefix)), `${name}: no text key starts with ${prefix}`)
   }
   // Keys the page builds from the snapshot's views, the stages and the failure reasons.
-  for (const key of ['voice.failed', 'voice.viewFailed', 'voice.watchdog', 'status.phase.data', 'status.phase.import', 'status.phase.engine', 'status.phase.team', 'status.state.pending', 'status.state.active', 'status.state.done', 'status.state.failed']) assert.ok(key in TEXT.zh, key)
+  for (const key of ['voice.failed', 'voice.viewFailed', 'voice.watchdog', 'status.phase.data', 'status.phase.engine', 'status.phase.team', 'status.state.pending', 'status.state.active', 'status.state.done', 'status.state.failed']) assert.ok(key in TEXT.zh, key)
   assert.deepEqual(matching('reason.start.{reason}').sort(), ['reason.start.engine', 'reason.start.files', 'reason.start.missing', 'reason.start.other', 'reason.start.permission', 'reason.start.space'])
-  assert.deepEqual(matching('reason.place.{reason}').sort(), ['reason.place.drive', 'reason.place.dsh', 'reason.place.foreign', 'reason.place.nested', 'reason.place.onedrive', 'reason.place.permission', 'reason.place.program', 'reason.place.space', 'reason.place.workspace'])
+  assert.deepEqual(matching('reason.place.{reason}').sort(), ['reason.place.drive', 'reason.place.foreign', 'reason.place.nested', 'reason.place.onedrive', 'reason.place.permission', 'reason.place.program', 'reason.place.space', 'reason.place.workspace'])
   assert.deepEqual(matching('reason.copy.{reason}').sort(), ['reason.copy.full', 'reason.copy.inUse', 'reason.copy.other', 'reason.copy.permission'])
 })
 
@@ -382,25 +361,32 @@ test('the main process uses only keys of the table and keeps no table of its own
 
 test('t fills placeholders and falls back to zh, then to the key', () => {
   assert.equal(t('zh', 'hint.space', { drive: 'C', free: '1.2 GB' }), 'C 盘只剩 1.2 GB')
+  assert.equal(t('zh-TW', 'hint.space', { drive: 'C', free: '1.2 GB' }), 'C 槽只剩 1.2 GB')
   assert.equal(t('en', 'hint.space', { drive: 'C', free: '1.2 GB' }), 'Only 1.2 GB left on drive C')
+  assert.equal(t('ja', 'btn.retry'), '再試行')
+  assert.equal(t('ko', 'btn.retry'), '다시 시도')
+  assert.equal(t('es', 'btn.retry'), 'Reintentar')
+  assert.equal(t('fr', 'btn.retry'), 'Réessayer')
+  assert.equal(t('de', 'btn.retry'), 'Erneut versuchen')
   assert.equal(t('en', 'btn.useRec', { rec: 'D' }), 'Put it on drive D')
-  assert.equal(t('fr', 'btn.retry'), '重试')
+  assert.equal(t('nl', 'btn.retry'), '重试')
   assert.equal(t('en', 'hint.space', { drive: 'C' }), 'Only {free} left on drive C')
   assert.equal(t('zh', 'no.such.key'), 'no.such.key')
 })
 
-test('t picks the English singular or plural by the value', () => {
-  assert.equal(t('en', 'card.import.line', { bots: 1, groups: 6 }), 'Found your old team: 1 Bot, 6 group chats')
-  assert.equal(t('en', 'card.import.line', { bots: 6, groups: 1 }), 'Found your old team: 6 Bots, 1 group chat')
-  assert.equal(t('zh', 'card.import.line', { bots: 4, groups: 0 }), '找到你以前的团队了：4 个 Bot、0 个群聊')
-  assert.equal(t('en', 'card.import.line', { bots: 1 }), 'Found your old team: 1 Bot, {groups|group chat|group chats}')
-})
-
-test('langOf gives zh for every Chinese locale and en otherwise', () => {
+test('langOf resolves supported locales and falls back to en', () => {
   assert.equal(langOf('zh-CN'), 'zh')
-  assert.equal(langOf('ZH-tw'), 'zh')
+  assert.equal(langOf('zh-SG'), 'zh')
+  assert.equal(langOf('ZH-tw'), 'zh-TW')
+  assert.equal(langOf('zh-HK'), 'zh-TW')
+  assert.equal(langOf('zh-Hant-TW'), 'zh-TW')
   assert.equal(langOf('en-US'), 'en')
-  assert.equal(langOf('fr'), 'en')
+  assert.equal(langOf('ja-JP'), 'ja')
+  assert.equal(langOf('ko-KR'), 'ko')
+  assert.equal(langOf('es-MX'), 'es')
+  assert.equal(langOf('fr-FR'), 'fr')
+  assert.equal(langOf('de-DE'), 'de')
+  assert.equal(langOf('nl'), 'en')
   assert.equal(langOf(''), 'en')
 })
 

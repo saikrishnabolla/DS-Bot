@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { apply, createRuntime } from '../index.js'
+import { createRuntime } from '../index.js'
 import { defaultBrowserHeadless } from '../src/host/browser-plugins.js'
 import { gateScope } from '../src/host/browser/gate.js'
 import { appBrowserEndpoint } from '../src/host/browser-plugins.js'
@@ -438,7 +438,7 @@ test('browserExecutablePath must be a string when configured', () => {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-browser-plugin-'))
   try {
     assert.throws(
-      () => apply(fakeContext(), { home, browserPlugin: 'refs', browserExecutablePath: 42 }),
+      () => createRuntime(fakeContext(), { home, browserPlugin: 'refs', browserExecutablePath: 42 }),
       /browserExecutablePath must be a string/,
     )
   } finally {

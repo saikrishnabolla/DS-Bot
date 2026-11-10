@@ -479,7 +479,7 @@ async function requestPage(url, signal) {
     let settled = false
     const finish = (fn, value) => { if (!settled) { settled = true; fn(value) } }
     const request = (url.protocol === 'https:' ? getSecure : get)(url, {
-      headers: { accept: 'text/html, text/plain, application/json;q=0.9, */*;q=0.5', 'user-agent': 'DS-Bot/0.3' },
+      headers: { accept: 'text/html, text/plain, application/json;q=0.9, */*;q=0.5', 'user-agent': 'Cue/0.3' },
       signal,
       lookup: pinnedLookup(pinned),
     }, response => {

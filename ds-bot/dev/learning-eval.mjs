@@ -6,7 +6,7 @@
 //           better with the skill than without, and does an unrelated task stay clean?
 // Usage (no defaults; nothing is saved but the report):
 //   LEARN_EVAL_BASE_URL=… LEARN_EVAL_MODEL=… LEARN_EVAL_KEY=… \
-//   node --import ./test/harness-resolve.mjs dev/learning-eval.mjs [--kind skill|agents] [--reps 3] [--cases case-file.json] [--only id,id] [--out report.json]
+//   node dev/learning-eval.mjs [--kind skill|agents] [--reps 3] [--cases case-file.json] [--only id,id] [--out report.json]
 import { readFileSync, writeFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { agentsAnswer, agentsProblem, agentsRequest, agentsSystem, applyEdits, parseJson, skillProblem, skillRequest, skillSystem, LEARNING } from '../src/host/learning.js'

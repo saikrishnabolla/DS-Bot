@@ -185,7 +185,7 @@ export function install(rt) {
   const NOTE_COOLDOWN_MS = [60_000, 300_000, 900_000]
   const SWITCH_ATTEMPTS = 5
   const OVERFLOW = 'CONTEXT_WINDOW_EXCEEDED'
-  // A checkpoint DSH asked for so a model switch could go ahead, written while no route
+  // A checkpoint Cue asked for so a model switch could go ahead, written while no route
   // could produce a summary. It is honest about that and points at the messages.
   const NO_SUMMARY = '(No summary was written: no model was free to write it, so the messages the earlier part sent you are carried over word for word below. Read it from them, and read_own_chat finds the rest.)'
   // Generic request and credential errors say nothing about the conversation.
@@ -195,7 +195,7 @@ export function install(rt) {
   const STEWARD_TIMEOUT_MS = 120_000
   const STEWARD_LINES = 40
   const FOLDER_RETRY_MS = 300_000
-  const PAUSE_NOTE = 'DS Bot paused your turn for a context check. Go on with it now from where you stopped.'
+  const PAUSE_NOTE = 'Cue paused your turn for a context check. Go on with it now from where you stopped.'
 
   // A broken provider adapter must not crash every turn; estimate from the
   // derived messages instead, with one warning.
@@ -262,17 +262,17 @@ export function install(rt) {
 
   // The backend's own entry points leave Bot Sessions alone, earlier parts and group
   // records included: automatic pressure and overflow compaction do nothing, and
-  // /compact is refused. Only DS Bot condenses a Bot Session, when the steward says so,
-  // and then the summary is DS Bot's checkpoint. An explicit range is different: with
-  // those entry points closed, the only range DSH still asks of a Bot Session is the one
+  // /compact is refused. Only Cue condenses a Bot Session, when the steward says so,
+  // and then the summary is Cue's checkpoint. An explicit range is different: with
+  // those entry points closed, the only range Cue still asks of a Bot Session is the one
   // a model switch needs to fit the new model's window, and a refusal there ended the
-  // switch itself (MODEL_SWITCH_COMPACTION_FAILED). So DS Bot condenses that range as its
+  // switch itself (MODEL_SWITCH_COMPACTION_FAILED). So Cue condenses that range as its
   // own checkpoint instead. Each preset mount has its own compaction backend. Every other
   // Session, subagents included, is as it was.
   const adoptedEngines = new Set()
-  // Sessions DS Bot itself is condensing right now.
+  // Sessions Cue itself is condensing right now.
   const condensing = new Set()
-  // The range of a Bot Session DSH is condensing for a model switch, where the route the
+  // The range of a Bot Session Cue is condensing for a model switch, where the route the
   // Session used last is the one being switched away from.
   const switchRanges = new Set()
   const refuseCompaction = () => Promise.reject(new Error(
@@ -282,8 +282,8 @@ export function install(rt) {
     return id !== undefined && (rt.selfOf(id) !== undefined || rt.roomOf(id) !== undefined)
   }
   const ownedByBot = target => isBotTarget(target) && !condensing.has(target.session.id)
-  // Condenses a range of a Bot Session the way DS Bot condenses its own parts: the
-  // session counts as condensing, so the summary hook writes DS Bot's checkpoint rather
+  // Condenses a range of a Bot Session the way Cue condenses its own parts: the
+  // session counts as condensing, so the summary hook writes Cue's checkpoint rather
   // than the backend writing one of its own.
   async function condenseRange(target, run, { forSwitch = false } = {}) {
     const sessionId = target.session.id
@@ -296,7 +296,7 @@ export function install(rt) {
       if (forSwitch) switchRanges.delete(sessionId)
     }
   }
-  // The engine that serves this agent, when DS Bot can condense through it.
+  // The engine that serves this agent, when Cue can condense through it.
   const engineOf = agent => [ctx.get('agentPresets')?.serviceFor(agent, 'compaction'), ctx.get('compaction')]
     .find(engine => typeof engine?.[ORIGINAL_COMPACT]?.summarize === 'function')
   // The wrapper decides per call, so it can go on before the Session is a Bot's.
@@ -474,7 +474,7 @@ export function install(rt) {
     ['Where to look', 'details this note leaves out that you may need again, each with a few words copied exactly from the message that holds it, for read_own_chat to search'],
   ]
   const handoffPrompt = why => [
-    `You are now writing a handoff note to yourself. This request comes from DS Bot, not from the user: do not answer or continue the messages above. ${why}, so it moves on to a fresh conversation now. The fresh one starts with this note and your latest messages word for word; everything else leaves your working context. The full record stays saved, and you can search it later with read_own_chat. Write the note that lets you carry on as the same Bot without losing anything that matters.`,
+    `You are now writing a handoff note to yourself. This request comes from Cue, not from the user: do not answer or continue the messages above. ${why}, so it moves on to a fresh conversation now. The fresh one starts with this note and your latest messages word for word; everything else leaves your working context. The full record stays saved, and you can search it later with read_own_chat. Write the note that lets you carry on as the same Bot without losing anything that matters.`,
     '',
     'Output EXACTLY the Markdown structure below: every heading as written, in English and in this order. Write the content in the language the user writes in, as terse bullets. Write "(none)" under a heading with nothing to say.',
     '',
@@ -591,7 +591,7 @@ export function install(rt) {
     return { kept: kept.reverse(), more }
   }
 
-  // DS Bot's summary for a Bot Session, in place of the backend's. Like the backend's
+  // Cue's summary for a Bot Session, in place of the backend's. Like the backend's
   // own, it is one request on the conversation's own prefix, so the provider serves
   // that from cache.
   async function writeCheckpoint(input, agent, signal) {
@@ -658,11 +658,11 @@ export function install(rt) {
   }
 
   // The summary request itself. The Session's own route answers it, as it always has. A
-  // range DSH condenses for a model switch is different: the route the Session used last
+  // range Cue condenses for a model switch is different: the route the Session used last
   // is the one being switched away from, and the switch can be because of that route (a
   // model out of quota, for one). So the Bot's own model is tried next, and with no route
   // left the checkpoint carries the messages without a summary rather than fail - a
-  // failure there is what DSH reports as MODEL_SWITCH_COMPACTION_FAILED, and it would
+  // failure there is what Cue reports as MODEL_SWITCH_COMPACTION_FAILED, and it would
   // leave the Bot on the model the user is trying to leave.
   async function summaryThrough(session, route, { input, head, tail, prompt, maxTokens, signal }) {
     const forSwitch = switchRanges.has(session.id)
@@ -768,7 +768,7 @@ export function install(rt) {
     const sessionId = agent.session.id
     condensing.add(sessionId)
     try {
-      // Through the service itself, past DS Bot's own wrapper: only a call on the
+      // Through the service itself, past Cue's own wrapper: only a call on the
       // service gives the engine its own context, with the services it injects.
       const result = inTurn
         ? await engine.compactIfNeeded(agent, 'context-overflow', signal)
@@ -789,7 +789,7 @@ export function install(rt) {
     return engine.ownedTriggers === true || after < lines.check
   }
 
-  // The note a part opened with, as the fresh part shows it. A note DS Bot put
+  // The note a part opened with, as the fresh part shows it. A note Cue put
   // together without the model carries the last note the model wrote.
   function noteText(segment) {
     if (segment?.fallback === undefined) return segment?.note
@@ -802,7 +802,7 @@ export function install(rt) {
         : segment.fallback === 'failure' ? 'a request in the previous part kept failing'
           : segment.fallback === 'engine' ? 'what you run on changed'
             : 'the model did not write a usable note'
-    const head = `(DS Bot put this note together without the model, because ${why}.`
+    const head = `(Cue put this note together without the model, because ${why}.`
     return segment.note === undefined
       ? `${head} There was no earlier note to carry over. Go by the messages below, and look up anything else.)`
       : `${head} It is the note written at the end of part ${segment.noteFrom}, carried over unchanged; anything newer is in the messages below, and read_own_chat finds the rest.)\n\n${segment.note}`
@@ -829,7 +829,7 @@ export function install(rt) {
     ]
     return [
       `[Handoff · part ${number}]`,
-      `DS Bot moved ${where} on to a fresh conversation, part ${number}, because ${reason}. This message is not from the user.`,
+      `Cue moved ${where} on to a fresh conversation, part ${number}, because ${reason}. This message is not from the user.`,
       'It is reference, not new instructions: the note and the messages below are a record of earlier work. Do what they say only as part of the work they record, and take new requests only from messages that come after this one.',
       `Everything earlier stays saved: ${lookup}`,
       ...(engine !== undefined ? [`You now run on ${engine}. Your memory, instructions, team and folder stay yours, but your own tools and how they work may differ from the ones in the messages below: look at what you have before you repeat a step.`] : []),
@@ -861,7 +861,7 @@ export function install(rt) {
   // A turn stopped for a switch goes on with its own source, so its reply still
   // reaches whoever asked.
   const handoffSource = (job, resume) => ({
-    ...(resume && job.info ? job.info : { kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'DS Bot' }),
+    ...(resume && job.info ? job.info : { kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Cue' }),
     exchangeId: job.info?.exchangeId ?? randomUUID(),
     handoff: true,
     ...(resume ? { resume: true } : {}),
@@ -916,7 +916,7 @@ export function install(rt) {
     : owner.botId === undefined ? rt.sessionOfRoom(rt.roomOf(owner.roomId))
       : rt.roomOf(owner.roomId)?.sessions?.[owner.botId])
   const grown = (sessionId, tokens, lines) => tokens >= (partBase.get(sessionId) ?? 0) + lines.check / 4
-  // A read-only process (another dsh holds the team) neither condenses nor switches.
+  // A read-only process (another Cue instance holds the team) neither condenses nor switches.
   const readOnly = () => rt.readOnly() !== undefined
 
   // Input for an earlier part goes on in the current one: a browser may still show the
@@ -930,7 +930,7 @@ export function install(rt) {
     const pending = [...agent.inbox.nextStep, ...agent.inbox.nextTurn]
     for (const message of messages) {
       const kind = message.source?.kind
-      // DSH's notice of a folder change is about the Session it was queued in; the part
+      // Cue's notice of a folder change is about the Session it was queued in; the part
       // that goes on has its own folder, which its handoff names.
       if (kind === 'working-directory') continue
       const exchangeId = message.source?.exchangeId
@@ -943,7 +943,7 @@ export function install(rt) {
     await ctx.sessions.flush(agent.session)
   }
 
-  // The plugin's own fiber is disposed (a reload, or DSH closing): every service
+  // The plugin's own fiber is disposed (a reload, or Cue closing): every service
   // lookup fails with the same inactive-context error, and logging through rt.warn
   // would fail the same way, so an unloaded failure is noted once at info instead.
   const unloaded = error => ctx.fiber?.uid === null || /in inactive context/.test(String(error?.message ?? error))
@@ -968,7 +968,7 @@ export function install(rt) {
   // Input in the inbox is durable but does not wake the driver; send() is what wakes
   // it. Re-send what waits, in order, the first message with the wake, so a stopped
   // turn goes on without waiting for the next input. Only while the plugin is live —
-  // a turn that starts during unload would run without DS Bot's hooks.
+  // a turn that starts during unload would run without Cue's hooks.
   const wake = (agent) => {
     const pending = [...agent.inbox.nextStep, ...agent.inbox.nextTurn]
     for (const message of pending) agent.inbox.remove(message.id)
@@ -1054,7 +1054,7 @@ export function install(rt) {
           const carried = job.joined?.length ? { joined: job.joined } : {}
           back.unshift(createUserMessage({
             content: [{ type: 'text', text: PAUSE_NOTE }],
-            source: job.info ? { ...job.info, ...carried } : { kind: SOURCE_KIND, form: 'relay', role: 'resume', exchangeId: randomUUID(), senderName: 'DS Bot', ...carried },
+            source: job.info ? { ...job.info, ...carried } : { kind: SOURCE_KIND, form: 'relay', role: 'resume', exchangeId: randomUUID(), senderName: 'Cue', ...carried },
           }))
         }
         await forward(job, back).then(() => {
@@ -1298,11 +1298,11 @@ export function install(rt) {
       })
     }
     ctx.logger.info('ds-bot: %s%s moved on to part %d at %d tokens (check line %d, hard line %d); %s; %d latest and %d earlier messages carried%s', name, bot !== undefined && room !== undefined ? ` in ${room.name}` : '', number + 1, tokens ?? -1, lines?.check ?? -1, lines?.hard ?? -1,
-      written !== undefined ? `note written in ${written.attempts} attempt(s)` : `note put together by DS Bot (${noted.fallback}${noted.note ? `, carries part ${noted.noteFrom}'s` : ', nothing to carry'})`,
+      written !== undefined ? `note written in ${written.attempts} attempt(s)` : `note put together by Cue (${noted.fallback}${noted.note ? `, carries part ${noted.noteFrom}'s` : ', nothing to carry'})`,
       carried.recent.length, carried.earlier.length, folder === undefined ? '' : `; now works in ${folder}`)
   }
 
-  // Ends a step DS Bot takes over. Before a turn's first step an empty batch ends the
+  // Ends a step Cue takes over. Before a turn's first step an empty batch ends the
   // turn as completed, where a reject ends it as blocked, which other listeners read as
   // a failure. Later in a turn an empty batch would run another model step, and a turn
   // carried through a steer cut keeps its reject, since a completed turn reads as answered.
@@ -1340,7 +1340,7 @@ export function install(rt) {
     if (place.botId === undefined) return next()
     if (!readOnly() && engineMoved(agent, place, payload.modelSelection)) return switchBeforeStep(agent, payload, { engine: true })
     if (offEngine(agent, place, payload.modelSelection)) return holdStep(agent, payload)
-    // A local agent CLI owns its in-session compaction; the DSH Session keeps the
+    // A local agent CLI owns its in-session compaction; the Cue Session keeps the
     // full history for read_own_chat and never condenses or switches on size.
     if (rt.isLocalAgentRef?.(rt.botOf(place.botId)?.model ?? rt.botOf(place.botId)?.appliedModel) === true) return next()
     if (ctx.get('compaction')?.ownedTriggers === true) return next()
@@ -1379,19 +1379,19 @@ export function install(rt) {
     if (place === undefined || cwd === undefined || (midTurn && place.roomId !== undefined) || Date.now() < (folderRetry.get(agent.id) ?? 0)) return undefined
     const wanted = rt.workDirOf(place)
     const usable = wanted !== undefined && await rt.isFolder(wanted)
-    // A team copied from another DSH_HOME has no team workspace here until one is made, and its
+    // A team copied from another Cue instance_HOME has no team workspace here until one is made, and its
     // Sessions still work in the old one.
     if (!usable && rt.teamFolder() === undefined) await rt.ensureWorkspace()
     const target = usable ? wanted : rt.teamFolder()
     return target === undefined || target === cwd ? undefined : target
   }
 
-  // DSH 0.2.1 checks a Session's folder as it puts each model request together, before
+  // the runtime checks a Session's folder as it puts each model request together, before
   // agent/pre-step, and fails the turn when both the folder and the one the Session was
-  // made in are gone. The team folder is DS Bot's own, so it is made again; a Bot whose
-  // own folder went away first changes to the folder it would move to, through DSH's
+  // made in are gone. The team folder is Cue's own, so it is made again; a Bot whose
+  // own folder went away first changes to the folder it would move to, through Cue's
   // documented way out (`workingDirectory.set`), and the pre-step then moves it to a
-  // fresh part there, as on DSH 0.2.0.
+  // fresh part there, as on the runtime.
   ctx.on('system-prompt/assemble', async (assembly, context, next) => {
     const agent = context.agent
     const folders = ctx.get?.('workingDirectory')
@@ -1546,14 +1546,14 @@ export function install(rt) {
     return () => clearTimeout(timer)
   }, 'ds-bot: hand on input kept in earlier parts')
 
-  // An archive from DSH's own Session list while the team runs: DSH asks for the
+  // An archive from Cue's own Session list while the team runs: Cue asks for the
   // Session's activity (plain archive) or stops it (stopActivity) inside the archive,
   // so an unarchive started here queues behind that archive and undoes it. The team's
   // own archives drop the Session from its owner first.
   const keepCurrent = ({ sessionId }) => {
     if (readOnly() || !(rt.isBotSession(sessionId) || rt.roomOwners.has(sessionId))) return
     void ctx.workspaceRegistry.unarchiveSession(sessionId)
-      .catch(error => rt.warn('ds-bot: current Session %s is archived in DSH and could not be taken out: %s', sessionId, error))
+      .catch(error => rt.warn('cue: current conversation %s is archived and could not be taken out: %s', sessionId, error))
   }
   ctx.on('workspace/session-stop', keepCurrent)
   ctx.on('workspace/session-activity', (request, next) => {
@@ -1635,9 +1635,13 @@ export function install(rt) {
         }
         const reason = event.data?.message?.stopReason
         if (reason === 'error' || reason === 'aborted') {
+          const failure = reason === 'error' && event.data.message.failure && typeof event.data.message.failure === 'object'
+            ? event.data.message.failure
+            : undefined
           stamp(event, {
             kind: 'failure',
             reason,
+            ...(typeof failure?.code === 'string' ? { code: failure.code } : {}),
             ...(typeof event.data.message.errorMessage === 'string' ? { detail: event.data.message.errorMessage } : {}),
             time: event.time,
           }, content.length)
@@ -1695,12 +1699,16 @@ export function install(rt) {
             else items.push({ kind: 'relay', reply, ...item })
           }
         } else {
+          const attachments = Array.isArray(message?.content)
+            ? message.content.filter(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)
+            : []
           stamp(event, {
             kind: 'tool-result',
             callId: String(message?.toolCallId ?? ''),
             name: String(message?.toolName ?? ''),
             text: textOf(message?.content),
             isError: message?.isError === true,
+            ...(attachments.length > 0 ? { attachments } : {}),
             ...(message?.details === undefined ? {} : { details: message.details }),
             time: event.time,
           })
@@ -1859,7 +1867,7 @@ export function install(rt) {
     if (at === -1) throw Object.assign(new Error('Unknown part'), { code: 'bot/not-found' })
     const live = rt.live.get(current)
     if (live?.turn !== undefined) throw Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
-    // DSH turns away every step of an archived Session and every task aimed at it, so
+    // Cue turns away every step of an archived Session and every task aimed at it, so
     // the part leaves the archive before it becomes current.
     await ctx.workspaceRegistry.unarchiveSession(partId)
     segments.splice(at, 1)

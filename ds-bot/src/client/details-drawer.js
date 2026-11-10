@@ -39,17 +39,17 @@ const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, '
 const shortUrl = url => String(url ?? '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
 const EMPTY_TABS = { ids: [], active: null }
 
-// The Bot's permission preset, from the presets DeepSeek Harness offers.
+// The Bot's permission preset, from the presets Cue offers.
 function PermissionRow({ bot, roster, actions, run }) {
   const catalog = roster.permissions
   if (!catalog?.options?.length) return null
   return h('div', { className: 'bt-drawer-permission' },
     h('div', { className: 'bt-section-title' }, t('Permissions')),
-    // A Bot without its own preset may run on another one set in DSH, so its first pick always applies.
+    // A Bot without its own preset may run on another one set in Cue, so its first pick always applies.
     h(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === undefined, onPick: permission => run(actions.updateBot(bot.id, { permission })) }))
 }
 
-// The current part's turns, speed, cache hits and context, for a window without DSH's
+// The current part's turns, speed, cache hits and context, for a window without Cue's
 // status bar (actions.runStats). It reads them again when a turn starts or ends.
 function RunStats({ bot, part, running, actions }) {
   const [values, setValues] = useState(null)
@@ -78,7 +78,7 @@ function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrow
   const pages = useBrowserPages(map => map)
   useEffect(() => { actions.browserEnsure?.(bot.id) }, [bot.id])
   if (roster.browser !== true || !actions.browserShow) {
-    return h('div', { className: 'bt-muted' }, t('The browser is in DSH Desktop and the DS Bot app.'))
+    return h('div', { className: 'bt-muted' }, t('The browser is in the Cue app.'))
   }
   if (state.ids.length === 0) {
     return h('div', { className: 'bt-browser-empty-mark' },
@@ -269,7 +269,7 @@ export function DetailsDrawer({ sessionId, startRenaming, startTab, hasStrip, ro
         bot ? h(BotSettingsForm, { bot, roster, actions, run }) : h(GroupSettingsForm, { room, roster, actions, run, onDeleted: close })),
     ]
   }
-  // The `···` button holds Browser, a new side chat, and DSH's right-column
+  // The `···` button holds Browser, a new side chat, and Cue's right-column
   // tabs; it hides when none of them applies.
   const more = drawerMenuKeys({
     bot: bot !== undefined,

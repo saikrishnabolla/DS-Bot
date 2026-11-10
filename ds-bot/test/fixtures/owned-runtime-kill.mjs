@@ -10,7 +10,7 @@ const uiDir = join(dataDir, 'ui')
 const safeAttemptsPath = join(dataDir, 'safe-attempts.txt')
 const unsafePath = join(dataDir, 'unsafe-side-effect.txt')
 await mkdir(uiDir, { recursive: true })
-await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
 const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
 const faux = fauxProvider()
@@ -37,11 +37,11 @@ const SafeToolExtension = defineExtension({
 })
 
 function latestUserText(context) {
-  const users = (context.messages ?? []).filter(message =>
-    message.role === 'user' && message.source?.kind === 'user'
+  const expected = ['safe-tool-input', 'unsafe-tool-input', 'queue-first', 'queue-second', 'model-crash-input']
+  const users = (context.messages ?? []).filter(message => message.role === 'user').map(message =>
+    (message.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n')
   )
-  const content = users.at(-1)?.content ?? []
-  return content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  return users.findLast(text => expected.some(input => text.includes(input))) ?? users.at(-1) ?? ''
 }
 
 const shellPath = `'${unsafePath.replaceAll("'", "'\\''")}'`

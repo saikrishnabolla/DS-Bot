@@ -23,7 +23,7 @@ const VENDORS = /\b(qwen|minimax|stepfun|kimi|moonshot|zhipu|glm|mimo|anthropic|
 // Files that define the look (characters, inks, logos, themes). Vendor names there are
 // brand references; elsewhere they name model routes and can stay.
 const LOOK_FILES = /(^|\/)(src\/client\/(inks|characters|mark|themes|styles)\.js|dev\/(mascot-outlines|characters)\.mjs)$/
-const NOT_PUBLIC = /(^|[\s(`'"]|\.\.\/)(spec|research|backup|shots|attachments|workspace)\/|\.dsh-home/
+const NOT_PUBLIC = /(^|[\s(`'"]|\.\.\/)(spec|research|backup|shots|attachments|workspace)\//
 // Migration code and its tests must name the legacy ids (old package name, old theme and
 // color keys) to move saved data over; there, and on lines that say "legacy" (旧版), old names stay.
 const LEGACY_FILES = /(^|\/)(src\/client\/storage\.js|src\/legacy\.mjs|test\/legacy[\w-]*\.test\.(?:js|mjs))$/
@@ -57,7 +57,7 @@ const TEXT_RULES = [
   { id: 'vendor-name', level: KEEP, re: new RegExp(VENDORS.source, 'gi'), notFiles: LOOK_FILES, summary: true },
   // Former names of the project and the package.
   { id: 'retired-product-name', level: MUST, re: /deepseek[-_ ]?bot/gi, legacyOk: true, notFiles: /^CHANGELOG(?:\.[a-z]+)?\.md$/ },
-  { id: 'old-project-name', level: MUST, re: /DSH Bot\b/g, legacyOk: true },
+  { id: 'old-project-name', level: MUST, re: /\bDS Bot\b/g, legacyOk: true },
   { id: 'old-package-name', level: MUST, re: /\bdsh-bot\b/g, legacyOk: true },
   { id: 'legacy-name-in-migration', level: KEEP, re: /\bdsh-bot\b|DeepSeek Bot\b/gi, onlyLegacy: true, summary: true },
   // Drafts and local-only material.
@@ -68,8 +68,7 @@ const TEXT_RULES = [
 ]
 
 const FORBIDDEN_FILES = [
-  { re: /^(spec|research|backup|shots|attachments|workspace|deepseek-harness)\//, why: 'local-only folder' },
-  { re: /(^|\/)\.dsh-(home|test)/, why: 'DSH data' },
+  { re: /^(spec|research|backup|shots|attachments|workspace)\//, why: 'local-only folder' },
   { re: /(^|\/)node_modules\//, why: 'installed packages' },
   { re: /\.(env|pem|key|p12|sqlite|db)$/, why: 'secret or data file' },
   { re: /^\.scan-extra$/, why: 'local scan patterns' },
@@ -114,9 +113,9 @@ for (const file of files) {
   })
 }
 
-// Package checks: the license and the fields that npm and DSH read.
+// Package checks: the license and the fields that npm reads.
 if (!files.includes('LICENSE')) add(MUST, 'license', 'LICENSE', 0, 'no LICENSE at the root')
-if (!files.includes('ds-bot/package.json')) add(MUST, 'plugin-folder', '.', 0, 'no ds-bot/package.json')
+if (!files.includes('ds-bot/package.json')) add(MUST, 'package-folder', '.', 0, 'no ds-bot/package.json')
 else {
   const pkg = JSON.parse(readFileSync(join(root, 'ds-bot/package.json'), 'utf8'))
   if (pkg.name !== 'ds-bot') add(MUST, 'package', 'ds-bot/package.json', 0, `name is "${pkg.name}", expected "ds-bot"`)

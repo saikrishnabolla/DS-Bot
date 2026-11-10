@@ -2,7 +2,7 @@
 // guild_id; a group message counts as a mention when the bot user is in
 // `mentions`. Buttons are components; interactions come back as
 // INTERACTION_CREATE and are answered with a deferred update (type 6).
-// Wire details ported from dsh-im (MIT, see NOTICE).
+// Wire details ported from Cue-im (MIT, see NOTICE).
 import { chunkMarkdown, toPlain } from '../format.js'
 
 const API = 'https://discord.com/api/v10'

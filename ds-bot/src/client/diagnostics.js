@@ -53,10 +53,6 @@ const FAILURES = {
   INVALID_CREDENTIAL: 'The API key is not in the right format',
   AUTH: 'The API key was rejected',
   QUOTA: 'The account is out of quota',
-  ACCOUNT_QUOTA: 'The account is out of quota',
-  ACCOUNT_SIGN_IN_REQUIRED: 'The DeepSeek account needs a sign-in',
-  ACCOUNT_SIGNED_OUT: 'The DeepSeek account is signed out',
-  ACCOUNT_TOKEN_INVALID: 'The DeepSeek account sign-in has expired',
   RATE_LIMIT: 'Too many requests to the model',
   CONTEXT_WINDOW_EXCEEDED: 'The conversation is too long for the model',
   INVALID_REQUEST: 'The model service refused the request',
@@ -77,8 +73,8 @@ export function failureLabel(code, message) {
 // GitHub refuses very long addresses; past this the diagnostics go by the clipboard.
 const URL_LIMIT = 7000
 export const WHAT_MAX = 2000
-const PASTE_NOTE = 'DS Bot copied the diagnostics to the clipboard. Paste them here.'
-const REST_NOTE = 'The recent errors do not fit in the link. DS Bot copied the diagnostics to the clipboard: paste them below this line.'
+const PASTE_NOTE = 'Cue copied the diagnostics to the clipboard. Paste them here.'
+const REST_NOTE = 'The recent errors do not fit in the link. Cue copied the diagnostics to the clipboard: paste them below this line.'
 
 export function issueUrl(base, { what = '', diagnostics }) {
   const text = what.trim().slice(0, WHAT_MAX)

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to DS Bot are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a minor version can contain breaking changes.
+All notable changes to Cue are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow [Semantic Versioning](https://semver.org/). Before 1.0, a minor version can contain breaking changes.
 
 ## [Unreleased]
 
@@ -34,7 +34,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### Fixed
 
-- Opening Settings → Local agents no longer stops Bot settings and other DS Bot dialogs from opening until the window reloads. ([#1016](https://github.com/Fei2411/DS-Bot/issues/1016), [#1017](https://github.com/Fei2411/DS-Bot/pull/1017))
+- Opening Settings → Local agents no longer stops Bot settings and other Cue dialogs from opening until the window reloads. ([#1016](https://github.com/Fei2411/DS-Bot/issues/1016), [#1017](https://github.com/Fei2411/DS-Bot/pull/1017))
 
 ### Changed
 
@@ -53,7 +53,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### Changed
 
-- DS Bot tracks DeepSeek Harness 0.2.2-rc.1. ([#908](https://github.com/Fei2411/DS-Bot/pull/908))
+- Cue tracks DeepSeek Harness 0.2.2-rc.1. ([#908](https://github.com/Fei2411/DS-Bot/pull/908))
 - Question, view and skill proposal cards stay in the chat after you answer, dismiss or approve them, folded to a short line with the result. ([#971](https://github.com/Fei2411/DS-Bot/issues/971), [#972](https://github.com/Fei2411/DS-Bot/pull/972), [#981](https://github.com/Fei2411/DS-Bot/pull/981))
 - `browser_exec` scripts run in a separate process without access to the host or the network, and a script past its 20-second limit is stopped. ([#1005](https://github.com/Fei2411/DS-Bot/pull/1005))
 - Models on a custom OpenAI-compatible gateway get system instructions as `system`, and take the known context window and image support of their model. ([#982](https://github.com/Fei2411/DS-Bot/issues/982), [#989](https://github.com/Fei2411/DS-Bot/pull/989))
@@ -75,8 +75,8 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - On Linux, the import checks whether the chats were written by a newer DSH before it copies them. ([#897](https://github.com/Fei2411/DS-Bot/pull/897))
 - At startup the whale again leaps out and lands on the Main Bot's avatar, and the close button of a new chat lines up with the list below it. ([#885](https://github.com/Fei2411/DS-Bot/pull/885), [#895](https://github.com/Fei2411/DS-Bot/pull/895))
 - Conversations and the message box stay visible when a narrow host collapses its sidebars. ([#844](https://github.com/Fei2411/DS-Bot/pull/844))
-- After an update, DS Bot offers a newer release in the same check. ([#914](https://github.com/Fei2411/DS-Bot/pull/914))
-- Docker profiles keep their bundled DS Bot archive for later dependency installs, also on the old archive path. ([#879](https://github.com/Fei2411/DS-Bot/pull/879))
+- After an update, Cue offers a newer release in the same check. ([#914](https://github.com/Fei2411/DS-Bot/pull/914))
+- Docker profiles keep their bundled Cue archive for later dependency installs, also on the old archive path. ([#879](https://github.com/Fei2411/DS-Bot/pull/879))
 
 ## [0.2.7] - 2026-11-03
 
@@ -93,7 +93,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - The sidebar slides in and out smoothly with more room between icons in the folded rail, the Bot avatar flies between details and a side chat, consecutive group messages from the same Bot chain together, and floating surfaces use frosted glass. ([#502](https://github.com/Fei2411/DS-Bot/issues/502), [#802](https://github.com/Fei2411/DS-Bot/pull/802), [#805](https://github.com/Fei2411/DS-Bot/pull/805), [#806](https://github.com/Fei2411/DS-Bot/pull/806), [#819](https://github.com/Fei2411/DS-Bot/pull/819))
 - Private chats show when messages were sent, the reply button stays at the bottom of long messages, and a Bot's scheduled tasks show their status, next run and full prompt. ([#391](https://github.com/Fei2411/DS-Bot/issues/391), [#533](https://github.com/Fei2411/DS-Bot/issues/533), [#590](https://github.com/Fei2411/DS-Bot/issues/590), [#817](https://github.com/Fei2411/DS-Bot/pull/817), [#820](https://github.com/Fei2411/DS-Bot/pull/820), [#821](https://github.com/Fei2411/DS-Bot/pull/821))
 - Group memory keeps only what outlasts the current task and is passed as a message so group turns share the Bot's prompt cache; skill proposals stay free of file names from that task, and AGENTS.md proposals tolerate small format slips. ([#797](https://github.com/Fei2411/DS-Bot/issues/797), [#827](https://github.com/Fei2411/DS-Bot/pull/827), [#828](https://github.com/Fei2411/DS-Bot/pull/828), [#830](https://github.com/Fei2411/DS-Bot/pull/830), [#832](https://github.com/Fei2411/DS-Bot/pull/832))
-- DS Bot tracks DeepSeek Harness 0.2.1-rc.5 and hides leading reasoning signature blocks in Bot chats. ([#812](https://github.com/Fei2411/DS-Bot/pull/812))
+- Cue tracks DeepSeek Harness 0.2.1-rc.5 and hides leading reasoning signature blocks in Bot chats. ([#812](https://github.com/Fei2411/DS-Bot/pull/812))
 
 ### Fixed
 
@@ -113,7 +113,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### Changed
 
-- The desktop app and its downloads are now called DS Bot. Your team, chats, settings and browser data carry over when you update. ([#793](https://github.com/Fei2411/DS-Bot/issues/793), [#794](https://github.com/Fei2411/DS-Bot/pull/794))
+- The desktop app and its downloads are now called Cue. Your team, chats, settings and browser data carry over when you update. ([#793](https://github.com/Fei2411/DS-Bot/issues/793), [#794](https://github.com/Fei2411/DS-Bot/pull/794))
 - Group chats no longer stop after a fixed number of Bot-to-Bot calls, and the relay-limit setting is gone. If Bots only say "Got it" back and forth without using tools, the group pauses after 6 turns until you write. ([#634](https://github.com/Fei2411/DS-Bot/issues/634), [#655](https://github.com/Fei2411/DS-Bot/issues/655), [#725](https://github.com/Fei2411/DS-Bot/pull/725), [#746](https://github.com/Fei2411/DS-Bot/pull/746))
 - In a group chat, `@` calls in one message start all the named members at once. When a Bot calls several members, it waits until all of them finish before it speaks again; a member that only says it is starting goes straight on to its tools. ([#469](https://github.com/Fei2411/DS-Bot/issues/469), [#619](https://github.com/Fei2411/DS-Bot/issues/619), [#726](https://github.com/Fei2411/DS-Bot/issues/726), [#727](https://github.com/Fei2411/DS-Bot/pull/727), [#746](https://github.com/Fei2411/DS-Bot/pull/746))
 - Bots hand parallel work to other Bots instead of starting DeepSeek Harness subagents or workflows. ([#798](https://github.com/Fei2411/DS-Bot/issues/798), [#800](https://github.com/Fei2411/DS-Bot/pull/800))
@@ -125,7 +125,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - The Linux desktop app no longer crashes when a Bot reads an image. ([#662](https://github.com/Fei2411/DS-Bot/issues/662), [#747](https://github.com/Fei2411/DS-Bot/pull/747))
 - When a model request keeps failing, the Bot stops opening fresh parts in a loop and shows the error instead. ([#485](https://github.com/Fei2411/DS-Bot/issues/485), [#748](https://github.com/Fei2411/DS-Bot/pull/748))
 - Bot-to-Bot messages survive a restart or a failed delivery, and the sending Bot is told when a reply could not be delivered. ([#506](https://github.com/Fei2411/DS-Bot/issues/506), [#668](https://github.com/Fei2411/DS-Bot/issues/668), [#752](https://github.com/Fei2411/DS-Bot/pull/752))
-- Outside changes to `state.json` are no longer overwritten; DS Bot saves its own copy as `state.json.replaced-<time>`. ([#513](https://github.com/Fei2411/DS-Bot/issues/513), [#774](https://github.com/Fei2411/DS-Bot/pull/774))
+- Outside changes to `state.json` are no longer overwritten; Cue saves its own copy as `state.json.replaced-<time>`. ([#513](https://github.com/Fei2411/DS-Bot/issues/513), [#774](https://github.com/Fei2411/DS-Bot/pull/774))
 - Data folders stay protected even when they sit inside the team workspace, and working outside the workspace always asks for approval. ([#508](https://github.com/Fei2411/DS-Bot/issues/508), [#754](https://github.com/Fei2411/DS-Bot/pull/754))
 - Saved secrets stay in a Bot's shell after a restart, and a tool result containing a secret no longer errors when logged. ([#669](https://github.com/Fei2411/DS-Bot/issues/669), [#670](https://github.com/Fei2411/DS-Bot/issues/670), [#761](https://github.com/Fei2411/DS-Bot/pull/761))
 - A group's file panel shows the group's folder, and a member changing folder in a group no longer moves its private chat or other groups. ([#277](https://github.com/Fei2411/DS-Bot/issues/277), [#775](https://github.com/Fei2411/DS-Bot/pull/775))
@@ -148,12 +148,12 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - After long work a Bot can propose a new skill, applied only when you approve. ([#628](https://github.com/Fei2411/DS-Bot/pull/628))
 - A Bot working on a project can propose updates to its AGENTS.md, written only when you approve. ([#629](https://github.com/Fei2411/DS-Bot/pull/629))
 - All work in a group can be stopped at once from its details, beside the member list; each working member keeps its own Stop. ([#592](https://github.com/Fei2411/DS-Bot/issues/592), [#616](https://github.com/Fei2411/DS-Bot/pull/616))
-- Bot views run on the shared Deep View package, so DS Bot can be installed together with the Deep View plugin. ([#635](https://github.com/Fei2411/DS-Bot/pull/635))
+- Bot views run on the shared Deep View package, so Cue can be installed together with the Deep View plugin. ([#635](https://github.com/Fei2411/DS-Bot/pull/635))
 
 ### Changed
 
 - The sidebar edge can be dragged to resize it or folded to an avatar rail, and on a narrow window the Bot panel folds first. ([#612](https://github.com/Fei2411/DS-Bot/issues/612), [#617](https://github.com/Fei2411/DS-Bot/pull/617))
-- DS Bot tracks DeepSeek Harness 0.2.1-rc.4. ([#625](https://github.com/Fei2411/DS-Bot/pull/625))
+- Cue tracks DeepSeek Harness 0.2.1-rc.4. ([#625](https://github.com/Fei2411/DS-Bot/pull/625))
 
 ### Fixed
 
@@ -181,7 +181,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - A group member that is busy reads your correction at its next step, and the answer to a later call still goes back to the one who asked. ([#534](https://github.com/Fei2411/DS-Bot/issues/534), [#585](https://github.com/Fei2411/DS-Bot/pull/585))
 - In an admin-led group, if the only admin who speaks first passes without an answer, the group tells you to call a member with @Name. ([#512](https://github.com/Fei2411/DS-Bot/issues/512), [#605](https://github.com/Fei2411/DS-Bot/pull/605))
 - The Connect plugins button is no longer in the Bot sidebar. Manage connectors in Settings or the account menu. ([#452](https://github.com/Fei2411/DS-Bot/issues/452), [#570](https://github.com/Fei2411/DS-Bot/pull/570))
-- The Bot tool that lists models is now `list_bot_models`, so DS Bot installs together with plugins that have their own `list_models`. ([#568](https://github.com/Fei2411/DS-Bot/issues/568), [#575](https://github.com/Fei2411/DS-Bot/pull/575))
+- The Bot tool that lists models is now `list_bot_models`, so Cue installs together with plugins that have their own `list_models`. ([#568](https://github.com/Fei2411/DS-Bot/issues/568), [#575](https://github.com/Fei2411/DS-Bot/pull/575))
 - Buttons on question, secret, approval and model key cards show a focus ring when you move to them with the keyboard. ([#614](https://github.com/Fei2411/DS-Bot/pull/614))
 
 ### Fixed
@@ -206,7 +206,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 - Bots can drive a browser: one Playwright profile per Bot, with sign-ins kept between runs. Posting, uploading, downloading and deleting need your approval first, and payments always go back to you. In the desktop app the Bot's browser shows as a panel you can take over, stop, or give back at any time. ([#417](https://github.com/Fei2411/DeepSeek-Bot/pull/417), [#528](https://github.com/Fei2411/DeepSeek-Bot/pull/528))
 - `/btw` is now Side chat: type `/side` or pick Side chat from the Bot panel's ··· menu and ask follow-ups in the side panel. The panel menu also opens a terminal or the file tree. ([#489](https://github.com/Fei2411/DeepSeek-Bot/issues/489), [#522](https://github.com/Fei2411/DeepSeek-Bot/pull/522))
-- The desktop app's About page shows whether DS Bot is up to date, downloading or ready to restart, with a Check for updates button. ([#499](https://github.com/Fei2411/DeepSeek-Bot/issues/499), [#519](https://github.com/Fei2411/DeepSeek-Bot/pull/519))
+- The desktop app's About page shows whether Cue is up to date, downloading or ready to restart, with a Check for updates button. ([#499](https://github.com/Fei2411/DeepSeek-Bot/issues/499), [#519](https://github.com/Fei2411/DeepSeek-Bot/pull/519))
 
 ### Fixed
 
@@ -215,7 +215,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - Bots can safely retry a named `message_bot` request without sending the same work twice. ([#480](https://github.com/Fei2411/DeepSeek-Bot/issues/480), [#488](https://github.com/Fei2411/DeepSeek-Bot/pull/488))
 - An interrupted memory save is recovered together with its topic links and change history. ([#481](https://github.com/Fei2411/DeepSeek-Bot/issues/481), [#492](https://github.com/Fei2411/DeepSeek-Bot/pull/492))
 - A failed `remember` or `forget` shows a notice in the chat with a route to memory management. ([#482](https://github.com/Fei2411/DeepSeek-Bot/issues/482), [#495](https://github.com/Fei2411/DeepSeek-Bot/pull/495))
-- In DSH Desktop, Update installs the new version of an already-installed DS Bot instead of failing with "already-installed". ([#423](https://github.com/Fei2411/DeepSeek-Bot/issues/423), [#505](https://github.com/Fei2411/DeepSeek-Bot/pull/505))
+- In DSH Desktop, Update installs the new version of an already-installed Cue instead of failing with "already-installed". ([#423](https://github.com/Fei2411/DeepSeek-Bot/issues/423), [#505](https://github.com/Fei2411/DeepSeek-Bot/pull/505))
 - Cookie imports from Chrome or Edge explain that the browser locks its cookies and suggest a cookie file, instead of silently importing nothing. ([#490](https://github.com/Fei2411/DeepSeek-Bot/issues/490), [#503](https://github.com/Fei2411/DeepSeek-Bot/pull/503))
 - Switching a Bot's working folder shows a short "Switching working folder" status line while the conversation moves to a fresh part. ([#486](https://github.com/Fei2411/DeepSeek-Bot/issues/486), [#493](https://github.com/Fei2411/DeepSeek-Bot/pull/493))
 - The release attaches the Linux packages again; a missing attached file now fails the release instead of shipping without it. ([#496](https://github.com/Fei2411/DeepSeek-Bot/pull/496))
@@ -287,12 +287,12 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 ### Fixed
 
 - Opening a Bot's chat right after start no longer fails with a page error on slow machines. ([#333](https://github.com/Fei2411/DeepSeek-Bot/issues/333))
-- On Windows, a Bot's work is no longer lost now and then when another program reads DS Bot's files at the same moment, and a failed save while a Bot moves to a fresh part no longer stops DeepSeek Harness. ([#328](https://github.com/Fei2411/DeepSeek-Bot/pull/328))
-- A Bot no longer loses its waiting messages when DS Bot reloads or updates while the Bot moves to a fresh part of its chat. ([#280](https://github.com/Fei2411/DeepSeek-Bot/issues/280))
+- On Windows, a Bot's work is no longer lost now and then when another program reads Cue's files at the same moment, and a failed save while a Bot moves to a fresh part no longer stops DeepSeek Harness. ([#328](https://github.com/Fei2411/DeepSeek-Bot/pull/328))
+- A Bot no longer loses its waiting messages when Cue reloads or updates while the Bot moves to a fresh part of its chat. ([#280](https://github.com/Fei2411/DeepSeek-Bot/issues/280))
 - A Bot's post into a group chat shows at once, also while the group is busy. ([#310](https://github.com/Fei2411/DeepSeek-Bot/pull/310))
 - A group member that waits for your approval can be stopped from the group's details. ([#156](https://github.com/Fei2411/DeepSeek-Bot/issues/156))
 - Clicking permission presets quickly no longer makes the picker jump back to an older choice. ([#266](https://github.com/Fei2411/DeepSeek-Bot/issues/266))
-- The DS Bot whale and the return button keep their look when other plugins load or reload. ([#228](https://github.com/Fei2411/DeepSeek-Bot/issues/228))
+- The Cue whale and the return button keep their look when other plugins load or reload. ([#228](https://github.com/Fei2411/DeepSeek-Bot/issues/228))
 - Usage totals no longer miss calls when a Session list serves a cached projection watermark. ([#295](https://github.com/Fei2411/DeepSeek-Bot/pull/295))
 - Secret references in the arguments of a stdio MCP server are replaced with their values. ([#305](https://github.com/Fei2411/DeepSeek-Bot/pull/305))
 - Ids and names such as `__proto__` are treated as unknown everywhere instead of being read as an existing Bot or group. ([#290](https://github.com/Fei2411/DeepSeek-Bot/issues/290))
@@ -317,7 +317,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - **Bots see what their teammates are doing**: `list_bots` says what each other Bot is doing now: waiting for your approval, moving to a fresh conversation, working (in its own chat or which group, for how long, for whom, on which tool), or waiting for teammates to hand back work, and whether a question card waits for you or messages wait unread. `message_bot` says the same about the Bot it messages. ([#262](https://github.com/Fei2411/DeepSeek-Bot/issues/262))
 - **Hand-offs that come back**: a Bot that hands part of a request on to other Bots, or posts in a group and asks for the replies, answers the Bot that asked only once all of it is back, and its answer carries what came back. A Bot can take part in the same work more than once, for example one designs, another builds, a third reviews and the first accepts. ([#262](https://github.com/Fei2411/DeepSeek-Bot/issues/262))
 - A Bot's character shows when it waits for teammates to hand back work: it sways with its eyes circling, without the working dot, and its sidebar row says whom it waits for. ([#262](https://github.com/Fei2411/DeepSeek-Bot/issues/262))
-- **Docker image**: run DS Bot on a NAS or another always-on machine, with a Compose file you configure inline, a Linux start script, and a setting to change who owns the data. See `docker/README.md`.
+- **Docker image**: run Cue on a NAS or another always-on machine, with a Compose file you configure inline, a Linux start script, and a setting to change who owns the data. See `docker/README.md`.
 
 ### Changed
 
@@ -350,7 +350,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - In Bot mode, entries that other plugins add to the sidebar footer get a row each, instead of squeezing Connect plugins. ([#164](https://github.com/Fei2411/DeepSeek-Bot/issues/164))
 - **Report on GitHub** in Settings → Feedback opens the new issue in your browser from DSH Desktop too. ([#182](https://github.com/Fei2411/DeepSeek-Bot/issues/182))
 - Preset accent colors use their dark shade in dark mode, so Charcoal, Graphite and Cobalt stay visible.
-- DS Bot no longer writes its diagnostics log after it stops. ([#226](https://github.com/Fei2411/DeepSeek-Bot/issues/226))
+- Cue no longer writes its diagnostics log after it stops. ([#226](https://github.com/Fei2411/DeepSeek-Bot/issues/226))
 
 ## [0.1.6] - 2026-10-15
 
@@ -390,19 +390,19 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 - The memory panel's summary, its "ask or update" and the memory review no longer stop when the Bot's model refuses the call or runs out of output budget: they try once more on the profile's default model. After you change the Bot's model, a failed summary is written again automatically. ([#116](https://github.com/Fei2411/DeepSeek-Bot/issues/116))
 - With the `ptc` agent preset, the team view and a Bot's character show the tool the Bot runs from its code, an approval card says what that tool does, and a question card asked from code is kept in chat search and in the next part of the chat. In a group chat, a member that only reads the chat or checks the team no longer leaves the round as if it had gone off to work.
 - Switching from Bot mode back to Agent mode no longer leaves parts of the Bot interface on screen, such as the chat header or Bot messages without their styles, when one part fails to close. The other parts still close, and Bot mode opens normally again.
-- DS Bot no longer sets DeepSeek Harness's work-details mode (Settings → General) to the most detailed one, and no longer hides that setting. Bot chats stay flat in every mode, and your choice applies again outside them. If you had chosen another mode before, choose it again once: DS Bot cannot tell which one it was.
+- Cue no longer sets DeepSeek Harness's work-details mode (Settings → General) to the most detailed one, and no longer hides that setting. Bot chats stay flat in every mode, and your choice applies again outside them. If you had chosen another mode before, choose it again once: Cue cannot tell which one it was.
 - Your own messages in a Bot chat stay readable under dark skins that recolor message bubbles.
 - A Bot chat now shows the cards of the files a Bot hands over with DeepSeek Harness's `present` tool, and of the files a turn changed, as DSH's own chat does. A file path in the reply links to the file when the turn made or delivered it.
 - With the `ptc` agent preset, the chat shows the tools a Bot runs from its code again: group replies, question and key cards, and the lines for messages, Bots, groups and memory.
 - A question or key card whose call is not on screen, such as one asked in an earlier part of the chat or in a Bot-to-Bot turn, waits above the message box. A card shows in one place only.
-- With `DSH_HOME` empty or starting with `~`, DS Bot now keeps its data in `bot/` inside the folder dsh uses. Before, it used a folder relative to the one dsh was started in; to keep a team made that way, close dsh and move that `bot/` folder into dsh's folder.
+- With `DSH_HOME` empty or starting with `~`, Cue now keeps its data in `bot/` inside the folder dsh uses. Before, it used a folder relative to the one dsh was started in; to keep a team made that way, close dsh and move that `bot/` folder into dsh's folder.
 
 ## [0.1.4] - 2026-10-13
 
 ### Added
 
 - Settings → **Capabilities**: share MCP servers and skills with the team, group them into packs, and choose which capabilities each Bot can use.
-- A Bot that was working when DeepSeek Harness closed or restarted picks its work back up when DS Bot starts again. A group chat shows which member was cut off, and a Bot that was answering another Bot still sends its answer.
+- A Bot that was working when DeepSeek Harness closed or restarted picks its work back up when Cue starts again. A group chat shows which member was cut off, and a Bot that was answering another Bot still sends its answer.
 - The sidebar marks a Bot or group chat that waits for your approval. Where the system allows notifications, a notification also names the Bot.
 - In a group chat, any Bot can hand work to another with @Name. The Bot does the work without holding up the group, and the group, the sidebar and the Bot's own chat show what it is doing. When it is done, it posts the result in the group. You can stop the work in the group's details.
 
@@ -434,7 +434,7 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### Fixed
 
-- When DS Bot cannot save the Bot team, the change now fails with an error instead of being lost silently.
+- When Cue cannot save the Bot team, the change now fails with an error instead of being lost silently.
 - A Bot team file that cannot be read is no longer replaced by an empty team; a damaged file is kept as a backup.
 - Warnings in the host log hide keys and tokens.
 - Bots receive the current time on their first model step and refresh it after ten minutes, even when their DSH preset does not supply a clock.
@@ -453,11 +453,11 @@ All notable changes to DS Bot are listed here. The format follows [Keep a Change
 
 ### Added
 
-- Settings → About DS Bot: the DS Bot and DSH versions, **Check for updates** and the update buttons, and links to the source code, the release notes and the feedback page. A **Star** button opens the GitHub repository and shows its star count.
+- Settings → About Cue: the Cue and DSH versions, **Check for updates** and the update buttons, and links to the source code, the release notes and the feedback page. A **Star** button opens the GitHub repository and shows its star count.
 
 ### Fixed
 
-- The update card offers a DSH update only when a DS Bot release names a verified DSH version. DS Bot 0.1.1 offered DSH `0.2.1-alpha.1`, which was not verified. In DSH Desktop the card shows a DSH update only when the update the app offers is the verified version.
+- The update card offers a DSH update only when a Cue release names a verified DSH version. Cue 0.1.1 offered DSH `0.2.1-alpha.1`, which was not verified. In DSH Desktop the card shows a DSH update only when the update the app offers is the verified version.
 
 ## [0.1.1] - 2026-10-11
 
@@ -466,7 +466,7 @@ Tested with DeepSeek Harness `0.2.1-alpha.1` (DSH Desktop and DSH Web).
 ### Added
 
 - Voice chat uses the local speech recognition of the official DSH Voice Input plugin (SenseVoice) when the plugin is on, and the browser's speech recognition otherwise. When the plugin has no speech model yet, the voice panel opens its settings.
-- The update card also offers DSH updates, but only the DSH version that the newest DS Bot release was verified with (`dsBot.verifiedDsh`). A DSH installed with npm updates in one click; DSH Desktop opens its own update panel.
+- The update card also offers DSH updates, but only the DSH version that the newest Cue release was verified with (`dsBot.verifiedDsh`). A DSH installed with npm updates in one click; DSH Desktop opens its own update panel.
 - Each Bot can pick a thinking level with its model, in the model menu or when the Bot is created. **Default** uses the model's own level.
 - A permission setting in each Bot's details panel: **Read only**, **Workspace** or **Full access**, from the presets DSH offers. The Bot keeps it in its own chat, its group chats and its new conversation parts.
 
@@ -502,12 +502,12 @@ The first public preview. Tested with DeepSeek Harness `0.2.1-alpha.1` (DSH Desk
 - Avatar animation in three levels (Settings → Bots → Animation): **Quiet**, **Normal** (the default) and **Lively**. Panels, menus and controls move on springs.
 - Settings with pages for General, Bots, Group chats, Connectors, Scheduled tasks, Usage, Secrets and Feedback.
 - The interface follows the DSH language (English or Chinese).
-- **Classic Agent mode** (Settings → General) gives the window back to the native DSH interface; the **DS Bot** button at the bottom of the sidebar brings the team view back.
-- Settings → Feedback: the DS Bot and DSH versions, the system and the recent errors, with **Report on GitHub**, **Copy**, **Download** and **Clear**. Keys, tokens, saved secrets and the home folder are removed from the text. Errors are also written to `<home>/logs/diagnostics.jsonl` (`diagnosticsFile: false` keeps them in memory only), and a failed request shows a short notice with a **Details** link.
-- Update checks: DS Bot looks for a newer release where it was installed from (the npm registry, or GitHub for a versioned git install) and shows a cloud button at the sidebar's top right when one exists. One click installs it; the new version runs from the next DSH start. `updateCheck: false` turns the checks off.
+- **Classic Agent mode** (Settings → General) gives the window back to the native DSH interface; the **Cue** button at the bottom of the sidebar brings the team view back.
+- Settings → Feedback: the Cue and DSH versions, the system and the recent errors, with **Report on GitHub**, **Copy**, **Download** and **Clear**. Keys, tokens, saved secrets and the home folder are removed from the text. Errors are also written to `<home>/logs/diagnostics.jsonl` (`diagnosticsFile: false` keeps them in memory only), and a failed request shows a short notice with a **Details** link.
+- Update checks: Cue looks for a newer release where it was installed from (the npm registry, or GitHub for a versioned git install) and shows a cloud button at the sidebar's top right when one exists. One click installs it; the new version runs from the next DSH start. `updateCheck: false` turns the checks off.
 - One writer per team: when DSH Web and DSH Desktop share a DSH home, the second one opens the team read-only, says why, and takes over when the first one quits.
 
-If you used the legacy `dsh-bot` package, remove it before you install `ds-bot`. The team data stays in `<DSH_HOME>/bot`, and the theme, Bot colors and browser settings move over the first time DS Bot opens.
+If you used the legacy `dsh-bot` package, remove it before you install `ds-bot`. The team data stays in `<DSH_HOME>/bot`, and the theme, Bot colors and browser settings move over the first time Cue opens.
 
 ### Known limitations
 

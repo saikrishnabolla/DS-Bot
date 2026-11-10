@@ -138,7 +138,7 @@ export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRost
     if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion())
   })
   const speech = actions.speech()
-  const remoteDictation = useRemoteDictation(speech?.owned === true ? speech : undefined, (text, final) => {
+  const remoteDictation = useRemoteDictation(speech, (text, final) => {
     if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion())
   })
   // Reply from a message's hover toolbar quotes it into this composer.
@@ -149,20 +149,16 @@ export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRost
     const excerpt = quote.text.replace(/\s+/g, ' ').trim()
     const line = `> ${excerpt.length > 200 ? `${excerpt.slice(0, 200)}…` : excerpt}\n\n`
     inputActions.insertText(line, inputActions.captureInsertion())
-    const box = document.querySelector('[class*="_centerCol"] [role=textbox][contenteditable=true]')
+    const box = document.querySelector('[data-cue-main] [data-composer-input]')
     if (box instanceof HTMLElement) {
       box.focus()
-      const selection = window.getSelection()
-      selection?.selectAllChildren(box)
-      selection?.collapseToEnd()
+      box.setSelectionRange?.(box.value?.length ?? 0, box.value?.length ?? 0)
     }
   }, [quote?.token])
   if (sessionId === undefined) return null
-  // With the Voice Input plugin on, its own microphone sits in this composer.
-  const pluginMic = speech !== undefined && speech.owned !== true
-  const shownDictation = speech?.owned === true ? remoteDictation : dictation
+  const shownDictation = speech ? remoteDictation : dictation
   return h(Fragment, null,
-    pluginMic ? null : h('button', {
+    h('button', {
       type: 'button', className: 'bt-mic', 'aria-label': shownDictation.listening ? t('Stop dictation') : t('Dictate'),
       'aria-pressed': shownDictation.listening, title: shownDictation.listening ? t('Stop dictation') : t('Dictate'),
       onMouseDown: keepComposerFocus, onClick: () => (shownDictation.listening ? shownDictation.stop() : shownDictation.start()),
@@ -188,7 +184,7 @@ export function menuIcons(roster) {
 
 // The composer's "+" in a Bot's chat or a group chat: add files, reference another
 // chat, or set a scheduled task for this chat. It stands in for the shell's command
-// menu, whose plan, permission, model and compact rows reach past what DS Bot keeps
+// menu, whose plan, permission, model and compact rows reach past what Cue keeps
 // for its Bots; "/" still opens that menu. Files go through the shell's own file
 // input beside it.
 export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions }) {

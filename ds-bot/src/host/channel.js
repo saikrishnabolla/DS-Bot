@@ -12,7 +12,7 @@ const LANGUAGES = { zh: 'Chinese (简体中文)', en: 'English' }
 const RUN_STATS = ['sessionStats', 'tokenUsage', 'contextPressure']
 
 const invalid = message => Object.assign(new Error(message), { code: 'bot/invalid' })
-// Programming and file system errors are DS Bot's own faults, logged with their stack;
+// Programming and file system errors are Cue's own faults, logged with their stack;
 // any other error is a refusal whose message is meant for the user.
 const isInternal = error => error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError
   || error instanceof SyntaxError || (typeof error?.code === 'string' && /^E[A-Z_]+$/.test(error.code))
@@ -26,7 +26,7 @@ const MAX_REFERENCE_ID = 256
 const MAX_REFERENCE_LIST = 128
 const MAX_REFERENCE_EVENTS = 80
 const MAX_REFERENCE_TEXT = 48_000
-const SESSION_REFERENCE = /^@\[((?:\\[\\\]]|[^\]]){1,240})\]\(dsh-session:([A-Za-z0-9_-]{1,512})\)$/u
+const SESSION_REFERENCE = /^@\[((?:\\[\\\]]|[^\]]){1,240})\]\(cue-session:([A-Za-z0-9_-]{1,512})\)$/u
 
 function sessionReference(value) {
   if (typeof value !== 'string') return undefined
@@ -104,7 +104,7 @@ async function sentContent(ctx, body) {
 }
 
 export function errorCode(error) {
-  if (typeof error?.code === 'string' && error.code.startsWith('bot/')) return error.code
+  if (typeof error?.code === 'string' && (error.code.startsWith('bot/') || error.code.startsWith('session/'))) return error.code
   return isInternal(error) ? 'bot/internal' : 'bot/refused'
 }
 
@@ -113,13 +113,13 @@ export function install(rt) {
   installSide(rt)
   const { ctx, state } = rt
 
-  // The DSH interface language of the last browser that asked for the team.
+  // The Cue interface language of the last browser that asked for the team.
   let uiLocale
   rt.uiLanguage = () => (uiLocale === undefined ? undefined : LANGUAGES[uiLocale.split('-')[0].toLowerCase()] ?? uiLocale)
 
   const ok = value => ({ ok: true, value })
   const fail = (message, code = 'bot/error') => ({ ok: false, error: { code, message, details: {} } })
-  // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
+  // Models come from Cue, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
   const modelsKey = () => `${rt.cachedCatalog().map(entry => `${entry.ref}${entry.needsKey ? '!' : ''}${entry.reasoning ? `:${JSON.stringify(entry.reasoning)}` : ''}`).join(',')}|${rt.cachedDefault() ?? ''}`
   const view = () => ({
@@ -177,7 +177,7 @@ export function install(rt) {
     browser: rt.browserEnabled,
     // False when config.memory turns memory off: no Memory row or panel.
     memory: rt.memoryEnabled !== false,
-    // Set while another dsh host holds the team (store.js): why this one cannot change it.
+    // Set while another Cue instance host holds the team (store.js): why this one cannot change it.
     readOnly: rt.readOnly() ?? null,
     // IM connections (settings → IM): one per chat-app bot the user added.
     im: rt.imView?.() ?? { connections: [], platforms: [] },
@@ -222,8 +222,8 @@ export function install(rt) {
     return liveCache = { key: `${liveRun}:${++liveSeq}`, value, json }
   }
   // What a host that only reads the team may still answer.
-  // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'reference-chats', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models'])
+  // Updates change the Cue profile, not the team, so a reading host may run them too.
+  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'plugin-inventory', 'plugin-client-entries', 'agent-presets', 'earlier', 'chat', 'agent-chat', 'agent-sessions', 'reference-chats', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models'])
 
   const currentSession = (ref) => {
     const past = rt.pastOwners.get(ref)
@@ -373,9 +373,30 @@ export function install(rt) {
           const ms = await rt.thinkingOf(sessionId, turn)
           return ok(ms === undefined ? {} : { ms })
         }
-        // Model providers and their keys, for a window without DSH's own Models page.
+        // Model providers and their keys, for a window without Cue's own Models page.
         case 'providers':
           return ok(await rt.providersView())
+        case 'plugin-inventory':
+          return ok({
+            ...await ctx.get('pluginInventory').list(),
+            ...await rt.agentPresetView().then(({ defaultPreset, rows }) => ({
+              defaultPreset,
+              presets: rows.map(({ id, name, broken }) => ({ id, name, broken: broken ?? null })),
+            })),
+          })
+        case 'plugin-client-entries':
+          return ok(await ctx.get('pluginClient')?.list?.() ?? [])
+        case 'agent-presets':
+          return ok(await rt.agentPresetView())
+        case 'agent-preset-default':
+          return ok(await rt.setDefaultAgentPreset(body.id))
+        case 'agent-preset-save':
+          return ok(await rt.saveAgentPreset(body))
+        case 'agent-preset-delete':
+          return ok(await rt.deleteAgentPreset(body.id))
+        case 'agent-preset-start':
+          await rt.load()
+          return ok(await rt.startAgentPreset(body.id))
         case 'provider-key':
           if (body.value === null) await rt.clearProviderKey(String(body.provider ?? ''))
           else await rt.setProviderKey(String(body.provider ?? ''), body.value)
@@ -418,13 +439,30 @@ export function install(rt) {
           return ok(body.roomId === undefined
             ? await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined)
             : await rt.roomChatPage(String(body.roomId ?? ''), body.cursor ?? undefined))
+        case 'agent-chat': {
+          await rt.load()
+          const sessionId = String(body.sessionId ?? '')
+          if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
+          return ok(await ctx.sessionController.displayPage({ sessionId, cursor: body.cursor ?? undefined }))
+        }
+        case 'agent-sessions': {
+          await rt.load()
+          const listed = await listedSessions()
+          const ids = Object.values(state.agents).flatMap(agent => agent.sessions ?? [])
+          const byId = {}
+          for (const id of ids) {
+            const row = listed.byId[id] ?? { id, title: '', displayTitle: '', blank: true }
+            byId[id] = { ...row, running: ctx.get?.('agents')?.get?.(id)?.status === 'running' }
+          }
+          return ok({ ids, byId })
+        }
         case 'reference-chats': {
           if (typeof body.sessionId !== 'string' || body.sessionId === '') return fail('No chat to reference from', 'bot/invalid')
           await rt.load()
           if (!teamSessions().has(currentSession(body.sessionId))) return fail('No chat to reference from', 'bot/invalid')
           return ok(await listedSessions())
         }
-        // DSH's own whole-log figures for the current part of a Bot's chat, the ones its
+        // Cue's own whole-log figures for the current part of a Bot's chat, the ones its
         // status bar shows; a window without that bar shows them in the Bot's details.
         case 'run-stats': {
           await rt.load()
@@ -572,6 +610,15 @@ export function install(rt) {
           agent.cancel({ kind: 'user', reason: 'ds-bot/stopped' })
           return ok(true)
         }
+        case 'stop-agent-work': {
+          await rt.load()
+          const sessionId = String(body.sessionId ?? '')
+          if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
+          const agent = await rt.resolveAgent(sessionId)
+          if (agent.status === 'idle') return fail('The Agent is not working', 'bot/stale')
+          agent.cancel({ kind: 'user', reason: 'ds-bot/stopped' })
+          return ok(true)
+        }
         // A stop that fails partway still parks the goal, or it wakes the admin again.
         case 'stop-member-work':
           try {
@@ -702,6 +749,21 @@ export function install(rt) {
           const references = await resolveReferences(body.sessionId, body.references)
           await rt.sendUser({ sessionId: body.sessionId, content, references })
           return ok(true)
+        }
+        case 'queue': {
+          if (typeof body.sessionId !== 'string') return fail('No conversation selected', 'bot/invalid')
+          await rt.load()
+          return ok(await ctx.sessionController.queue({ sessionId: currentSession(body.sessionId) }))
+        }
+        case 'queue-update': {
+          if (typeof body.sessionId !== 'string' || typeof body.itemId !== 'string') return fail('No queued message selected', 'bot/invalid')
+          if (body.action === null || typeof body.action !== 'object') return fail('No queue action selected', 'bot/invalid')
+          await rt.load()
+          return ok(await ctx.sessionController.updateQueue({
+            sessionId: currentSession(body.sessionId),
+            itemId: body.itemId,
+            action: body.action,
+          }))
         }
         case 'btw-delete': {
           if (typeof body.sessionId !== 'string' || body.sessionId === '' || typeof body.cardId !== 'string' || body.cardId === '') return fail('Nothing to delete', 'bot/invalid')
@@ -864,7 +926,7 @@ export function install(rt) {
   }
 
   // How a user message reaches a Session: a Bot id, a group chat's id, or an earlier
-  // part of either resolves to its current part. `content` is the prompt blocks DSH
+  // part of either resolves to its current part. `content` is the prompt blocks Cue
   // takes (text, image, file receipts); `requestId` lands on the message's source.
   async function sendUser({ sessionId: ref, content, references = [], requestId = randomUUID() }) {
     const sessionId = currentSession(ref)

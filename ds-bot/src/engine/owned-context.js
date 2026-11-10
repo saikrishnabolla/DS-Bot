@@ -3,20 +3,29 @@ import { createWriteStream, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
+import { CodemodeSandbox } from '@earendil-works/pi-codemode'
 import { formatSkillsForPrompt, loadSkills } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
+import { createCodemodeExtension } from '@earendil-works/pi-durable/codemode'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
 import { createOwnedCompactionExtension } from './owned-range-compaction.js'
+import { OwnedAgentPresets } from './owned-agent-presets.js'
+import { OwnedPluginPackages } from './owned-plugin-packages.js'
 import { OwnedGoalStore } from './owned-goals.js'
 import { ownedDirectoryPicker } from './owned-directory-picker.js'
 import { exitPlanModeDefinition, PLAN_MODE_GUIDANCE } from './owned-plan-mode.js'
 import { createToolResultPruner } from './owned-tool-result-pruner.js'
-import { projectLive } from './projection.js'
+import { messageFailure } from './model-failure.js'
+import { pageFromEntries, projectEntries, projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
+const USER_QUEUE_KINDS = new Set(['user', 'schedule', 'user-question-reply'])
 const JOB_MEMORY_BYTES = 1_048_576
 const JOB_STOP_GRACE_MS = 1_000
+const CODEMODE_MEMORY_BYTES = 64 * 1024 * 1024
+const CREATOR_INSTRUCTIONS = 'Customize Cue through conversation. Use manage_agent_preset for Agent presets and manage_cue_plugin for persistent Cue packages. Ordinary Pi Coding Agent extensions are not Cue runtime plugins; a package must declare package.json cue.plugins entries. Install and verify the result in Cue instead of only writing source files.'
+const MINIMAL_TOOLS = new Set(['bash', 'pwsh', 'powershell'])
 const textContent = value => Array.isArray(value) ? value : [{ type: 'text', text: String(value ?? '') }]
 const timeOf = message => Number.isFinite(Number(message?.timestamp)) ? Number(message.timestamp) : Date.now()
 const receiptBlock = block => block?.attachment === undefined && block?.receiptId !== null && typeof block?.receiptId === 'object'
@@ -25,13 +34,7 @@ const receiptBlock = block => block?.attachment === undefined && block?.receiptI
 
 function turnReason(message) {
   if (message?.stopReason === 'length') return { kind: 'max-tokens' }
-  if (message?.stopReason === 'error') return {
-    kind: 'error',
-    error: {
-      code: 'UNKNOWN',
-      message: String(message.errorMessage ?? 'Model request failed').trim().slice(0, 500),
-    },
-  }
+  if (message?.stopReason === 'error') return { kind: 'error', error: messageFailure(message) }
   if (message?.stopReason === 'aborted') return { kind: 'aborted', reason: { kind: 'user' } }
   return { kind: 'completed' }
 }
@@ -76,6 +79,17 @@ async function inputContent(message, attachments, acceptsImages = true) {
 function sourceOf(entry) {
   if (entry.kind === INPUT_KIND && entry.data?.source && typeof entry.data.source === 'object') return entry.data.source
   return { kind: 'user', ...(entry.data?.requestId === undefined ? {} : { requestId: entry.data.requestId }) }
+}
+
+function queueProjection(view) {
+  const items = Array.isArray(view?.docs?.['pi.inbox']?.items) ? view.docs['pi.inbox'].items : []
+  return {
+    'next-turn': items.flatMap(item => {
+      if ((item?.mode !== 'followUp' && item?.mode !== 'steer') || item.entry?.kind !== INPUT_KIND) return []
+      const content = Array.isArray(item.entry.data?.content) ? item.entry.data.content.map(receiptBlock) : []
+      return [{ id: String(item.id), content, source: sourceOf(item.entry), mode: item.mode }]
+    }),
+  }
 }
 
 function eventRecords(entries, startSeq = 0) {
@@ -240,6 +254,10 @@ const OWNED_PERMISSION_PRESETS = [
   { value: 'danger-full-access', name: 'Full access' },
 ]
 
+const pluginTitle = name => String(name)
+  .replace(/[-_]+/g, ' ')
+  .replace(/^\w/u, letter => letter.toUpperCase())
+
 function permissionPresets() {
   const selected = new Map()
   const values = new Set(OWNED_PERMISSION_PRESETS.map(option => option.value))
@@ -390,6 +408,12 @@ export class OwnedContext {
   #planToolRecord
   #toolResultPruner
   #prunedConversations = new Set()
+  #agentToolNames = new Set()
+  #codemodeExtension
+  #presetManagerRecord
+  #pluginManagerRecord
+  #pluginPackages
+  #pluginSkillPaths = []
 
   constructor(harness, { dataDir, workspacePath, logger = console, transcriptWindow, planMode: planModeConfig, toolResultPruning } = {}, compactionExtension) {
     this.harness = harness
@@ -398,13 +422,13 @@ export class OwnedContext {
     const planSection = planModeConfig?.section ?? PLAN_MODE_GUIDANCE
     if (typeof planSection !== 'string' || planSection.trim() === '') throw new Error('PlanModeConfig needs a non-empty string `section`')
     const path = resolve(workspacePath ?? process.cwd())
-    const workspace = { id: 'default', name: 'DS Bot', path }
+    const workspace = { id: 'default', name: 'Cue', path }
     this.#workspaces.set(workspace.id, workspace)
     this.workspaceRegistry = {
       get: id => this.#workspaces.get(String(id)),
       list: () => [...this.#workspaces.values()],
       resolveByPath: candidate => [...this.#workspaces.values()].find(item => item.path === resolve(candidate)),
-      create: async (candidate, name = 'DS Bot') => {
+      create: async (candidate, name = 'Cue') => {
         const found = this.workspaceRegistry.resolveByPath(candidate)
         if (found !== undefined) return found
         const value = { id: randomUUID(), name, path: resolve(candidate) }
@@ -439,16 +463,109 @@ export class OwnedContext {
       if (agent?.id !== undefined) {
         try { cwd = (await this.harness.agent(String(agent.id)))?.cwd ?? cwd } catch {}
       }
-      return loadSkills({ cwd, agentDir: resolve(dataDir), skillPaths: [], includeDefaults: true })
+      return loadSkills({ cwd, agentDir: resolve(dataDir), skillPaths: this.#pluginSkillPaths, includeDefaults: true })
     })
     this.#promptSections.set('skills', { name: 'skills', order: 900, text: ({ agent }) => skills.prompt(agent) })
     this.#services.set('skills', skills)
     this.#services.set('directoryPicker', ownedDirectoryPicker())
     this.#services.set('tokenMeter', tokenMeter())
     this.#services.set('permissionPresets', permissionPresets())
+    const agentPresets = new OwnedAgentPresets(dataDir, { toolNames: () => new Set(this.#agentToolNames) })
     this.#services.set('agentPresets', {
-      list: async () => [{ id: 'standard', name: 'Standard' }],
+      list: () => agentPresets.list(),
+      resolve: id => agentPresets.resolve(id),
+      save: input => agentPresets.save(input),
+      remove: id => agentPresets.remove(id),
       serviceFor: (_agent, name) => name === 'compaction' ? this.#services.get('compaction') : undefined,
+    })
+    this.#presetManagerRecord = this.#createDefinitionRecord({
+      name: 'manage_agent_preset',
+      description: 'List, inspect, install, or remove persistent Cue Agent presets.',
+      ownedNative: true,
+      parameters: {
+        action: { type: 'string', enum: ['list', 'read', 'save', 'remove'], required: true },
+        id: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        tools: { type: 'array', items: { type: 'string' } },
+        instructions: { type: 'string' },
+      },
+      execute: async args => {
+        let value
+        if (args.action === 'list') value = await agentPresets.list()
+        else if (args.action === 'read') value = agentPresets.resolve(args.id)
+        else if (args.action === 'save') value = await agentPresets.save(args)
+        else if (args.action === 'remove') value = { removed: await agentPresets.remove(args.id), id: String(args.id ?? '') }
+        else throw new Error(`Unknown Agent preset action ${JSON.stringify(args.action)}`)
+        return {
+          output: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+          structuredOutput: value,
+        }
+      },
+    }, 'cue-agent-preset-manager')
+    this.effect(() => this.#presetManagerRecord.uninstall)
+    this.#pluginManagerRecord = this.#createDefinitionRecord({
+      name: 'manage_cue_plugin',
+      description: 'Discover, inspect, install, update, enable, disable, reload, or remove persistent Cue plugin packages.',
+      ownedNative: true,
+      parameters: {
+        action: { type: 'string', enum: ['list', 'search', 'read', 'install', 'update', 'enable', 'disable', 'reload', 'remove'], required: true },
+        source: { type: 'string' },
+        query: { type: 'string' },
+      },
+      execute: async args => {
+        const manager = this.#pluginPackages
+        if (manager === undefined) throw new Error('Cue plugin packages are not available')
+        const source = String(args.source ?? '')
+        let value
+        if (args.action === 'list') value = await manager.list()
+        else if (args.action === 'search') value = await manager.search(args.query)
+        else if (args.action === 'read') value = await manager.read(source)
+        else if (args.action === 'install') value = await manager.install(source)
+        else if (args.action === 'update') value = await manager.update(source)
+        else if (args.action === 'enable') value = await manager.enable(source)
+        else if (args.action === 'disable') value = await manager.disable(source)
+        else if (args.action === 'reload') value = await manager.reload(source)
+        else if (args.action === 'remove') value = { removed: await manager.remove(source), source }
+        else throw new Error(`Unknown Cue plugin action ${JSON.stringify(args.action)}`)
+        await this.#syncPluginSkills()
+        if (!['list', 'search', 'read'].includes(args.action)) this.publishFeed('plugins', {})
+        return {
+          output: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
+          structuredOutput: value,
+        }
+      },
+    }, 'cue-plugin-package-manager')
+    this.effect(() => this.#pluginManagerRecord.uninstall)
+    this.#services.set('pluginInventory', {
+      list: async () => {
+        const packages = await this.#pluginPackages?.list?.() ?? []
+        return {
+          defaultPreset: 'standard',
+          presets: [{ id: 'standard', name: 'Standard mode', broken: null }],
+          session: this.tools.schemas().map(tool => ({
+            id: tool.name,
+            title: pluginTitle(tool.name),
+            description: String(tool.description ?? ''),
+            module: `cue-tool:${tool.name}`,
+            scope: 'session',
+            state: 'active',
+          })),
+          global: [
+            { id: 'pi-durable', title: 'Pi Durable', description: 'Durable task, conversation, and checkpoint runtime.', module: '@earendil-works/pi-durable', scope: 'global', state: 'active' },
+            { id: 'pi-coding-agent', title: 'Pi coding agent', description: 'Models, coding tools, project instructions, and skill loading.', module: '@earendil-works/pi-coding-agent', scope: 'global', state: 'active' },
+            { id: 'cue-host', title: 'Cue host', description: 'Bot teams, groups, memory, connectors, schedules, and desktop integration.', module: 'cue:owned-host', scope: 'global', state: 'active' },
+            ...packages.map(row => ({
+              id: row.source,
+              title: row.name,
+              description: row.version ? `Version ${row.version}` : '',
+              module: row.entries?.join(', ') || row.source,
+              scope: 'global',
+              state: row.state,
+            })),
+          ],
+        }
+      },
     })
     const jobs = new Map()
     const jobWaiters = new Map()
@@ -493,7 +610,7 @@ export class OwnedContext {
         spill.on('error', error => {
           record.spillFailed = true
           record.output = { ...record.output, spillPaths: [] }
-          this.logger.error?.('DS Bot: could not retain full background job output', error)
+          this.logger.error?.('Cue: could not retain full background job output', error)
         })
         jobs.set(record.id, record)
         for (const chunk of chunks) jobsService.append(record.id, chunk)
@@ -687,7 +804,7 @@ export class OwnedContext {
         await this.harness.setPlanMode(id, active)
         return 'committed'
       },
-      approve: agent => this.harness.queuePlanMode(String(agent?.session?.id ?? agent?.id ?? agent), false),
+      approve: agent => this.harness.setPlanMode(String(agent?.session?.id ?? agent?.id ?? agent), false),
     }
     this.#services.set('planMode', planMode)
     this.#planToolRecord = this.#createDefinitionRecord(exitPlanModeDefinition({
@@ -705,6 +822,16 @@ export class OwnedContext {
       },
     })
     this.#toolResultPruner = createToolResultPruner(toolResultPruning)
+    const codemodeSandbox = new CodemodeSandbox({
+      timeoutMs: 300_000,
+      memoryLimitBytes: CODEMODE_MEMORY_BYTES,
+    })
+    this.#codemodeExtension = createCodemodeExtension({ sandbox: codemodeSandbox })
+    const removeCodemode = this.harness.install(this.#codemodeExtension)
+    this.effect(() => () => {
+      removeCodemode()
+      return codemodeSandbox.close()
+    })
     this.harness.beforeRequest?.((messages, { conversationId }) => {
       if (conversationId === undefined || !this.#prunedConversations.has(String(conversationId))) return messages
       return this.#toolResultPruner.pruneMessages(messages).messages
@@ -748,7 +875,10 @@ export class OwnedContext {
       resolveAgent: id => this.#resolveAgent(String(id)),
       selectModel: request => this.#selectModel(request),
       prompt: request => this.#prompt(request),
+      queue: request => this.#queue(request),
+      updateQueue: request => this.#updateQueue(request),
       page: request => this.#page(request),
+      displayPage: request => this.#displayPage(request),
       projections: request => this.#projections(request),
       list: request => this.#list(request),
       inspect: () => this.harness.inspect(),
@@ -765,8 +895,26 @@ export class OwnedContext {
       ...options,
       settings: { ...options.settings, extensions: [...(options.settings?.extensions ?? []), compactionExtension] },
     })
-    context = new OwnedContext(harness, options, compactionExtension)
-    return context
+    try {
+      context = new OwnedContext(harness, options, compactionExtension)
+      const packages = await OwnedPluginPackages.open({
+        dataDir: options.dataDir,
+        workspacePath: options.workspacePath,
+        api: row => context.#pluginApi(row),
+      })
+      context.#pluginPackages = packages
+      context.#services.set('pluginClient', {
+        list: () => packages.clientEntries(),
+        asset: input => packages.clientAsset(input?.fingerprint, input?.path),
+      })
+      await context.#syncPluginSkills()
+      context.effect(() => () => packages.close())
+      return context
+    } catch (error) {
+      await context?.close().catch(() => undefined)
+      if (context === undefined) await harness.close().catch(() => undefined)
+      throw error
+    }
   }
 
   static attach(harness, options) {
@@ -781,6 +929,47 @@ export class OwnedContext {
   }
 
   get(name) { return this.#services.get(name) }
+
+  #pluginApi() {
+    return {
+      tools: {
+        register: async definition => {
+          const safeDefinition = { ...definition, ownedNative: false }
+          const dispose = this.#registerDefinition(safeDefinition)
+          this.#agentToolNames.add(definition.name)
+          const extension = this.#toolExtensions.get(definition.name)
+          if (extension !== undefined) {
+            await Promise.all([...this.#selectedExtensions.keys()].map(id => this.#selectExtensions(id, { add: [extension] })))
+          }
+          return async () => {
+            if (extension !== undefined) {
+              await Promise.allSettled([...this.#selectedExtensions.keys()].map(id => this.#selectExtensions(id, { remove: [extension] })))
+            }
+            dispose()
+            if (!this.#tools.has(definition.name)) this.#agentToolNames.delete(definition.name)
+          }
+        },
+      },
+      systemPrompt: this.systemPrompt,
+      skills: this.#services.get('skills'),
+      connection: this.connection,
+      provide: (name, value) => this.provide(name, value),
+      inject: (requirements, attach) => this.inject(requirements, attach),
+      on: (name, listener, options) => this.on(name, listener, options),
+      dispatch: (endpoint, payload, signal) => this.dispatch(endpoint, payload, signal),
+    }
+  }
+
+  async #syncPluginSkills() {
+    const rows = await this.#pluginPackages?.list?.() ?? []
+    const paths = [...new Set(rows
+      .filter(row => row.state === 'active' || row.state === 'resources-only')
+      .flatMap(row => row.skills ?? []))]
+    if (paths.length === this.#pluginSkillPaths.length && paths.every((path, index) => path === this.#pluginSkillPaths[index])) return
+    this.#pluginSkillPaths = paths
+    this.#refreshPromptExtension()
+  }
+
   provide(name, value) {
     this.#services.set(name, value)
     this.#refreshInjections()
@@ -871,7 +1060,7 @@ export class OwnedContext {
     const values = {}
     for (const contribution of this.#shellEnvironment) {
       try { Object.assign(values, contribution.resolve?.({ agent, arguments: args }) ?? {}) } catch (error) {
-        this.logger.warn?.(`DS Bot shell environment could not be resolved: ${error?.message ?? error}`)
+        this.logger.warn?.(`Cue shell environment could not be resolved: ${error?.message ?? error}`)
       }
     }
     return values
@@ -880,7 +1069,7 @@ export class OwnedContext {
   async dispatch(endpoint, payload, signal) {
     if (this.#dispatch !== undefined) return this.#dispatch(endpoint, payload, signal)
     const route = [...this.#routes.values()].find(value => value.methods?.includes('POST') && value.path.endsWith('/api/bot'))
-    if (route === undefined) throw new Error('DS Bot API route is not installed')
+    if (route === undefined) throw new Error('Cue API route is not installed')
     const response = await route.fetch(new Request('http://owned.local/api/bot', {
       method: 'POST',
       body: JSON.stringify({ endpoint, payload }),
@@ -896,6 +1085,13 @@ export class OwnedContext {
   installTools(definitions, runtime) {
     this.#hostRuntime = runtime
     for (const definition of definitions) this.#registerDefinition(definition)
+  }
+
+  installAgentTools(definitions) {
+    for (const definition of definitions) {
+      if (!this.#tools.has(definition.name)) throw new Error(`Agent tool ${definition.name} is not installed`)
+      this.#agentToolNames.add(definition.name)
+    }
   }
 
   async mountMcp(config, { agent, ...options } = {}) {
@@ -981,7 +1177,30 @@ export class OwnedContext {
 
   async #create(options = {}) {
     const cwd = options.cwd ?? this.#workspaces.get(String(options.workspaceId ?? 'default'))?.path
-    const id = await this.harness.createConversation({ ...(cwd === undefined ? {} : { cwd }) })
+    let change = { ...(cwd === undefined ? {} : { cwd }), extensions: [] }
+    if (options.agentPreset !== undefined) {
+      const definition = this.#services.get('agentPresets').resolve(options.agentPreset)
+      const preset = definition.id
+      const records = [...this.#agentToolNames]
+        .map(name => this.#tools.get(name))
+        .filter(record => record !== undefined)
+      const selected = definition.group === 'custom'
+        ? records.filter(record => definition.tools.includes(record.definition.name))
+        : preset === 'minimal' ? records.filter(record => MINIMAL_TOOLS.has(record.definition.name)) : records
+      const extensions = selected.map(record => record.extension)
+      if (preset === 'ptc') extensions.push(this.#codemodeExtension)
+      if (preset === 'creator') extensions.push(this.#presetManagerRecord.extension, this.#pluginManagerRecord.extension)
+      change = {
+        ...change,
+        extensions,
+        ...(preset === 'ptc'
+          ? { modelTools: this.#codemodeExtension.tools.filter(tool => tool.name === 'codemode') }
+          : preset === 'minimal' ? { modelTools: selected.map(record => record.tool) } : {}),
+        ...(definition.instructions ? { instructions: definition.instructions }
+          : preset === 'creator' ? { instructions: CREATOR_INSTRUCTIONS } : {}),
+      }
+    }
+    const id = await this.harness.createConversation(change)
     return { sessionId: id }
   }
 
@@ -1142,6 +1361,8 @@ export class OwnedContext {
     for (const record of this.#globalMcpMounts) record.attach(agent)
     const update = async next => {
       const previous = state.view
+      const previousQueue = queueProjection(previous)
+      const nextQueue = queueProjection(next)
       state.view = next
       const before = state.events.length
       let added = next.entries.filter(entry => !state.entryIds.has(String(entry.id)))
@@ -1158,9 +1379,15 @@ export class OwnedContext {
       const appended = state.events.slice(before)
       for (const record of appended) {
         this.emit('session/event', session, record.event)
-        const owner = this.#hostRuntime?.chatOwners?.get?.(id) ?? id
-        for (const item of this.#displayEvent(record.event)) this.publishFeed('message', { botId: owner, sessionId: id, item })
       }
+      const owner = this.#hostRuntime?.chatOwners?.get?.(id) ?? id
+      const projected = projectEntries(added)
+      for (const item of projected) this.publishFeed('message', { botId: owner, sessionId: id, item })
+      if (JSON.stringify(nextQueue) !== JSON.stringify(previousQueue)) {
+        this.publishFeed('queue', { botId: owner, sessionId: id, inbox: nextQueue })
+      }
+      const previousFailure = projectEntries([], { live: previous })[0]
+      const nextFailure = projectEntries([], { live: next })[0]
       for (const wake of state.eventWaiters) wake()
       for (const live of projectLive(previous, next)) {
         const frame = live.phase === 'start' ? { type: 'start', attemptId: live.attemptId }
@@ -1170,10 +1397,16 @@ export class OwnedContext {
         const owner = this.#hostRuntime?.chatOwners?.get?.(id) ?? id
         this.publishFeed('stream', { botId: owner, sessionId: id, attemptId: live.attemptId, ...(live.phase ? { phase: live.phase } : { text: live.text }) })
       }
+      const failurePersisted = nextFailure?.taskId !== undefined
+        && projected.some(item => item.kind === 'failure' && item.turn !== undefined && String(item.turn) === nextFailure.taskId)
+      if (nextFailure !== undefined && !failurePersisted && JSON.stringify(nextFailure) !== JSON.stringify(previousFailure)) {
+        this.publishFeed('message', { botId: owner, sessionId: id, item: nextFailure })
+      }
       const status = next.docs?.['pi.live']?.run === undefined ? 'idle' : 'running'
       if (status !== state.status) {
         state.status = status
         this.emit('agent/status', { agent, status })
+        this.publishFeed('status', { botId: owner, sessionId: id, status })
       }
       if (appended.some(record => record.event.type === 'turn/end')) await this.#refreshProjectionState(id, state)
     }
@@ -1418,9 +1651,7 @@ export class OwnedContext {
   async #prompt({ sessionId, requestId = randomUUID(), mode, content, references = [] }) {
     const resolved = await this.#resolveAgent(String(sessionId))
     if ('error' in resolved) throw serviceError(resolved.error.code ?? 'session/not-found', resolved.error.message)
-    const privateChat = this.#hostRuntime?.chatOwners?.has?.(String(sessionId)) === true
-      && this.#hostRuntime?.groupOwners?.has?.(String(sessionId)) !== true
-    const whenBusy = mode === 'steer' || privateChat ? 'steer' : 'followUp'
+    const whenBusy = mode === 'steer' ? 'steer' : 'followUp'
     const configured = this.#sessionStates.get(String(sessionId))?.config
     const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
     const receipt = textContent(content)
@@ -1447,6 +1678,82 @@ export class OwnedContext {
       this.emit('agent/user-steer', { agent: resolved.agent, requestId })
     }
     return { submissionId: submission.id }
+  }
+
+  async #queue({ sessionId }) {
+    const id = String(sessionId)
+    const resolved = await this.#resolveAgent(id)
+    if ('error' in resolved) throw serviceError(resolved.error.code ?? 'session/not-found', resolved.error.message)
+    return queueProjection(this.#sessionStates.get(id)?.view)
+  }
+
+  async #updateQueue({ sessionId, itemId, action }) {
+    const id = String(sessionId)
+    const resolved = await this.#resolveAgent(id)
+    if ('error' in resolved) throw serviceError(resolved.error.code ?? 'session/not-found', resolved.error.message)
+    const items = this.#sessionStates.get(id)?.view?.docs?.['pi.inbox']?.items ?? []
+    const item = items.find(candidate => String(candidate?.id) === String(itemId))
+    const source = item?.entry?.kind === INPUT_KIND ? sourceOf(item.entry) : undefined
+    if (item === undefined || !USER_QUEUE_KINDS.has(source?.kind)) {
+      throw serviceError('session/queue-item-not-found', 'The queued message is no longer available')
+    }
+    if (!['remove', 'edit', 'steer'].includes(action?.kind)) throw serviceError('session/queue-action-invalid', 'Unknown queue action')
+
+    const withdrawn = await this.harness.abortSubmission(item.id, id)
+    if (withdrawn !== 'aborted') throw serviceError('session/queue-item-not-found', 'The queued message is no longer available')
+    if (action.kind === 'remove') return { removed: String(item.id) }
+
+    const originalData = item.entry?.data && typeof item.entry.data === 'object' ? item.entry.data : {}
+    const receipt = action.kind === 'edit' ? textContent(action.content) : textContent(originalData.content)
+    if (receipt.length === 0 || !receipt.some(block => block?.type === 'text' ? String(block.text ?? '').trim() !== '' : block?.type === 'image' || block?.type === 'file')) {
+      throw serviceError('session/queue-action-invalid', 'A queued message cannot be empty')
+    }
+    const requestId = randomUUID()
+    const configured = this.#sessionStates.get(id)?.config
+    const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
+    let content
+    if (action.kind === 'edit') {
+      content = await inputContent({ content: receipt }, this.get('attachments'), model === undefined || (model.input ?? []).includes('image'))
+      const referenceText = (originalData.references ?? []).map(reference => reference?.text).filter(Boolean).join('\n\n')
+      if (referenceText !== '') content.push({ type: 'text', text: referenceText })
+    } else {
+      content = item.content
+    }
+    const entry = {
+      kind: INPUT_KIND,
+      data: {
+        ...originalData,
+        source: { ...source, requestId },
+        requestId,
+        content: receipt,
+      },
+    }
+    const whenBusy = action.kind === 'steer' || item.mode === 'steer' ? 'steer' : 'followUp'
+    try {
+      const submission = await this.harness.submit(id, {
+        content, requestId, whenBusy,
+        ...(whenBusy === 'steer' ? { whenIdle: 'reject' } : {}),
+        entry,
+      })
+      if (whenBusy === 'steer' && resolved.agent.status === 'running') {
+        this.emit('agent/user-steer', { agent: resolved.agent, requestId })
+      }
+      return { itemId: submission.id }
+    } catch (error) {
+      if (whenBusy === 'steer' && error?.name === 'ConversationIdle') {
+        await this.harness.submit(id, { content, requestId: randomUUID(), whenBusy: 'followUp', entry })
+        throw serviceError('session/steer-unavailable', 'The turn finished before the message could be steered')
+      }
+      if (action.kind === 'edit') {
+        await this.harness.submit(id, {
+          content: item.content,
+          requestId: randomUUID(),
+          whenBusy: item.mode === 'steer' ? 'steer' : 'followUp',
+          entry: item.entry,
+        }).catch(() => {})
+      }
+      throw error
+    }
   }
 
   async #selectModel({ sessionId, provider, model, reasoningEffort }) {
@@ -1479,6 +1786,17 @@ export class OwnedContext {
     const eligible = records.filter(record => record.event.seq <= through && record.event.seq < before)
     const selected = eligible.slice(Math.max(0, eligible.length - maxMessages))
     return { records: selected, hasMore: eligible.length > selected.length }
+  }
+
+  async #displayPage({ sessionId, cursor, limit = 60 }) {
+    const id = String(sessionId)
+    const page = await this.harness.entries(id, {
+      limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 200) : 60,
+      ...(cursor === undefined || cursor === null ? {} : { cursor }),
+      order: 'descending',
+    })
+    const live = cursor === undefined || cursor === null ? this.#sessionStates.get(id)?.view : undefined
+    return { sessionId: id, ...pageFromEntries(page, { live, order: 'descending' }) }
   }
 
   async #projections({ sessionId }) {
@@ -1655,7 +1973,7 @@ export class OwnedContext {
         if (this.#sessionStates.get(String(api.conversationId))?.restrictions.has(definition.name)) {
           return { output: [{ type: 'text', text: `Tool ${definition.name} is not available in this session` }], isError: true }
         }
-        await this.#waitForToolCall(String(api.conversationId), api.callId, context.abortSignal)
+        await this.#waitForToolCall(String(api.conversationId), api, context.abortSignal)
         let terminate = false
         const exec = {
           agent: resolved.agent,
@@ -1686,10 +2004,12 @@ export class OwnedContext {
     return { definition, tool, extension, uninstall }
   }
 
-  async #waitForToolCall(id, callId, signal) {
+  async #waitForToolCall(id, api, signal) {
     const state = this.#sessionStates.get(String(id))
     if (state === undefined) return
+    const callId = String(api.callId)
     const seen = () => state.events.some(record => record.event.type === 'tool/call' && record.event.data?.callId === callId)
+      || (state.view.docs?.['pi.live']?.nestedTools ?? []).some(slot => String(slot.taskId) === String(api.taskId) && slot.callId === callId)
     if (seen()) return
     await new Promise(resolve => {
       let timer
@@ -1701,7 +2021,7 @@ export class OwnedContext {
       }
       const wake = () => { if (seen()) finish() }
       timer = setTimeout(() => {
-        this.logger.warn?.(`DS Bot tool ${String(callId)} ran before its transcript event arrived`)
+        this.logger.warn?.(`Cue tool ${String(callId)} ran before its transcript event arrived`)
         finish()
       }, 2_000)
       state.eventWaiters.add(wake)
@@ -1741,23 +2061,6 @@ export class OwnedContext {
     if (previous !== undefined) for (const [id, selected] of this.#selectedExtensions) {
       if (selected.has(previous.name)) void this.#selectExtensions(id, { remove: [previous], add: [next] })
     }
-  }
-
-  #displayEvent(event) {
-    if (event.type === 'user/message') {
-      const content = event.data.content.map(receiptBlock)
-      const attachments = content.filter(block => (block.type === 'image' || block.type === 'file') && block.attachment !== undefined)
-      return [{
-        kind: 'user',
-        text: content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
-        ...(attachments.length === 0 ? {} : { attachments, images: attachments.filter(block => block.type === 'image').length }),
-        ...(Array.isArray(event.data.referenceLabels) && event.data.referenceLabels.length > 0 ? { referenceLabels: event.data.referenceLabels } : {}),
-        time: event.time,
-        seq: event.seq,
-      }]
-    }
-    if (event.type === 'assistant/message') return event.data.message.content.filter(block => block.type === 'text').map(block => ({ kind: 'bot', text: block.text, time: event.time, seq: event.seq, turn: event.data.turn }))
-    return []
   }
 
   #llmService() {

@@ -1,4 +1,4 @@
-// The exact thinking time of a Turn, read from the timed model stream DSH keeps in
+// The exact thinking time of a Turn, read from the timed model stream Cue keeps in
 // each assistant/message event: for one step, its last reasoning chunk's time minus
 // its first one's, summed over the turn. assistant/attempt events are skipped on
 // purpose — a failed or retried attempt's thinking never reached the reply.

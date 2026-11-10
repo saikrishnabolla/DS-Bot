@@ -1,5 +1,5 @@
 import { createElement as h, useRef, useState } from 'react'
-import { MarkdownText } from './dsh-primitives.js'
+import { MarkdownText } from './ui-primitives.js'
 import { CellEmpty } from './cell-empty.js'
 import { t } from './i18n.js'
 import { AnsweredCell, SettledQuestion } from './questions.js'

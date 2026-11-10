@@ -1,8 +1,8 @@
 // Checks the context steward's judgment on a real model: hand-written conversation endings,
 // each with the answer it should get, sent through the steward's own prompt and request
 // (src/host/steward.js) to an OpenAI-compatible chat completions route, or with
-// `--api messages` to an Anthropic Messages route with thinking off, as DSH's DeepSeek
-// adapter sends it (base URL e.g. https://api.deepseek.com/anthropic). Costs real tokens,
+// `--api messages` to an Anthropic Messages route with thinking off (base URL e.g.
+// https://api.deepseek.com/anthropic). Costs real tokens,
 // about 3,000 per call.
 //
 //   KEY=... node dev/steward-eval.mjs --base-url https://host/v1 --model <id> --key-env KEY [--api chat|messages] [--runs 3] [--only id,id] [--out file.json]
@@ -166,7 +166,7 @@ async function ask(entry) {
   const lines = [...entry.lines].reverse().map(([who, text]) => ({ who, text }))
   const request = stewardRequest({ lines, midTurn: entry.midTurn === true, checkpoints: entry.checkpoints ?? 0, group: entry.group === true })
   const maxTokens = Number(args['max-tokens'])
-  // As DSH's DeepSeek adapter sends the steward's call: thinking off.
+  // The steward call keeps thinking off.
   const body = messagesApi
     ? { model: args.model, max_tokens: maxTokens, thinking: { type: 'disabled' }, system: STEWARD_SYSTEM, messages: [{ role: 'user', content: [{ type: 'text', text: request }] }] }
     : { model: args.model, max_tokens: maxTokens, messages: [{ role: 'system', content: STEWARD_SYSTEM }, { role: 'user', content: request }] }

@@ -1,5 +1,6 @@
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { BlockAssembler } from './messages.js'
+import { modelFailure } from './model-failure.js'
 
 const PROVIDER = 'ds-bot'
 const ADAPTER_API = 'ds-bot-adapter'
@@ -39,6 +40,12 @@ const adapterModelOf = (provider, model = {}) => ({
 })
 
 function messageOf(model, response) {
+  const failure = response.failure ?? (response.stopReason === 'error' ? modelFailure({
+    code: response.errorCode,
+    message: response.errorMessage,
+    status: response.errorStatus,
+    requestId: response.requestId,
+  }) : undefined)
   return {
     role: 'assistant',
     api: model.api,
@@ -49,6 +56,7 @@ function messageOf(model, response) {
     stopReason: response.stopReason ?? 'stop',
     timestamp: response.timestamp ?? Date.now(),
     ...(response.errorMessage === undefined ? {} : { errorMessage: response.errorMessage }),
+    ...(failure === undefined ? {} : { failure }),
   }
 }
 
@@ -66,10 +74,12 @@ function responseStream(model, respond, context, options) {
         stream.push({ type: 'done', reason: message.stopReason, message })
       }
     } catch (error) {
+      const failure = modelFailure(error)
       const message = messageOf(model, {
         content: [],
         stopReason: 'error',
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: failure.message,
+        failure,
       })
       stream.push({ type: 'error', reason: 'error', error: message })
     }
@@ -77,7 +87,7 @@ function responseStream(model, respond, context, options) {
   return stream
 }
 
-function deferredStream(model, start) {
+function deferredStream(model, start, response = {}) {
   const stream = createAssistantMessageEventStream()
   void (async () => {
     try {
@@ -89,10 +99,12 @@ function deferredStream(model, start) {
       }
       if (!complete) stream.end(await source.result())
     } catch (error) {
+      const failure = modelFailure(error, response)
       const message = messageOf(model, {
         content: [],
         stopReason: 'error',
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: failure.message,
+        failure,
       })
       stream.push({ type: 'error', reason: 'error', error: message })
     }
@@ -117,7 +129,7 @@ function piBlock(block) {
   return block
 }
 
-function normalizeModelStream(model, source) {
+function normalizeModelStream(model, source, response = {}) {
   const stream = createAssistantMessageEventStream()
   void (async () => {
     const assembler = new BlockAssembler()
@@ -129,16 +141,20 @@ function normalizeModelStream(model, source) {
         legacy ||= old
         if (legacy) assembler.push(event)
         else {
-          stream.push(event)
+          if (event.type === 'error') {
+            const failure = modelFailure(event.error?.failure ?? event.error ?? event, response)
+            stream.push({ ...event, error: { ...event.error, errorMessage: failure.message, failure } })
+          } else stream.push(event)
           if (event.type === 'done' || event.type === 'error') terminal = true
         }
       }
       if (legacy) {
         const reason = piStopReason(assembler.finish.kind)
+        const failure = reason === 'error' ? modelFailure(assembler.finish.failure ?? 'Model request failed', response) : undefined
         const message = messageOf(model, {
           content: assembler.blocks().map(piBlock),
           stopReason: reason,
-          ...(assembler.finish.failure === undefined ? {} : { errorMessage: String(assembler.finish.failure) }),
+          ...(failure === undefined ? {} : { errorMessage: failure.message, failure }),
         })
         stream.push(reason === 'error' || reason === 'aborted'
           ? { type: 'error', reason, error: message }
@@ -147,7 +163,8 @@ function normalizeModelStream(model, source) {
         stream.end(await source.result?.())
       }
     } catch (error) {
-      const message = messageOf(model, { content: [], stopReason: 'error', errorMessage: error instanceof Error ? error.message : String(error) })
+      const failure = modelFailure(error, response)
+      const message = messageOf(model, { content: [], stopReason: 'error', errorMessage: failure.message, failure })
       stream.push({ type: 'error', reason: 'error', error: message })
     }
   })()
@@ -232,17 +249,26 @@ export function createModelBridge(models, transformRequest = async context => co
         return (model, context, options) => {
           const respond = model?.provider === PROVIDER ? scripts.get(model.id) : undefined
           if (respond !== undefined) return responseStream(model, respond, context, options)
+          const response = {}
           return deferredStream(model, async () => {
             const request = await transformRequest(context, options)
             const record = adapterRecord(model?.provider)
-            const next = override => record === undefined
-              ? target.streamSimple(model, request, options)
-              : record.adapter.stream(adapterOptions(model, request, { ...options, ...override }))
+            const next = override => {
+              const onResponse = async (value, responseModel) => {
+                response.status = value?.status
+                response.headers = value?.headers
+                await options?.onResponse?.(value, responseModel)
+              }
+              const nextOptions = { ...options, ...override, onResponse }
+              return record === undefined
+                ? target.streamSimple(model, request, nextOptions)
+                : record.adapter.stream(adapterOptions(model, request, nextOptions))
+            }
             const source = interceptStream === undefined
               ? next()
               : await interceptStream(model, request, options, next)
-            return normalizeModelStream(model, source)
-          })
+            return normalizeModelStream(model, source, response)
+          }, response)
         }
       }
       if (property === 'completeSimple') {

@@ -54,22 +54,22 @@ const darkAccent = (accent) => {
   const ink = ACCENT_INKS.find(id => INKS[id][0] === accent)
   return ink === undefined ? accent : INKS[ink][1]
 }
-// `html body` outranks the base sheet's `body` rules without !important.
-export const themeCss = (theme, accent) => `html body{${declarations(themeVars(theme.light, false, accent ?? theme.light.accent))}}
-html body[data-ds-dark-theme]{${declarations(themeVars(theme.dark, true, darkAccent(accent) ?? theme.dark.accent))}}
-${theme.css ?? ''}`
 export const shellTokens = ({ light, dark }) => ({
-  '--dsw-alias-bg-base': { light: light.bg, dark: dark.bg },
-  '--dsw-specific-sidebar-fill': { light: light.sidebar, dark: dark.sidebar },
-  '--dsw-specific-input-major': { light: light.bg, dark: dark.sidebar },
-  '--dsw-alias-label-primary': { light: light.text, dark: dark.text },
-  '--dsw-alias-label-secondary': { light: rgba(light.text, 0.74), dark: rgba(dark.text, 0.74) },
-  '--dsw-alias-label-tertiary': { light: rgba(light.text, 0.6), dark: rgba(dark.text, 0.6) },
+  '--cue-ui-alias-bg-base': { light: light.bg, dark: dark.bg },
+  '--cue-ui-specific-sidebar-fill': { light: light.sidebar, dark: dark.sidebar },
+  '--cue-ui-specific-input-major': { light: light.bg, dark: dark.sidebar },
+  '--cue-ui-alias-label-primary': { light: light.text, dark: dark.text },
+  '--cue-ui-alias-label-secondary': { light: rgba(light.text, 0.74), dark: rgba(dark.text, 0.74) },
+  '--cue-ui-alias-label-tertiary': { light: rgba(light.text, 0.6), dark: rgba(dark.text, 0.6) },
 })
+const shellVars = (theme, mode) => Object.fromEntries(Object.entries(shellTokens(theme)).map(([name, values]) => [name, values[mode]]))
+// `html body` outranks the base sheet's `body` rules without !important.
+export const themeCss = (theme, accent) => `html body{${declarations({ ...themeVars(theme.light, false, accent ?? theme.light.accent), ...shellVars(theme, 'light') })}}
+html body[data-cue-dark-theme]{${declarations({ ...themeVars(theme.dark, true, darkAccent(accent) ?? theme.dark.accent), ...shellVars(theme, 'dark') })}}
+${theme.css ?? ''}`
 
-// Other plugins add character shapes and themes through `window.dshBot`, or queue
-// calls on `window.dshBotQueue` before this plugin loads. A shape draws only its
-// body; the eyes are cut out where `eyes.at` says, so it gets every state motion free.
+// A shape draws only its body; the eyes are cut out where `eyes.at` says, so it gets
+// every state motion free.
 const customThemes = {}
 export const registry = createSource(0)
 const isPoint = point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)

@@ -29,11 +29,11 @@ export const TEXT_KEPT = 2000
 export const GROUP_LINE_READ = 20_000
 // The Bot exchange dialog shows at most this much of one message.
 export const TEXT_SHOW_MAX = 200_000
-// A message a Bot sends past this goes as a DSH file, which the recipient reads with its
+// A message a Bot sends past this goes as a Cue file, which the recipient reads with its
 // file tools; the message keeps its first LONG_HEAD characters.
 export const MESSAGE_INLINE_MAX = GROUP_LINE_READ
 export const LONG_HEAD = 1000
-// DSH's read tool shows this much of one line (dsh-tool-fs `readMaxLineLength`, default).
+// Cue's read tool shows this much of one line (Cue-tool-fs `readMaxLineLength`, default).
 export const READ_LINE_MAX = 2000
 export const ROOM_REPLY_TIMEOUT_MS = 240_000
 // Lines a member writes less than this apart while it works reach its group together.
@@ -44,9 +44,9 @@ export const HANDOFF_ACK = 'Noted. I have my handoff note and carry on from here
 // A result that arrives after the user gave up waiting for it: it settled once
 // already, so it closes nothing and opens nothing, and its text says why it is late.
 export const LATE_ANSWER = '[Late answer: the user had already given up waiting for this work; its result was settled then.]\n\n'
-// An answer from a question card, in the shape DSH's own late question replies use.
+// An answer from a question card, in the shape Cue's own late question replies use.
 export const REPLY_KIND = 'user-question-reply'
-// DSH's snapshot of a referenced conversation, logged right after the user's message
+// Cue's snapshot of a referenced conversation, logged right after the user's message
 // that cites it.
 export const REFERENCE_KIND = 'session-reference'
 // `everyone`: every member answers a plain message in turn, admin first. `admin`: a

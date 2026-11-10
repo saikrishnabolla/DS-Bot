@@ -141,10 +141,8 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions }))
 }
 
-// New-message pills. "N new messages ↓" takes Back to bottom's place when
-// replies land while the user is scrolled up; "N new messages ↑" points at an unread
-// divider above the viewport until it has been seen. The shell shows Back to bottom
-// only while unpinned, so its presence is the pinned signal.
+// New-message pills. "N new messages ↓" appears when replies land while the user
+// is scrolled up; "N new messages ↑" points at an unread divider above the viewport.
 function useTranscriptView() {
   const [view, setView] = useState(null)
   useEffect(() => {
@@ -161,16 +159,16 @@ function useTranscriptView() {
       }
       if (!scroller) { setView(null); return }
       const box = scroller.getBoundingClientRect()
-      const headerBottom = document.querySelector('header[class*="_header"]')?.getBoundingClientRect().bottom ?? box.top + 50
+      const headerBottom = document.querySelector('[data-cue-header]')?.getBoundingClientRect().bottom ?? box.top + 50
       const sep = scroller.querySelector('.bt-new-sep')
       let divider = null
       if (sep) {
         const at = sep.getBoundingClientRect()
         divider = at.bottom <= headerBottom ? 'above' : at.top >= box.bottom ? 'below' : 'in-view'
       }
-      const composer = parseFloat(getComputedStyle(scroller).getPropertyValue('--dsh-composer-height')) || 152
+      const composer = parseFloat(getComputedStyle(scroller).getPropertyValue('--cue-composer-height')) || 152
       const next = {
-        unpinned: scroller.querySelector('[class*="_toBottomSlot"]>button') !== null,
+        unpinned: scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 8,
         divider,
         center: Math.round(box.left + box.width / 2),
         top: Math.round(headerBottom + 8),
@@ -236,9 +234,7 @@ function NewMessagePills({ sessionId, useSessions, useUi, useTurnClock }) {
     }, h(CloseIcon)))
   const toLatest = () => {
     const scroller = document.querySelector('[data-conversation-scroll]')
-    const back = scroller?.querySelector('[class*="_toBottomSlot"]>button')
-    if (back) back.click()
-    else scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
+    scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
   }
   const toDivider = () => document.querySelector('[data-conversation-scroll] .bt-new-sep')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   return createPortal(h(Fragment, null,

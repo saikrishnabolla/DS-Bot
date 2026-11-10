@@ -1,5 +1,5 @@
 // The whale director: turns start snapshots into whale motion. The whale stays in the middle of
-// a ring of arcs, one per stage (three; four on a first start that copies a team), and the ring is
+// a ring of arcs, one per stage, and the ring is
 // the progress: an arc turns active, then
 // fills as its stage is done, and the ring closes at the hand-off. The director keeps the arcs
 // (.arc data-state) and the hidden stage list (.station data-state, aria-current) for the live
@@ -35,10 +35,8 @@ export function arcD(from, to) {
 }
 // Arc k of n: 10 degrees between arcs.
 export const arcPath = (k, n) => arcD(k * (360 / n) + 5, (k + 1) * (360 / n) - 5)
-// Where each stage's arc runs on a ring of these stages. On a ring of three, the import's arc is a
-// point in the gap after the data folder's, where it grows from.
 function spansOf(list) {
-  const out = { import: [120, 120] }
+  const out = {}
   list.forEach((phase, k) => { out[phase] = [k * (360 / list.length) + 5, (k + 1) * (360 / list.length) - 5] })
   return out
 }
@@ -55,7 +53,7 @@ const LANDED = 0.55 * HOP_MS
 const MORE_HOPS = [2600, 5200]
 const HOP_EVERY = 9000
 // Acts that only open, fold or copy something on the card; every other card button answers it.
-const LOCAL = new Set(['toggleDetails', 'toggleMore', 'toggleModels', 'copyDetails'])
+const LOCAL = new Set(['toggleDetails', 'copyDetails'])
 // Waits get calmer on the card's own clock: rates and blink gaps after 30 s and after 90 s.
 const calmer = ms => (ms >= 90000 ? [0.6, 2] : ms >= 30000 ? [0.8, 1.4] : [1, 1])
 
@@ -115,22 +113,17 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
   const tail = $('#tail'), pair = $('#eye-pair'), lane = $('.lane'), ripple = $('.ripple'), hit = $('.whale-hit')
   const eyes = [...document.querySelectorAll('.bt-eye')], happy = [...document.querySelectorAll('.bt-eye-happy')]
   const stations = [...document.querySelectorAll('.station')]
-  const ring = $('.ring'), importArc = $('.arc[data-phase=import]')
+  const ring = $('.ring')
   // The stages of this start, in order (the snapshot's phases).
   let phases = PHASES
   const last = () => phases.length - 1
   const stationEl = i => stations.find(st => st.dataset.phase === phases[i])
   const arcEl = i => document.querySelector(`.arc[data-phase="${phases[i]}"]`)
-  // The import's arc runs while the copy does.
-  const copying = () => want.card === 'copying'
-  // A start that offers an import holds after the data folder's arc until the import card is
-  // answered: the engine warms up meanwhile, but its arc does not run ahead of the question.
-  const holding = () => D.offer && !D.answered
   const first = start === 'first'
   // The entrance's clock starts once the window is on screen (`begin`, start.js).
   let t0 = performance.now()
   const entranceMs = resume ? 0 : first ? 560 : 290
-  const D = { at: 0, checks: 0, passed: 0, pose: 'enter', loop: '', card: '', slow: 0, bx: 0, by: 0, since: [t0], activeAt: [], loopAt: 0, hop: null, pet: null, handed: false, workReady: first, missed: false, sinking: false,
+  const D = { at: 0, checks: 0, pose: 'enter', loop: '', card: '', slow: 0, bx: 0, by: 0, since: [t0], activeAt: [], loopAt: 0, hop: null, pet: null, handed: false, workReady: first, missed: false, sinking: false,
     // Rest on a card: its clock, the lean, the breath, the lively hops; the last glance and press.
     clockKind: '', cardAt: 0, lean: false, leanDue: false, leanOff: false, leanMine: -1, restMine: -1, breath: null, hopsStopped: false, legging: false, glanceAt: -Infinity, press: null, nodAt: 0 }
   const rnd = Math.random
@@ -157,7 +150,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
   const wait = ms => (instant ? Promise.resolve() : sleep(ms))
   const tier = tierNow
   const playful = () => tier() !== 'quiet' && !reduced()
-  const failure = () => want.view === 'failed' || want.view === 'viewFailed' || want.card === 'importFailed'
+  const failure = () => want.view === 'failed' || want.view === 'viewFailed'
   const begun = begin.then(() => { t0 = performance.now(); D.since[0] = t0 })
   const entered = begun.then(() => sleep(entranceMs)).then(() => { root.dataset.entered = '' })
   // Finished entrance veils are dropped, so later fades of the same blocks stay composited.
@@ -183,23 +176,13 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     setStation(i, 'done')
     announce(label('status.sr.done', { phase: label(`status.phase.${phases[i]}`) }))
     onCheck?.(i)
-    // Its fill is drawn (.56 s, .12 s with reduced motion) before anything waits on it.
-    setTimeout(() => {
-      D.passed = Math.max(D.passed, i + 1)
-      const due = throughs.filter(([at]) => at < D.passed)
-      throughs = throughs.filter(([at]) => at >= D.passed)
-      for (const [, resolve] of due) resolve()
-    }, instant ? 0 : reduced() ? 120 : 560)
   }
-  let throughs = []
   let activeTimer = 0
   function armActive() {
     clearTimeout(activeTimer)
     const i = D.at
-    if (D.handed || failure() || i > last() || D.checks > i || stationEl(i).dataset.state !== 'pending' || (holding() && i >= 1)) return
+    if (D.handed || failure() || i > last() || D.checks > i || stationEl(i).dataset.state !== 'pending') return
     if (i < last() && want.done.includes(phases[i])) return
-    // The import's arc turns active once the copy runs and the card has flown into it.
-    if (phases[i] === 'import' && (!copying() || D.flying)) return
     const now = performance.now()
     const delay = Math.max(0, (D.since[i] ?? now) + 250 - now, t0 + entranceMs - now)
     activeTimer = setTimeout(() => {
@@ -262,8 +245,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
   // small reactions): every 5 to 9 s, a 600 ms look to one side at random, over the bob. Not in
   // the quiet tier, with reduced motion or while thinking, and not while the eyes follow the
   // pointer or a control, or look at the user.
-  // Only the second stage of a first start: later and moving starts, and the copying cards, use
-  // the working loop too.
+  // Only the second stage of a first start uses the working loop.
   const wandering = () => first && D.at === 1 && !D.card && playful() && D.loop === 'working' && D.slow < 2
   function wanderLater() {
     clearTimeout(D.wander)
@@ -565,10 +547,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     let ran = 0
     while (D.at < want.station && want.view !== 'handoff') {
       const i = D.at
-      // A copy can be done before the card has landed in its arc: the arc fills after that.
-      if (phases[i] === 'import' && D.flying) return
-      // A stage done while nobody could see it (the data folder before the page painted, the
-      // engine while the import card waited or the copy ran) still turns active and holds there,
+      // A stage done before the page painted still turns active and holds there,
       // its prop in view, before it fills. No loop starts for that short wait: a loop's own hold
       // would add another 400 ms. A stage that was seen running fills at once.
       if (!resume && !failure() && stationEl(i).dataset.state === 'pending') {
@@ -594,14 +573,6 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     D.failed = i
     setStation(i, 'failed')
   }
-  // A failed copy turns the import's arc red, keeping what it had filled.
-  function failImport() {
-    const i = phases.indexOf('import')
-    if (i < 0 || D.checks > i) return
-    clearTimeout(activeTimer)
-    D.failed = i
-    setStation(i, 'failed')
-  }
   async function goDown() {
     if (['down', 'lift'].includes(D.pose)) return
     stopHop()
@@ -612,7 +583,6 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     D.card = ''
     D.clockKind = ''
     if (want.view === 'failed' || want.view === 'viewFailed') failStation()
-    else if (want.card === 'importFailed') failImport()
     const pose = capture()
     stopLoop()
     setBase(0.2, 0.6)
@@ -669,12 +639,8 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
       await wait(spring('shape').duration)
     } else await play(lane, [{ opacity: Number(cs(lane).opacity) }, { opacity: 0 }], { duration: 160 }).done
     for (let i = 0; i < phases.length; i += 1) setStation(i, 'pending')
-    importArc?.style.removeProperty('--f')
     D.at = 0
     D.checks = 0
-    D.passed = 0
-    D.asked = false
-    D.answered = false
     D.failed = undefined
     D.since = [performance.now()]
     D.activeAt = []
@@ -708,8 +674,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
       if (previous === 'missing') { lookAround(); restAgain(mine); return }
     }
     if (kind !== 'missing') D.missed = false
-    if (kind === 'copying' || kind === 'newerUpdating') { stopHop(); D.pose = 'loop'; setBase(0, 0); await startLoop('working'); return }
-    if (kind === 'importFailed') return goDown()
+    if (kind === 'newerUpdating') { stopHop(); D.pose = 'loop'; setBase(0, 0); await startLoop('working'); return }
     stopHop()
     const pose = capture()
     stopLoop()
@@ -717,7 +682,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     setBase(0.2, 0.6)
     // Cards the user caused (picked, rejected, the stop confirmation) do not hop; they lean in
     // as the morph starts (the content veils in 70 ms later).
-    const count = { recommend: 2, missing: 2, import: 2, newer: 2, watchdog: 2, importSpace: 1 }[kind] ?? 0
+    const count = { recommend: 2, missing: 2, newer: 2, watchdog: 2 }[kind] ?? 0
     if (!count || reduced()) { D.pose = 'rest'; leanAt(mine, 70); resting(mine); return }
     D.pose = 'alert'
     const began = performance.now()
@@ -932,7 +897,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     D.hopsStopped = true
     D.leanOff = true
     leanOut()
-    // A card that stays (a model picked on the import card, logs opened) leans in again.
+    // A card that stays while logs are open leans in again.
     later(mine, 1000, () => { D.leanOff = false; leanIn() })
     nod()
   }, true)
@@ -962,7 +927,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     if (!failure() && ['down', 'lift', 'redo'].includes(D.pose)) await shakeOff()
     await runLegs()
     if (want.view === 'handoff') return handoff()
-    if (copying() || (['boot', 'moving'].includes(want.view) && !holding())) armActive()
+    if (['boot', 'moving'].includes(want.view)) armActive()
     if (failure()) {
       if (D.pose === 'redo') D.pose = 'loop'
       await goDown()
@@ -989,9 +954,7 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     })()
   }
 
-  // The copy starts (start-window §6): the ring goes from three arcs to four, the import's arc
-  // growing out of the gap after the data folder's while the others make room; it goes back to
-  // three when the copy stops. The stages change at once, the drawing once the card has landed.
+  // The stages change at once while the ring follows with its shape animation.
   function relayout(list) {
     const gone = phases.filter(phase => !list.includes(phase))
     phases = list
@@ -1002,13 +965,11 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
       st.dataset.state = 'pending'
       st.removeAttribute('aria-current')
       document.querySelector(`.arc[data-phase="${phase}"]`).dataset.state = 'pending'
-      if (phase === 'import') importArc?.style.removeProperty('--f')
     }
     for (let i = D.checks; i < list.length; i += 1) setStation(i, 'pending')
     D.activeAt = D.activeAt.slice(0, D.checks)
     if (D.failed !== undefined && D.failed >= D.checks) D.failed = undefined
-    if (D.flying) D.layoutDue = true
-    else reshape()
+    reshape()
   }
   // The arcs' angles as drawn, and the ring's re-layout between them: every frame of the shape
   // spring draws each arc between its old and new angles, so the arcs stay on the circle.
@@ -1045,21 +1006,14 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
     requestAnimationFrame(frame)
     setTimeout(done, curve.duration + 200)
   }
-  let caughtTimer = 0
-
   return {
     update(s) {
-      D.offer = s.explain?.mode === 'import'
-      if (s.card?.kind === 'import') D.asked = true
-      if (D.asked && (['copying', 'importFailed'].includes(s.card?.kind) || ['boot', 'moving', 'handoff', 'failed', 'viewFailed'].includes(s.view))) D.answered = true
       if (Array.isArray(s.phases) && s.phases.join() !== phases.join() && s.phases.every(phase => stations.some(st => st.dataset.phase === phase))) relayout(s.phases)
       const done = s.done ?? []
       const now = performance.now()
       phases.forEach((phase, k) => { if (done.includes(phase) && !want.done.includes(phase)) D.since[k + 1] = now })
       let station = 0
       while (station < last() && done.includes(phases[station])) station += 1
-      if (holding()) station = Math.min(station, 1)
-      if (typeof s.card?.arc === 'number') importArc?.style.setProperty('--f', s.card.arc.toFixed(3))
       const next = { station, view: s.view, phase: s.phase, done, card: s.card?.kind ?? '', missed: Boolean(s.card?.missedRetry), celebrate: Boolean(s.celebrate), update: s.update?.state ?? '', landing: s.landing ?? null }
       // Stages taken back mean a start in another folder: the whale starts over even when the
       // next snapshot, a moment later, has the first stage done again.
@@ -1081,29 +1035,6 @@ export function createDirector({ start, resume, act, label, announce, onCheck, o
       if (level === 2 || previous === 2) { bump(); kick() }
     },
     nod,
-    // Resolves once arc i is done and drawn full (start.js shows the import card after the first).
-    through(i) {
-      return new Promise((resolve) => { if (D.passed > i) resolve(); else throughs.push([i, resolve]) })
-    },
-    // The card flies into the import's arc (start.js flyIn()): the arc lights up as it lands.
-    flight(landed) {
-      D.flying = true
-      landed.then(() => {
-        D.flying = false
-        if (D.layoutDue) { D.layoutDue = false; reshape() }
-        // Lit as it lands, even when the copy is done by then: it holds HOLD before it fills.
-        const i = phases.indexOf('import')
-        if (i >= 0 && D.at === i && stationEl(i).dataset.state === 'pending' && !failure() && !D.handed) {
-          clearTimeout(activeTimer)
-          showActive(i)
-        }
-        kick()
-        if (!importArc || reduced()) return
-        clearTimeout(caughtTimer)
-        importArc.setAttribute('data-caught', '')
-        caughtTimer = setTimeout(() => importArc.removeAttribute('data-caught'), 450)
-      })
-    },
     // Live switch of reduced motion or of the tier: running one-shots jump to their end.
     refresh() {
       stopBreath()

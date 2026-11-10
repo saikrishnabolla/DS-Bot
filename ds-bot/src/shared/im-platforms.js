@@ -1,5 +1,5 @@
-// The IM platforms DS Bot can connect to. The settings page draws the add form from
-// `fields`; `secret` fields are kept as DS Bot secrets and never leave the host.
+// The IM platforms Cue can connect to. The settings page draws the add form from
+// `fields`; `secret` fields are kept as Cue secrets and never leave the host.
 // `buttons`: the platform can show card buttons (others answer with numbers).
 // `groups`: the IM bot can be @-mentioned in platform group chats.
 // `login: 'qr'`: the connection starts by scanning a code instead of filling fields.

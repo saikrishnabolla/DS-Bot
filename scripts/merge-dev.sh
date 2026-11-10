@@ -3,7 +3,7 @@
 #
 #   scripts/merge-dev.sh
 #
-# ds-bot/client.js is built from ds-bot/src/client, so a conflict in it is never
+# ds-bot/office.js is generated from ds-bot/src/office, so a conflict in it is never
 # resolved by hand: it is taken from dev and rebuilt once the sources are merged.
 # Any other conflict stops the script with the merge still open, to be resolved
 # and committed as usual.
@@ -25,9 +25,9 @@ else
 fi
 
 if [ "$merged" -eq 0 ]; then
-  if git diff --name-only --diff-filter=U | grep -qx 'ds-bot/client.js'; then
-    git checkout --theirs -- ds-bot/client.js
-    git add ds-bot/client.js
+  if git diff --name-only --diff-filter=U | grep -qx 'ds-bot/office.js'; then
+    git checkout --theirs -- ds-bot/office.js
+    git add ds-bot/office.js
   fi
   left="$(git diff --name-only --diff-filter=U)"
   if [ -n "$left" ]; then
@@ -37,17 +37,16 @@ if [ "$merged" -eq 0 ]; then
   fi
 fi
 
-# The bundle includes locked packages (deep-view), so a lockfile that changed with the
-# merge, or a checkout that never installed, needs `npm ci` before the build.
+# A changed lockfile, or a checkout that never installed, needs `npm ci` before the build.
 if [ ! -d ds-bot/node_modules ] || ! git diff --quiet ORIG_HEAD -- ds-bot/package-lock.json; then
   (cd ds-bot && npm ci --no-fund --no-audit >/dev/null)
 fi
-# The merged sources may differ from both sides' bundles even without a conflict.
+# The merged Office sources may differ from both sides' bundle even without a conflict.
 (cd ds-bot && npm run build >/dev/null)
-git add ds-bot/client.js
+git add ds-bot/office.js
 if [ "$merged" -eq 0 ]; then
   git commit --no-edit
 elif ! git diff --cached --quiet; then
-  git commit -m "Rebuild client.js after merging dev"
+  git commit -m "Rebuild office.js after merging dev"
 fi
 echo "merge-dev: up to date with origin/dev"

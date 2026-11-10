@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generated from src/office by `npm run build` (scripts/build-client.mjs). Do not edit by hand.
+// Generated from src/office by `npm run build` (scripts/build-office.mjs). Do not edit by hand.
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;

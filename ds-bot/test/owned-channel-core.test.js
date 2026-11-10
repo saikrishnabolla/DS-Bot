@@ -23,7 +23,7 @@ async function fixture(t) {
   const uiDir = join(root, 'ui')
   const workspacePath = join(root, 'workspace')
   await Promise.all([mkdir(dataDir), mkdir(uiDir), mkdir(workspacePath)])
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()
   faux.setResponses(Array.from({ length: 300 }, () => fauxAssistantMessage('Ready.')))
@@ -85,6 +85,90 @@ const png = `data:image/png;base64,${Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   Buffer.alloc(24, 7),
 ]).toString('base64')}`
+
+test('owned Host reports the built-in plugins mounted in its real session runtime', async t => {
+  const env = await fixture(t)
+  const inventory = ok(await env.call('plugin-inventory'))
+
+  assert.equal(inventory.defaultPreset, 'standard')
+  assert.deepEqual(inventory.presets.map(row => row.id), ['standard', 'ptc', 'minimal', 'creator'])
+  assert.ok(Array.isArray(inventory.session))
+  assert.ok(inventory.session.length > 0)
+  assert.ok(inventory.session.some(row => row.id === 'read' && row.state === 'active'))
+  assert.ok(inventory.session.some(row => (row.id === 'bash' || row.id === 'pwsh') && row.state === 'active'))
+  assert.ok(inventory.session.some(row => row.id === 'web_search' && row.state === 'active'))
+  for (const row of inventory.session) {
+    assert.equal(typeof row.id, 'string')
+    assert.equal(typeof row.title, 'string')
+    assert.equal(typeof row.description, 'string')
+    assert.equal(row.scope, 'session')
+  }
+})
+
+test('owned Agent presets persist the new-session default and apply it to created sessions', async t => {
+  const env = await fixture(t)
+  let presets = ok(await env.call('agent-presets'))
+  assert.equal(presets.defaultPreset, 'standard')
+  assert.deepEqual(presets.rows.map(row => row.id), ['standard', 'ptc', 'minimal', 'creator'])
+
+  presets = ok(await env.call('agent-preset-default', { id: 'minimal' }))
+  assert.equal(presets.defaultPreset, 'minimal')
+  const agent = ok(await env.call('add-agent'))
+  assert.equal(env.host().runtime.agentPresetOf(agent.sessions[0]), 'minimal')
+
+  await env.restart()
+  presets = ok(await env.call('agent-presets'))
+  assert.equal(presets.defaultPreset, 'minimal')
+  const restarted = (await env.state()).agents[0]
+  assert.equal(env.host().runtime.agentPresetOf(restarted.sessions[0]), 'minimal')
+
+  const refused = await env.call('agent-preset-default', { id: 'unknown' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error.message, /Unknown Agent preset/)
+})
+
+test('owned Creator action starts a Creator session without changing the default', async t => {
+  const env = await fixture(t)
+  ok(await env.call('agent-preset-default', { id: 'minimal' }))
+
+  const first = ok(await env.call('agent-preset-start', { id: 'creator' }))
+  assert.equal(env.host().runtime.agentPresetOf(first.sessionId), 'creator')
+  assert.equal(ok(await env.call('agent-presets')).defaultPreset, 'minimal')
+
+  const second = ok(await env.call('agent-preset-start', { id: 'creator' }))
+  assert.equal(second.agentId, first.agentId)
+  assert.notEqual(second.sessionId, first.sessionId)
+  assert.equal(env.host().runtime.agentPresetOf(second.sessionId), 'creator')
+  assert.equal((await env.state()).agents.length, 1)
+})
+
+test('owned custom Agent preset API persists modes and resets a removed default', async t => {
+  const env = await fixture(t)
+  let presets = ok(await env.call('agent-preset-save', {
+    id: 'review',
+    name: 'Review mode',
+    description: 'Review without editing.',
+    tools: ['read', 'web_search'],
+    instructions: 'Cite file and line evidence. Do not edit files.',
+  }))
+  assert.equal(presets.rows.find(row => row.id === 'review')?.group, 'custom')
+
+  presets = ok(await env.call('agent-preset-default', { id: 'review' }))
+  assert.equal(presets.defaultPreset, 'review')
+  const agent = ok(await env.call('add-agent'))
+  assert.equal(env.host().runtime.agentPresetOf(agent.sessions[0]), 'review')
+
+  await env.restart()
+  presets = ok(await env.call('agent-presets'))
+  assert.equal(presets.defaultPreset, 'review')
+  assert.equal(presets.rows.some(row => row.id === 'review'), true)
+
+  presets = ok(await env.call('agent-preset-delete', { id: 'review' }))
+  assert.equal(presets.defaultPreset, 'standard')
+  assert.equal(presets.rows.some(row => row.id === 'review'), false)
+  await env.restart()
+  assert.equal(ok(await env.call('agent-presets')).rows.some(row => row.id === 'review'), false)
+})
 
 test('owned Host core roster, avatar and sidebar operations survive restart and expose workspace operations', async t => {
   const env = await fixture(t)

@@ -78,7 +78,7 @@ test('each Bot gets its own partition, and only the shown tab is visible', async
   const [va, vb] = desktop.created
   assert.equal(va.attributes.partition, 'persist:bot:a')
   assert.equal(vb.attributes.partition, 'persist:bot:b')
-  // Agent mode withdraws the Bot styles; a guest must still stay out of the page flow.
+  // A guest must stay out of the page flow before styles load.
   assert.equal(va.style.position, 'fixed')
   assert.equal(va.style.visibility, 'hidden')
   assert.equal(vb.style.visibility, 'visible')
@@ -400,7 +400,7 @@ test('browserAddress opens hosts over https, local addresses over http, and sear
   assert.equal(browserAddress('localhost:5173'), 'http://localhost:5173/')
   assert.equal(browserAddress('192.168.1.8/admin'), 'http://192.168.1.8/admin')
   assert.equal(browserAddress('127.0.0.1:8080'), 'http://127.0.0.1:8080/')
-  assert.equal(browserAddress('deepseek harness'), 'https://www.bing.com/search?q=deepseek%20harness')
+  assert.equal(browserAddress('agent runtime'), 'https://www.bing.com/search?q=agent%20runtime')
   assert.equal(browserAddress('小红书 运营'), 'https://www.bing.com/search?q=%E5%B0%8F%E7%BA%A2%E4%B9%A6%20%E8%BF%90%E8%90%A5')
   assert.equal(browserAddress('  '), null)
   assert.equal(browserAddress('file:///etc/passwd'), null)

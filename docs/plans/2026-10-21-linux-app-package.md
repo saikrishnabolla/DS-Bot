@@ -14,10 +14,10 @@
 - deb 不能自更新：与 macOS 共用 `watchReleases` 发布页提醒路径，等待的资产是 `linux-amd64.deb`（`watchReleases` 因此加了 `asset` 参数，默认仍是 mac zip）。
 - 文件名遵循 Linux 惯例而非 `${arch}` 字面量：AppImage 是 `linux-x86_64`，deb 是 `linux-amd64`（electron-builder 对 Linux 目标的架构名映射；与 IPFS Desktop 等先例一致）。`main.mjs` 和 `check-update.mjs` 里因此有 x64→amd64 的映射。
 - `main.mjs` 按 `APPIMAGE` 环境变量区分 Linux 上两种格式的更新路径。
-- 不选 Flatpak/Snap：应用要在宿主机跑 pnpm 装插件、用 node-pty 开真实终端、读 `~/.dsh` 导入团队，与沙箱直接冲突（`flatpak-spawn --host` 等于拆空沙箱；Snap 的 classic 限制要商店特批，非 Ubuntu 发行版也普遍抵触）。先例：IPFS Desktop 因 confinement 问题弃用 Snap，主推 AppImage。
+- 不选 Flatpak/Snap：应用要用 node-pty 开真实终端，并访问宿主机上的工作文件，与沙箱直接冲突（`flatpak-spawn --host` 等于拆空沙箱；Snap 的 classic 限制要商店特批，非 Ubuntu 发行版也普遍抵触）。先例：IPFS Desktop 因 confinement 问题弃用 Snap，主推 AppImage。
 - 已知坑写进 README：AppImage 需要 FUSE 2（Ubuntu 24.04+/Debian 13+ 装 `libfuse2t64`）；Ubuntu 24.04+ 的 AppArmor 限制非特权 user namespace，会拦 AppImage 里的 Chromium 沙箱——deb 无此问题（post-install 设好 `chrome-sandbox`，electron-builder 26 起自动生成 AppArmor profile）。
 - 只出 x64；arm64 留到有 `linux/arm64` 预编译链（node-pty 等）确认后的后续工作。
-- 二进制与菜单项名 `dsbot`（`executableName`），deb 装进 `/opt/DS Bot`。
+- 二进制与菜单项名 `dsbot`（`executableName`），deb 装进 `/opt/Cue`。
 
 ## CI
 

@@ -12,7 +12,7 @@ const DROP_EXACT = new Set([
   'ACP_BACKEND', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
   'CLAUDE_CODE_OAUTH_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'XAI_API_KEY', 'ELECTRON_RUN_AS_NODE',
 ])
-const DROP_PREFIX = ['DS_BOT_', 'DSH_']
+const DROP_PREFIX = ['DS_BOT_']
 
 export function cleanEnv(extra = {}) {
   const env = {}
@@ -27,7 +27,7 @@ export function cleanEnv(extra = {}) {
   return { ...env, ...extra }
 }
 
-// A command's output, or undefined. Never synchronous: this runs inside the DSH
+// A command's output, or undefined. Never synchronous: this runs inside the Cue
 // host, and a blocking child process there freezes every Session.
 const outputOf = (file, args) => new Promise((resolve) => {
   try {
@@ -123,7 +123,7 @@ export function launchOf(executable, args, { platform = process.platform, readFi
   if (shimmed !== undefined) return { file: shimmed.file, args: shimmed.script === undefined ? args : [shimmed.script, ...args] }
   // Another kind of batch file goes through cmd.exe, which only passes plain arguments intact.
   if (![executable, ...args].every(arg => CMD_SAFE.test(arg))) {
-    throw new Error(`${win32.basename(executable)} is a batch file that DS Bot cannot start with these arguments. Point the agent at its .exe or Node script instead.`)
+    throw new Error(`${win32.basename(executable)} is a batch file that Cue cannot start with these arguments. Point the agent at its .exe or Node script instead.`)
   }
   const line = [executable, ...args].map(arg => (arg === '' || arg.includes(' ') ? `"${arg}"` : arg)).join(' ')
   return { file: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${line}"`], options: { windowsVerbatimArguments: true } }

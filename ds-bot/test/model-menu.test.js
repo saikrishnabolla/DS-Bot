@@ -38,8 +38,8 @@ function nodes(tree, match) {
   return [...(match(tree) ? [tree] : []), ...(tree.children ?? []).flatMap(child => nodes(child, match))]
 }
 
-// `harness`: the window has Settings and DSH's onboarding editors to send the user to.
-function dock(models, { model, ready = true, harness = true } = {}) {
+// `settings`: the window can open Cue's model settings.
+function dock(models, { model, ready = true, settings = true } = {}) {
   const picked = []
   const bot = { id: 'chief', name: 'Chief', model }
   const roster = { ready, byId: { chief: bot }, models, defaultModel: models[0]?.ref }
@@ -47,7 +47,7 @@ function dock(models, { model, ready = true, harness = true } = {}) {
     sessionId: bot.id, useRoster: select => select(roster),
     actions: {
       updateBot: (id, patch) => { picked.push([id, patch.model]); return Promise.resolve() },
-      ...(harness ? { openSettings: () => {}, openHarnessOnboarding: () => {} } : {}),
+      ...(settings ? { openSettings: () => {} } : {}),
     },
   })
   return { tree, picked }
@@ -96,16 +96,16 @@ test('an unavailable model offers the same provider groups', () => {
 test('an empty catalog offers setup choices, and a ready model needs no choice dock', () => {
   const { tree } = dock([])
   assert.deepEqual(nodes(tree, node => node.type === 'button').map(button => button.children[0]), [
-    'Enter a DeepSeek API key', 'Open settings to set up a custom model',
+    'Open settings to set up a custom model',
   ])
   assert.equal(dock(models, { model: models[0].ref }).tree, null)
   assert.equal(dock(models, { ready: false }).tree, null)
 })
 
-test('without DSH\'s own settings, the choice offers no way into them', () => {
+test('without model settings, the choice offers no way into them', () => {
   const buttons = tree => nodes(tree, node => node.type === 'button').map(button => button.children[0])
-  assert.deepEqual(buttons(dock(models, { harness: false }).tree), ['DeepSeek Flash', 'DeepSeek Pro', 'DeepSeek Flash'])
-  assert.deepEqual(buttons(dock([], { harness: false }).tree), [])
+  assert.deepEqual(buttons(dock(models, { settings: false }).tree), ['DeepSeek Flash', 'DeepSeek Pro', 'DeepSeek Flash'])
+  assert.deepEqual(buttons(dock([], { settings: false }).tree), [])
 })
 
 test('the Thinking section always offers Default, so a picked level can be cleared', () => {
@@ -170,9 +170,9 @@ const keyless = [
 
 test('models that need an API key are no choice', () => {
   const buttons = tree => nodes(tree, node => node.type === 'button').map(button => button.children[0])
-  assert.deepEqual(buttons(dock([...keyless, models[1]], { harness: false }).tree), ['DeepSeek Flash'])
-  // Without the host's key endpoint, DSH's own settings take the key.
-  assert.deepEqual(buttons(dock(keyless).tree), ['Enter a DeepSeek API key', 'Open settings to set up a custom model'])
+  assert.deepEqual(buttons(dock([...keyless, models[1]], { settings: false }).tree), ['DeepSeek Flash'])
+  // Without the host's key endpoint, Cue's own settings take the key.
+  assert.deepEqual(buttons(dock(keyless).tree), ['Open settings to set up a custom model'])
 })
 
 test('the first choice asks for the missing API key through the host', () => {
@@ -191,7 +191,7 @@ test('the first choice asks for the missing API key through the host', () => {
 
 test('the DeepSeek API key card links to the key page and says the API is billed by usage', () => {
   const card = model => ModelKeyCard({ model, actions: { setProviderKey: () => {} } })
-  const official = card({ provider: 'deepseek-official', providerName: 'DeepSeek' })
+  const official = card({ provider: 'deepseek', providerName: 'DeepSeek' })
   const [link] = nodes(official, node => node.type === 'a')
   assert.equal(link.props.href, 'https://platform.deepseek.com/api_keys')
   assert.equal(link.props.target, '_blank')

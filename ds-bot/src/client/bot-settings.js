@@ -196,7 +196,7 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
   const save = patch => run(actions.updateBot(bot.id, patch))
   const duplicate = () => run(actions.duplicateBot(bot.id).then(copy => actions.openSession(copy.id)))
   const remove = () => { if (confirming) void run(actions.deleteBot(bot.id)); else setConfirming(true) }
-  // DSH settings can change the model list at any time; the hint should match it.
+  // Cue settings can change the model list at any time; the hint should match it.
   useEffect(() => { void actions.refreshModels?.() }, [bot.id])
   return h('div', { className: 'bt-bs' },
     h('div', { className: 'bt-bs-hero' },

@@ -24,11 +24,11 @@ describe('office skill provider', () => {
 
   test('office beats a rank-600 office from another provider in the same registry', async () => {
     // A registry shaped like the real one: lowest rank wins within a source layer.
-    const fakeDsh = {
-      name: 'dsh-office',
-      list: () => Promise.resolve([{ name: 'office', provider: 'dsh-office', rank: 600 }]),
+    const otherProvider = {
+      name: 'platform-office',
+      list: () => Promise.resolve([{ name: 'office', provider: 'platform-office', rank: 600 }]),
     }
-    const providers = [officeProvider(), fakeDsh]
+    const providers = [officeProvider(), otherProvider]
     const all = (await Promise.all(providers.map(p => p.list()))).flat()
     const offices = all.filter(s => s.name === 'office').sort((a, b) => a.rank - b.rank)
     assert.equal(offices[0].provider, 'ds-bot-office')

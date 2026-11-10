@@ -1,4 +1,4 @@
-// Source of DS Bot's characters. Each one is a small 3D model made of
+// Source of Cue's characters. Each one is a small 3D model made of
 // signed-distance primitives (spheres, ellipsoids, round cones, a torus, extrusions, and
 // the first mascots' design outlines inflated into soft slabs), seen from one fixed
 // three-quarter view and traced into flat layers in a 100-unit box: the body, decals,

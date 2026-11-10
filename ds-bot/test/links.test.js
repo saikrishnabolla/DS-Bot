@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import { absoluteLinks } from '../src/host/links.js'
 
 const folder = resolve('/work/group folder')
-// The path DSH opens for a link, as its chat decodes the destination.
+// The path Cue opens for a link, as its chat decodes the destination.
 const opened = text => decodeURIComponent(/\]\(([^)#]+)/.exec(text)[1])
 const full = path => resolve(folder, path).replace(/\\/g, '/')
 

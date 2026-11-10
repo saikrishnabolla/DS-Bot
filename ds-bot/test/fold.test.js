@@ -56,7 +56,7 @@ test('a text folds past 1,500 characters or 25 lines, and shows its first ten li
 
 test('the preview closes a code fence it cuts open, in Markdown only', () => {
   // A fence the cut opened loses its language tag, so a downstream renderer
-  // (dsh-ui cards) does not claim a half message.
+  // (Cue-ui cards) does not claim a half message.
   const code = `Here:\n\`\`\`js\n${lines(30)}\n\`\`\``
   assert.equal(foldPreview(code), `Here:\n\`\`\`\n${lines(8)}\n\`\`\``)
   assert.equal(foldPreview(code, FOLD_AT, false), `Here:\n\`\`\`js\n${lines(8)}`)
@@ -69,7 +69,7 @@ test('the preview closes a code fence it cuts open, in Markdown only', () => {
 // #520: a card message is the fence marker, then one very long line — the
 // newline cut left an empty fence, so no preview and nothing on open either.
 test('a long message that opens with a card fence still previews its start', () => {
-  const card = `\`\`\`dsh-ui\n${'x'.repeat(2000)}`
+  const card = `\`\`\`Cue-ui\n${'x'.repeat(2000)}`
   const preview = foldPreview(card)
   assert.equal(preview, `\`\`\`\n${'x'.repeat(590)}\n\`\`\``)
 })
@@ -157,7 +157,7 @@ test('a folded preview also yields the whole code block it cut', () => {
   assert.equal(view.head, `Here:\n\`\`\`\n${lines(8)}\n\`\`\``)
   assert.equal(view.code, inner)
   // The markdown before the block, and the part of the block the preview keeps:
-  // the half block is drawn by DS Bot, so the host's copy control never sees it.
+  // the half block is drawn by Cue, so the host's copy control never sees it.
   assert.equal(view.prose, 'Here:')
   assert.equal(view.codeHead, lines(8))
   // A block that never closes yields to the end of the text.

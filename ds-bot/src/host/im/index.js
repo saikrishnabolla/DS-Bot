@@ -1,7 +1,7 @@
 // IM: talk to Bots from chat apps. A connection is one IM bot account bound to a Bot;
-// direct chats reach that Bot, platform group chats can be bound to a DS Bot group.
+// direct chats reach that Bot, platform group chats can be bound to a Cue group.
 // The platform adapters (im/platforms/) own the wire; this module owns pairing,
-// routing, cards and the send queues. Only the dsh holding the team lock connects.
+// routing, cards and the send queues. Only the Cue holding the team lock connects.
 import { randomBytes, randomUUID } from 'node:crypto'
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -24,9 +24,9 @@ export function install(rt) {
   const zh = () => String(rt.uiLanguage?.() ?? '').startsWith('Chinese')
   const text = (key, values = {}) => {
     const line = {
-      requested: zh() ? '已向 DS Bot 发出连接请求，请在电脑上的 DS Bot 设置 → IM 里允许。' : 'A connection request was sent to DS Bot; allow it in Settings → IM on the computer.',
-      unbound: zh() ? '这个 IM 机器人还没绑定 Bot，请在 DS Bot 设置 → IM 里选一个。' : 'This IM bot is not bound to a Bot yet; pick one in DS Bot Settings → IM.',
-      unboundGroup: zh() ? '这个群还没绑定，请在 DS Bot 设置 → IM 里给它选一个群或 Bot。' : 'This group is not bound yet; pick a group or a Bot for it in DS Bot Settings → IM.',
+      requested: zh() ? '已向 Cue 发出连接请求，请在电脑上的 Cue 设置 → IM 里允许。' : 'A connection request was sent to Cue; allow it in Settings → IM on the computer.',
+      unbound: zh() ? '这个 IM 机器人还没绑定 Bot，请在 Cue 设置 → IM 里选一个。' : 'This IM bot is not bound to a Bot yet; pick one in Cue Settings → IM.',
+      unboundGroup: zh() ? '这个群还没绑定，请在 Cue 设置 → IM 里给它选一个群或 Bot。' : 'This group is not bound yet; pick a group or a Bot for it in Cue Settings → IM.',
       connected: zh() ? `已连接，现在可以和 ${values.target} 说话了。` : `Connected — you can talk to ${values.target} now.`,
       stopped: zh() ? '已停下。' : 'Stopped.',
       idle: zh() ? '现在没有在做的活。' : 'Nothing is running.',
@@ -546,7 +546,7 @@ export function install(rt) {
     if (adapter === undefined || runners.has(conn.id)) return
     const platform = imPlatform(conn.platform)
     if (platform?.ws === true && globalThis.WebSocket === undefined) {
-      setStatus(conn.id, { state: 'error', error: 'This dsh runs on a Node without WebSocket', at: Date.now() })
+      setStatus(conn.id, { state: 'error', error: 'This Cue host runs on a Node without WebSocket', at: Date.now() })
       return
     }
     // The slot is reserved before the async work: a concurrent sync cannot

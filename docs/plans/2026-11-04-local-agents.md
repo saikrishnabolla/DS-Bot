@@ -13,46 +13,46 @@ and model changes all work the same way.
 
 ## Decided behavior
 
-- An abot is a normal Bot whose model route is a local-agent route served by a
-  DSH LLM adapter that DS Bot registers. Routes: `local-devin-cli`,
+- An abot is a normal Bot whose model route is served by Cue's local-agent
+  adapter. Routes: `local-devin-cli`,
   `local-claude-code`, `local-codex-cli`, `local-opencode`, `local-cursor-cli`,
   `local-gemini-cli`, `local-grok-cli`, `local-cline`, `local-qwen-code`,
   `local-goose`, and `local-acp-<id>` for custom agents the user adds. A route
   appears only while its CLI is found; a refresh re-scans.
-- The `local-` prefix keeps these routes apart from providers that DSH or other
-  plugins register. Without it, a CLI named like such a provider (`opencode` is
-  also DSH's OpenCode provider) made both register the same name, and the LLM
-  service failed to load. Refs saved under the unprefixed names move to the
+- The `local-` prefix keeps these routes apart from ordinary model providers.
+  Without it, a CLI named like such a provider (`opencode` is also an OpenCode
+  provider) made both register the same name, and the model service failed to
+  load. Refs saved under the unprefixed names move to the
   prefixed ones when the team loads. An old `opencode/...` ref moves only for a
   Bot that ran on the local CLI or on its "CLI default"; otherwise it stays on
-  DSH's OpenCode provider.
+  the OpenCode provider.
 - A route's models are what its CLI reports, plus a "CLI default" entry.
-- Every DS Bot Session maps to one CLI session. A Bot's own chat and each of
+- Every Cue Session maps to one CLI session. A Bot's own chat and each of
   its group sessions are separate CLI sessions, so no content crosses between
   them. Switching to an earlier part resumes its mapped CLI session; a part
   that belongs to another run mode moves on first (see Run mode).
 - The CLI gets only new input since the last handed message: the user, other
   Bots, and tool results for calls it made. On a new or lost CLI session, the
-  DS Bot system prompt plus a bounded recent window of the history is sent as
+  Cue system prompt plus a bounded recent window of the history is sent as
   the first prompt. The system prompt is sent as appended instructions — never
   over the CLI's own — and is re-sent, marked as an update, only when it
   changes.
-- The DS Bot team tools the Bot's role allows are offered to the CLI over a
+- The Cue team tools the Bot's role allows are offered to the CLI over a
   loopback MCP server (one random port and bearer token per CLI session; a bad
   token is refused). When the CLI calls one, the call leaves the stream as a
-  normal assistant tool call so DSH runs it — logged, with approvals and the
-  usual presentation — and its result answers the suspended CLI call on the
+  normal assistant tool call so the host runs it — logged, with approvals and
+  the usual presentation — and its result answers the suspended CLI call on the
   next step. Calls that arrive while one runs are queued and go out on the next
   step.
 - The CLI's own work — its thoughts, plans, and tool calls — shows as the
   Bot's thinking rows, one compact line per action. Its final answer is the
   message text. Usage it reports is recorded.
-- No DS Bot or engine compaction runs on an abot session: the CLI owns
-  compaction inside its own session, and the full history stays in the DSH
+- No Cue or engine compaction runs on an abot session: the CLI owns
+  compaction inside its own session, and the full history stays in the Bot
   Session for `read_own_chat`. Steward calls are skipped for local-agent
   routes.
 - A permission prompt from the CLI becomes an `approve_agent_action` tool call
-  that DS Bot shows as a normal approval card. Allow picks the agent's
+  that Cue shows as a normal approval card. Allow picks the agent's
   allow-once option; anything else denies it. It fails closed: only an explicit
   allow option counts. The Bot's permission preset maps to the closest mode the
   agent advertises.
@@ -80,14 +80,14 @@ and model changes all work the same way.
 
 ## Run mode
 
-How a Bot runs is a property of the Bot: on DS Bot models, or on one local
+How a Bot runs is a property of the Bot: on Cue models, or on one local
 agent CLI. The two do not share tools, context, permissions, or memory
 handling, so they do not mix in one model list.
 
 - The run mode is derived from the Bot's model ref: a ref whose provider is a
-  local-agent route runs on that CLI; any other ref runs on DS Bot models. No
+  local-agent route runs on that CLI; any other ref runs on Cue models. No
   new field is stored, and routing stays on the existing LLM adapter.
-- The Create Bot form starts with a choice at its top: "DS Bot model" or
+- The Create Bot form starts with a choice at its top: "Cue model" or
   "Local agent". Local agent lists the CLIs found on this machine as cards with logo, name, and
   sign-in state (signed in, not signed in, unknown).
 - After creation, only the user changes the run mode, only in the Bot's
@@ -105,11 +105,11 @@ handling, so they do not mix in one model list.
   part together, with the deterministic handoff, and the next turn runs on the
   new mode. A chat in the middle of a turn moves before its next step. A part
   with no request yet is already fresh.
-- Another model of the same CLI, or another DS Bot model, is an ordinary model
+- Another model of the same CLI, or another Cue model, is an ordinary model
   change: no confirmation, no new part.
-- Model menus list only the Bot's own kind: a Bot on DS Bot models never sees a
+- Model menus list only the Bot's own kind: a Bot on Cue models never sees a
   local agent, and a local agent Bot sees only its CLI's models. The team
-  default model and the first-model card list DS Bot models only.
+  default model and the first-model card list Cue models only.
 - Listing the team state, the models, or the local agents starts no CLI. A
   local agent Bot's own model menu, or picking a CLI's card when creating a
   Bot, asks that one CLI for its models once; later looks read that answer

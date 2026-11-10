@@ -59,7 +59,7 @@ function fixture({ statePath } = {}) {
   return { manager, handlers, views, changes, added, setWindow: (next) => { window = next } }
 }
 
-test('Bot endpoint identifiers follow DSH session.create IDs', () => {
+test('Bot endpoint identifiers follow Cue session.create IDs', () => {
   assert.equal(isBotId('session-7e90ddf9-38a7-4c6c-b37a-1c445f771234'), true)
   assert.equal(isBotId('7e90ddf9-38a7-4c6c-b37a-1c445f771234'), false)
   assert.equal(isBotId('session-1'), false)

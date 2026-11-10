@@ -56,7 +56,7 @@ test('a long running turn refreshes on a later step', async (t) => {
   assert.equal((await step(undefined, { step: 3 })).messages.length, 2)
 })
 
-test('native DSH readings, pending or persisted, do not get a second clock', async (t) => {
+test('native Cue readings, pending or persisted, do not get a second clock', async (t) => {
   const { step, reads } = setup(t, { events: [reading(NOW - 1, 'time-context')] })
   const decision = { kind: 'enter', messages: [{ source: { kind: 'time-context' } }] }
   assert.equal(await step(decision), decision)
@@ -65,7 +65,7 @@ test('native DSH readings, pending or persisted, do not get a second clock', asy
   assert.equal(await step(empty), empty)
 })
 
-test('an expired native DSH clock is refreshed when the preset no longer supplies one', async (t) => {
+test('an expired native Cue clock is refreshed when the preset no longer supplies one', async (t) => {
   const { step } = setup(t, { events: [reading(NOW - 600_000, 'time-context')] })
   assert.equal((await step()).messages.length, 2)
 })
@@ -81,7 +81,7 @@ test('a rejection or cancellation does not add a reading or read history', async
   assert.equal(reads(), 0)
 })
 
-test('ordinary DSH sessions are unchanged', async (t) => {
+test('ordinary Cue sessions are unchanged', async (t) => {
   const { step, reads } = setup(t, { owned: false })
   const decision = { kind: 'enter', messages: [] }
   assert.equal(await step(decision), decision)

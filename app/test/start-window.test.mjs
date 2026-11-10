@@ -56,39 +56,34 @@ test('a failure gets one of the six reasons of the failure page', () => {
   assert.equal(failureReason(new Error('EPERM: operation not permitted, open \'x\'')), 'permission')
   assert.equal(failureReason(coded('ENOSPC', 'ENOSPC: no space left on device, write')), 'space')
   assert.equal(failureReason(new Error('There is not enough space on the disk.')), 'space')
-  assert.equal(failureReason(new Error("The DS Bot Host stopped (exit 1):\nError: Cannot find package 'ds-bot'")), 'files')
+  assert.equal(failureReason(new Error("The Cue Host stopped (exit 1):\nError: Cannot find package 'ds-bot'")), 'files')
   assert.equal(failureReason(new Error('The app could not load its own bundles:\nds-bot: missing')), 'files')
-  assert.equal(failureReason(new Error("The DS Bot Host stopped (exit 1):\nError: EACCES: permission denied, open 'state.json'")), 'permission')
-  assert.equal(failureReason(new Error('The DS Bot Host stopped (exit 3221225477)')), 'engine')
+  assert.equal(failureReason(new Error("The Cue Host stopped (exit 1):\nError: EACCES: permission denied, open 'state.json'")), 'permission')
+  assert.equal(failureReason(new Error('The Cue Host stopped (exit 3221225477)')), 'engine')
   assert.equal(failureReason(new Error('The profile in D:\\x does not start the engine\'s web server and connection.')), 'engine')
-  assert.equal(failureReason(new Error('DS Bot: no free port on 127.0.0.1')), 'other')
+  assert.equal(failureReason(new Error('Cue: no free port on 127.0.0.1')), 'other')
   assert.equal(failureReason('a string'), 'other')
   assert.equal(failureReason(undefined), 'other')
 })
 
 test('only a missing file of the app\'s own says that the install is incomplete', () => {
-  const program = join(tmpdir(), 'DS Bot')
+  const program = join(tmpdir(), 'Cue')
   const where = { program: [join(tmpdir(), 'electron'), program] }
   const missing = (path, message) => Object.assign(new Error(message), { code: 'ENOENT', path })
-  const exe = join(program, 'DS Bot.exe')
+  const exe = join(program, 'Cue.exe')
   assert.equal(failureReason(missing(exe, `spawn ${exe} ENOENT`), where), 'files')
   assert.equal(failureReason(missing(exe, `spawn ${exe} ENOENT`)), 'other')
   // A saved data folder on a drive that is gone: its own reason, with what to do about it.
-  const data = join(tmpdir(), 'gone', 'DS Bot', 'data', 'profiles', 'ds-bot')
+  const data = join(tmpdir(), 'gone', 'Cue', 'data', 'profiles', 'ds-bot')
   assert.equal(failureReason(missing(data, `ENOENT: no such file or directory, mkdir '${data}'`), where), 'missing')
   // A Host that stopped: its error output names the missing file.
   const bundle = join(program, 'resources', 'app.asar.unpacked', 'node_modules', 'x', 'index.js')
-  assert.equal(failureReason(new Error(`The DS Bot Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${bundle}'`), where), 'files')
-  assert.equal(failureReason(new Error(`The DS Bot Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${join(data, 'state.json')}'`), where), 'engine')
+  assert.equal(failureReason(new Error(`The Cue Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${bundle}'`), where), 'files')
+  assert.equal(failureReason(new Error(`The Cue Host stopped (exit 1):\nError: ENOENT: no such file or directory, open '${join(data, 'state.json')}'`), where), 'engine')
 })
 
 test('the main process takes only its own acts, each in its own views', () => {
-  assert.deepEqual([...START_ACTS].sort(), ['answer', 'copyDetails', 'handoffDone', 'handoffShow', 'importModel', 'importOption', 'installUpdate', 'manualDownload', 'painted', 'pick', 'reloadView', 'retry', 'saveLog', 'wait'])
-  // The import card's model and options, on a card only. The copy has no stop of its own.
-  for (const name of ['importModel', 'importOption']) {
-    assert.equal(acceptsAct(name, 'card'), true, name)
-    for (const view of ['boot', 'failed', 'watchdog', 'handoff', 'moving']) assert.equal(acceptsAct(name, view), false, `${name} in ${view}`)
-  }
+  assert.deepEqual([...START_ACTS].sort(), ['answer', 'copyDetails', 'handoffDone', 'handoffShow', 'installUpdate', 'manualDownload', 'painted', 'pick', 'reloadView', 'retry', 'saveLog', 'wait'])
   assert.equal(acceptsAct('handoffShow', 'handoff'), true)
   // 「换个位置…」 while the start boots and 〔重新选〕 on its cards; a card's answer only on a card.
   assert.equal(acceptsAct('pick', 'boot'), true)
@@ -128,9 +123,9 @@ test('the main process takes only its own acts, each in its own views', () => {
 test('acts come only from the start page that was loaded', () => {
   // A Windows path is a file URL only on Windows.
   const win32 = process.platform === 'win32'
-  const page = win32 ? 'C:\\Program Files\\DS Bot\\resources\\app.asar\\src\\start\\start.html' : '/opt/DS Bot/resources/app.asar/src/start/start.html'
+  const page = win32 ? 'C:\\Program Files\\Cue\\resources\\app.asar\\src\\start\\start.html' : '/opt/Cue/resources/app.asar/src/start/start.html'
   const loaded = startUrl(page, 'first')
-  assert.equal(loaded, win32 ? 'file:///C:/Program%20Files/DS%20Bot/resources/app.asar/src/start/start.html?start=first' : 'file:///opt/DS%20Bot/resources/app.asar/src/start/start.html?start=first')
+  assert.equal(loaded, win32 ? 'file:///C:/Program%20Files/Cue/resources/app.asar/src/start/start.html?start=first' : 'file:///opt/Cue/resources/app.asar/src/start/start.html?start=first')
   assert.equal(isStartPage(loaded, loaded), true)
   assert.equal(isStartPage(`${loaded}#x`, loaded), false)
   assert.equal(isStartPage(loaded.replace('first', 'later'), loaded), false)
@@ -168,7 +163,7 @@ test('the snapshot carries the phase, the stages done and the clock', () => {
   assert.deepEqual(startSnapshot(state({ hint: { drive: 'C', free: '1.2 GB' } }), now).hint, { drive: 'C', free: '1.2 GB' })
   assert.equal('place' in startSnapshot(state(), now), false)
   assert.deepEqual(startSnapshot(state({ place: { drive: 'C', free: '412 GB' } }), now).place, { drive: 'C', free: '412 GB' })
-  assert.deepEqual(startSnapshot(state({ view: 'card', card: { kind: 'picked', path: 'D:\\DS Bot' } }), now).card, { kind: 'picked', path: 'D:\\DS Bot' })
+  assert.deepEqual(startSnapshot(state({ view: 'card', card: { kind: 'picked', path: 'D:\\Cue' } }), now).card, { kind: 'picked', path: 'D:\\Cue' })
   // The page gets copies: it cannot change the main process's state.
   const source = state({ failure: { reason: 'other', log: ['x'] } })
   const sent = startSnapshot(source, now)
@@ -178,12 +173,9 @@ test('the snapshot carries the phase, the stages done and the clock', () => {
   assert.deepEqual(source.failure.log, ['x'])
 })
 
-test('what the hint row can prepare for: a new team, a reinstall or an import', () => {
-  // DSH shows its preview notice on a data folder without a team, which has no Session yet.
+test('what the hint row can prepare for: a new team or a reinstall', () => {
   assert.deepEqual(explainOf(), { mode: 'new', nextStep: true, previewNotice: true })
   assert.deepEqual(explainOf({ team: { bots: 6, rooms: 2 } }), { mode: 'reinstall', bots: 6, groups: 2, nextStep: false, previewNotice: false })
-  assert.deepEqual(explainOf({ offered: true }), { mode: 'import', nextStep: false, previewNotice: false })
-  assert.deepEqual(explainOf({ offered: true, team: { bots: 1, rooms: 0 } }).mode, 'import')
   // The greeting names the kept team's first Main Bot; without a readable name it names none.
   const state = { mainBotIds: ['b2', 'b1'], bots: { b1: { name: 'Chief' }, b2: { name: ' Ada ' } } }
   assert.equal(explainOf({ team: { bots: 2, rooms: 0, team: state } }).name, 'Ada')
@@ -193,7 +185,7 @@ test('what the hint row can prepare for: a new team, a reinstall or an import', 
 })
 
 test('the copied details name the version and the reason before the log', () => {
-  assert.equal(detailsText({ version: '0.2.2', platform: 'win32', arch: 'x64', reason: 'engine', lines: ['l1', 'l2'] }), 'DS Bot 0.2.2 (win32 x64)\nreason: engine\n\nl1\nl2')
+  assert.equal(detailsText({ version: '0.2.2', platform: 'win32', arch: 'x64', reason: 'engine', lines: ['l1', 'l2'] }), 'Cue 0.2.2 (win32 x64)\nreason: engine\n\nl1\nl2')
 })
 
 test('the start window remembers the theme and the motion tier in its own file', (t) => {
@@ -379,18 +371,18 @@ test('a dialog of the start window shows it at once: it never opens over nothing
 test('〔保存日志…〕 writes the log where the app\'s picker says, and nothing when it is cancelled', async (t) => {
   const s = startWindow(t)
   s.start.open('first')
-  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
+  s.start.fail(new Error('The Cue Host stopped (exit 1)'))
   const dir = mkdtempSync(join(tmpdir(), 'ds-bot-log-'))
   t.after(() => { rmSync(dir, { recursive: true, force: true }) })
   assert.equal(s.act('saveLog'), true)
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(s.calls.saveAs, ['DS-Bot-log.txt'])
+  assert.deepEqual(s.calls.saveAs, ['Cue-log.txt'])
   assert.deepEqual(readdirSync(dir), [])
   s.calls.saveTo = join(dir, 'log.txt')
   s.act('saveLog')
   const saved = () => (readdirSync(dir).length > 0 ? readFileSync(join(dir, 'log.txt'), 'utf8') : '')
   for (let i = 0; i < 500 && !saved().includes('a log line'); i += 1) await new Promise(resolve => setImmediate(resolve))
-  assert.match(saved(), /^DS Bot 0\.0\.0 \([\s\S]*a log line/u)
+  assert.match(saved(), /^Cue 0\.0\.0 \([\s\S]*a log line/u)
 })
 
 test('a dialog of the start window turns it opaque while it waits see-through', (t) => {
@@ -433,64 +425,13 @@ test('the 180 s question comes on the start\'s clock while the engine is not up'
   assert.equal(s.state().view, 'boot')
 })
 
-// The copy is a stage of its own, between the data and the engine (§6), from the moment it runs:
-// the ring has three arcs while the import card asks, keeps the fourth once the copy is done, and
-// goes back to three when the copy stops. The engine that warmed up while the card waited stops
-// for the copy: its stage is open again until the copied team's engine is up.
-test("the copy is a stage of its own, and the engine's stage waits for the copied team's engine", (t) => {
-  const s = startWindow(t)
-  s.start.open('first')
-  s.start.explain(explainOf({ offered: true }))
-  assert.deepEqual(s.state().phases, ['data', 'engine', 'team'])
-  s.start.done('data')
-  s.start.card({ kind: 'import', bots: 4, groups: 0 })
-  s.start.done('engine')
-  assert.deepEqual(s.state().phases, ['data', 'engine', 'team'], 'three arcs while the card asks')
-  const copying = (step, arc) => ({ kind: 'copying', step, fraction: 0, arc, steps: [{}, {}, {}] })
-  s.start.card(copying(1, 0))
-  assert.deepEqual(s.state().phases, ['data', 'import', 'engine', 'team'])
-  assert.equal(s.state().phase, 'import')
-  s.start.card(undefined)
-  assert.deepEqual(s.state().phases, ['data', 'engine', 'team'], 'a copy that ends without the team goes back to three')
-  s.start.card(copying(2, 0.15))
-  s.start.engineDown()
-  assert.deepEqual(s.state().done, ['data'])
-  s.start.ready()
-  assert.notEqual(s.state().view, 'handoff', 'no hand-off while no engine is up')
-  s.start.done('import')
-  assert.equal(s.state().phase, 'engine')
-  s.start.card(undefined)
-  assert.equal(s.state().phases.length, 4, 'a done copy keeps its arc')
-  s.start.done('engine')
-  assert.deepEqual(s.state().done, ['data', 'import', 'engine'])
-  s.start.ready()
-  assert.equal(s.state().view, 'handoff')
-  assert.deepEqual(s.state().done, ['data', 'import', 'engine', 'team'])
-})
-
 // start-window §7: the stage that failed is the one the snapshot is at, and the page turns its arc
 // red: the data folder when it cannot be made or written, the engine when it or the Host stops.
-// §6: a failed copy keeps the copy's arc (the page turns it red); 〔先不带团队开始〕 takes the card
-// away and the ring goes back to three.
-test('a failed copy keeps its arc on the ring until the start goes on without the team', (t) => {
-  const s = startWindow(t)
-  s.start.open('first')
-  s.start.explain(explainOf({ offered: true }))
-  s.start.done('data')
-  s.start.card({ kind: 'copying', step: 2, fraction: 0.4, arc: 0.5, steps: [{}, {}, {}] })
-  s.start.card({ kind: 'importFailed', reason: 'inUse', log: ['EBUSY: resource busy or locked'] })
-  assert.deepEqual(s.state().phases, ['data', 'import', 'engine', 'team'])
-  assert.equal(s.state().phase, 'import')
-  assert.deepEqual(s.state().card.log, ['EBUSY: resource busy or locked'])
-  s.start.card(undefined)
-  assert.deepEqual(s.state().phases, ['data', 'engine', 'team'])
-})
-
 test('a data folder that cannot be written fails at the data stage, a stopped engine at the engine', async (t) => {
   for (const [error, reason, phase, done] of [
     [Object.assign(new Error('EACCES: permission denied, mkdir'), { code: 'EACCES' }), 'permission', 'data', []],
     [Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' }), 'space', 'data', []],
-    [new Error('The DS Bot Host stopped (exit 1)'), 'engine', 'engine', ['data']],
+    [new Error('The Cue Host stopped (exit 1)'), 'engine', 'engine', ['data']],
   ]) {
     await t.test(reason, (st) => {
       const s = startWindow(st)
@@ -511,7 +452,7 @@ test('a retry after the engine was up guards the new engine, while the whale kee
   s.start.done('data')
   s.start.done('engine')
   s.start.teamLoading()
-  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
+  s.start.fail(new Error('The Cue Host stopped (exit 1)'))
   assert.equal(s.state().view, 'failed')
   assert.equal(s.state().failure.reason, 'engine')
   assert.equal(s.act('retry'), true)
@@ -728,7 +669,7 @@ test('the landing takes the start window\'s title bar into account, and waits wi
   s.start.placeMain()
   s.start.done('data')
   s.start.done('engine')
-  s.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  s.start.card({ kind: 'picked', path: 'D:\\Cue' })
   s.start.ready(AVATAR)
   assert.equal(s.state().view, 'card')
   s.start.card(undefined)
@@ -754,7 +695,7 @@ test('a failure during the hand-off draws the failure page on a fresh page', (t)
   s.start.done('engine')
   s.start.ready()
   s.tick(300)
-  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
+  s.start.fail(new Error('The Cue Host stopped (exit 1)'))
   assert.equal(s.state().view, 'failed')
   assert.equal(s.win().webContents.reloads, 1)
   // The team window that waited under the start window is hidden again.
@@ -775,7 +716,7 @@ test('a failure after the hand-off opens a fresh start window over the hidden te
   s.tick(2500)
   const handed = s.win()
   assert.equal(s.main.visible, true)
-  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'), 'later')
+  s.start.fail(new Error('The Cue Host stopped (exit 1)'), 'later')
   assert.equal(handed.destroyed, true)
   assert.notEqual(s.win(), handed)
   assert.equal(s.main.visible, false)
@@ -797,9 +738,9 @@ test('the place line, its picker and its cards, and a start over in another fold
   assert.deepEqual(s.calls.pick, ['changePlace'])
   assert.equal(s.act('answer', { value: 'use' }), false)
   // A layer the app added: the 「会放在…」 card waits for the answer, and the clock with it.
-  s.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  s.start.card({ kind: 'picked', path: 'D:\\Cue' })
   assert.equal(s.state().view, 'card')
-  assert.deepEqual(s.state().card, { kind: 'picked', path: 'D:\\DS Bot' })
+  assert.deepEqual(s.state().card, { kind: 'picked', path: 'D:\\Cue' })
   assert.equal(s.state().clock.running, false)
   assert.equal(s.act('pick', undefined), true)
   assert.deepEqual(s.calls.pick, ['changePlace', undefined])
@@ -818,7 +759,7 @@ test('the place line, its picker and its cards, and a start over in another fold
   s.tick(180_000)
   assert.equal(s.state().view, 'watchdog')
   assert.equal(s.act('pick', { value: 'changePlace' }), true)
-  s.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  s.start.card({ kind: 'picked', path: 'D:\\Cue' })
   assert.equal(s.state().view, 'card')
   s.start.card(undefined)
   s.tick(1)
@@ -841,8 +782,8 @@ test('the place line, its picker and its cards, and a start over in another fold
   assert.equal(s.state().view, 'boot')
   assert.deepEqual(s.state().done, ['data', 'engine'])
   // No card after a failure: the failure page has its own buttons.
-  s.start.fail(new Error('The DS Bot Host stopped (exit 1)'))
-  s.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  s.start.fail(new Error('The Cue Host stopped (exit 1)'))
+  s.start.card({ kind: 'picked', path: 'D:\\Cue' })
   assert.equal(s.state().view, 'failed')
   assert.equal(s.act('pick', { value: 'changePlace' }), false)
 })
@@ -870,7 +811,7 @@ test('a card holds the hand-off the same way, and the ready is not lost when the
   c.start.open('first')
   c.start.done('data')
   c.start.done('engine')
-  c.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  c.start.card({ kind: 'picked', path: 'D:\\Cue' })
   c.start.ready()
   assert.equal(c.state().view, 'card')
   c.start.card(undefined)
@@ -882,7 +823,7 @@ test('a start over in another folder drops the old engine\'s held ready', (t) =>
   o.start.open('first')
   o.start.done('data')
   o.start.done('engine')
-  o.start.card({ kind: 'picked', path: 'D:\\DS Bot' })
+  o.start.card({ kind: 'picked', path: 'D:\\Cue' })
   o.start.ready()
   o.start.restart()
   assert.equal(o.state().view, 'boot')

@@ -25,13 +25,13 @@ const seed = () => ({
   revision: 0,
 })
 
-// One DS Bot host on `home`; a second start on the same home is a restart.
+// One Cue host on `home`; a second start on the same home is a restart.
 // Hosts by home: a home is removed only after its hosts stopped and their writes landed.
 let rt
 const started = new Map()
 
-// The durable logs DSH keeps, by Session: what a Session's turns did and said.
-// `inspect` stands in for DSH reading that log, when a test cannot read it.
+// The durable logs Cue keeps, by Session: what a Session's turns did and said.
+// `inspect` stands in for Cue reading that log, when a test cannot read it.
 async function start(home, logs, inspect) {
   const ctx = fakeContext()
   const agents = new Map()
@@ -62,7 +62,7 @@ async function start(home, logs, inspect) {
   rt = createRuntime(ctx, { home })
   let seq = 0
   const emit = (id, type, data) => {
-    // A Session already resolved by the test stands in for the one DSH emits, so a
+    // A Session already resolved by the test stands in for the one Cue emits, so a
     // test can give it a route or a size; otherwise only the id is known.
     const session = agents.get(id)?.session ?? { id }
     for (const listener of ctx.listeners.get('session/event') ?? []) {
@@ -70,7 +70,7 @@ async function start(home, logs, inspect) {
     }
   }
   const tool = (name, args, sessionId, exec = {}) => rt.teamTools.find(d => d.name === name).execute(args, { agent: { id: sessionId }, ...exec })
-  const askApproval = sessionId => ctx.listeners.get('approval/request')[0]({ agent: { session: { id: sessionId } }, toolName: 'pwsh', reason: 'escalate sandbox' }, () => 'from-dsh')
+  const askApproval = sessionId => ctx.listeners.get('approval/request')[0]({ agent: { session: { id: sessionId } }, toolName: 'pwsh', reason: 'escalate sandbox' }, () => 'from-Cue')
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', { method: 'POST', body: JSON.stringify({ endpoint, payload }) }))).json()
   await tool('list_bots', {}, 'a')
   const host = { ctx, agentOf, emit, tool, call, askApproval, stop: () => ctx.dispose() }
@@ -123,7 +123,7 @@ const readDiagnostics = async (home, wanted = () => true) => {
   return []
 }
 const inflight = home => notes(home).turns ?? {}
-// A message as DSH would replay it: the turn starts and takes it up.
+// A message as Cue would replay it: the turn starts and takes it up.
 const run = (host, sessionId, turn, message) => {
   host.emit(sessionId, 'turn/start', { turn })
   host.emit(sessionId, 'user/message', { content: message.content, source: message.source })
@@ -193,15 +193,15 @@ test('a request cut off by a restart goes on under the same exchange; own-chat w
   await settle(() => second.agentOf('b').calls.length === 1 && second.agentOf('a').calls.length === 1)
   const request = second.agentOf('b').calls[0]
   assert.deepEqual([request.source.role, request.source.exchangeId, request.source.senderSessionId, request.source.resumed], ['request', 'x1', 'a', true])
-  assert.match(text(request), /^\[Message from Chief · DeepSeek Harness restarted while you were working on it\]/)
+  assert.match(text(request), /^\[Message from Chief · Cue restarted while you were working on it\]/)
   const own = second.agentOf('a').calls[0]
   assert.deepEqual([own.source.role, own.source.resumed], ['resume', true])
-  assert.match(text(own), /^\[DeepSeek Harness restarted while you were working\]/)
+  assert.match(text(own), /^\[Cue restarted while you were working\]/)
   const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
   assert.equal(state.exchanges.length, 0)
 })
 
-test('when only DS Bot restarts, a turn still running or finished meanwhile is not picked up', async (t) => {
+test('when only Cue restarts, a turn still running or finished meanwhile is not picked up', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const home = freshHome(t)
   const first = await start(home)
@@ -210,7 +210,7 @@ test('when only DS Bot restarts, a turn still running or finished meanwhile is n
   await settle(() => inflight(home).b?.trigger !== undefined && inflight(home).a !== undefined)
   await first.stop()
 
-  // DSH went on: Writer is still at work, and Chief's turn ends before the pick-up.
+  // Cue went on: Writer is still at work, and Chief's turn ends before the pick-up.
   const second = await start(home)
   second.agentOf('b').status = 'running'
   second.emit('a', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
@@ -277,14 +277,14 @@ for (const role of ['reply', 'report', 'resume']) {
   })
 }
 
-test('an answer a turn produced while DS Bot was not watching goes to the Bot that waits for it, once', async (t) => {
+test('an answer a turn produced while Cue was not watching goes to the Bot that waits for it, once', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const home = freshHome(t)
   const logs = new Map()
   const first = await start(home, logs)
   const request = await askWriter(first, home)
   const exchangeId = request.source.exchangeId
-  // Writer answers, and DS Bot restarts before it sees the end of that turn.
+  // Writer answers, and Cue restarts before it sees the end of that turn.
   logs.set('b', writerLog(request, 'The plan is ready.'))
   await first.stop()
 
@@ -319,7 +319,7 @@ test('a turn whose record cannot be read says the result is unknown, and is not 
   logs.set('b', writerLog(request, 'The plan is ready.'))
   await first.stop()
 
-  // DSH cannot read that Session's record: whether the turn answered cannot be
+  // Cue cannot read that Session's record: whether the turn answered cannot be
   // established, so the sender is told that, and the work is not run again.
   const unreadable = async () => { throw new Error('session not found') }
   const second = await start(home, logs, unreadable)
@@ -535,7 +535,7 @@ test('a finished turn leaves nothing to pick up', async (t) => {
   assert.equal(second.agentOf('a').calls.length, 0)
 })
 
-test('a turn DSH stops as it shuts down stays noted; one the user stops does not', async (t) => {
+test('a turn Cue stops as it shuts down stays noted; one the user stops does not', async (t) => {
   const home = freshHome(t)
   const host = await start(home)
   run(host, 'a', 1, { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } })
@@ -554,7 +554,7 @@ test('a message a shutdown cancelled is sent again once; one still waiting, take
   await send('Read the notes')
   await send('Never mind')
   const [plan, numbers, notesMessage, withdrawn] = first.agentOf('b').calls
-  // Taken up by a turn, or withdrawn while DS Bot runs (the user stopped the Bot).
+  // Taken up by a turn, or withdrawn while Cue runs (the user stopped the Bot).
   first.emit('b', 'user/message', { content: notesMessage.content, source: notesMessage.source })
   for (const listener of first.ctx.listeners.get('agent/inbox/discarded')) listener({ message: withdrawn })
   await settle(() => (notes(home).queued.b ?? []).length === 2)
@@ -569,7 +569,7 @@ test('a message a shutdown cancelled is sent again once; one still waiting, take
   await settle(() => second.agentOf('b').calls.length === 1)
   const [again] = second.agentOf('b').calls
   assert.deepEqual([again.source.exchangeId, again.source.role], [plan.source.exchangeId, 'request'])
-  assert.match(text(again), /^\[Message from Chief · DeepSeek Harness restarted before it could reach you\]\nDraft the plan$/)
+  assert.match(text(again), /^\[Message from Chief · Cue restarted before it could reach you\]\nDraft the plan$/)
   // The resend is the same exchange, not a new one.
   const exchanges = (await second.call('exchange', { a: 'a', b: 'b' })).value
   assert.equal(exchanges.length, 4)
@@ -603,7 +603,7 @@ test('a queued request kept over a restart is sent again however old, and the as
   await settle(() => second.agentOf('b').calls.length === 1)
   const [again] = second.agentOf('b').calls
   assert.deepEqual([again.source.exchangeId, again.source.role], [plan.source.exchangeId, 'request'])
-  assert.match(text(again), /^\[Message from Chief · DeepSeek Harness restarted before it could reach you\]/)
+  assert.match(text(again), /^\[Message from Chief · Cue restarted before it could reach you\]/)
 
   // The work is marked, so the answer that goes up says the request arrived late.
   await settleState(t, home, () => stateOf(home).works?.[plan.source.exchangeId]?.late === true)
@@ -612,7 +612,7 @@ test('a queued request kept over a restart is sent again however old, and the as
   second.emit('b', 'turn/end', { turn: 1, reason: { kind: 'completed' } })
   await settle(() => second.agentOf('a').calls.length === 1)
   const reply = text(second.agentOf('a').calls[0])
-  assert.match(reply, /^\[Reply from Writer\]\n\[This request reached Writer only after DeepSeek Harness restarted\.\]/)
+  assert.match(reply, /^\[Reply from Writer\]\n\[This request reached Writer only after Cue restarted\.\]/)
   assert.match(reply, /The plan is ready\./)
 })
 

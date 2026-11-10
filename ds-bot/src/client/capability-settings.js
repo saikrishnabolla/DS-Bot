@@ -74,10 +74,10 @@ function CapabilityForm({ draft, setDraft, items, actions, onClose }) {
     draft.kind === 'mcp' && draft.transport === 'stdio' ? h(Fragment, null,
       h(Field, { label: 'Command', value: draft.command, onChange: value => set('command', value) }),
       h(Field, { label: 'Arguments (one per line)', value: draft.argsText, onChange: value => set('argsText', value), multiline: true }),
-      h(Field, { label: 'Environment (JSON)', value: draft.envText, onChange: value => set('envText', value), multiline: true, placeholder: t('{"API_KEY": "$DSH_SECRET_MY_KEY"}') })) : null,
+      h(Field, { label: 'Environment (JSON)', value: draft.envText, onChange: value => set('envText', value), multiline: true, placeholder: t('{"API_KEY": "$CUE_SECRET_MY_KEY"}') })) : null,
     draft.kind === 'mcp' && draft.transport === 'streamable-http' ? h(Fragment, null,
       h(Field, { label: 'URL', value: draft.url, onChange: value => set('url', value) }),
-      h(Field, { label: 'Headers (JSON)', value: draft.headersText, onChange: value => set('headersText', value), multiline: true, placeholder: t('{"API_KEY": "$DSH_SECRET_MY_KEY"}') })) : null,
+      h(Field, { label: 'Headers (JSON)', value: draft.headersText, onChange: value => set('headersText', value), multiline: true, placeholder: t('{"API_KEY": "$CUE_SECRET_MY_KEY"}') })) : null,
     draft.kind === 'skill' ? h(Field, { label: 'Skill instructions', value: draft.content, onChange: value => set('content', value), multiline: true }) : null,
     draft.kind === 'pack' ? h(Fragment, null,
       available.length === 0 ? h('div', { className: 'bt-set-row' }, h('span', { className: 'bt-set-hint' }, t('Save an MCP server or skill first.')))

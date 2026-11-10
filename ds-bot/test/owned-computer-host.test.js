@@ -81,7 +81,7 @@ test('owned Host runs the public computer-use flow and restores its durable sett
   t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
   const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
   const faux = fauxProvider()

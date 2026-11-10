@@ -13,13 +13,24 @@ export function transcriptSegments(items) {
       continue
     }
     if (item.kind === 'tool-result') {
+      const content = Array.isArray(item.content)
+        ? item.content
+        : [...(item.text ? [{ type: 'text', text: item.text }] : []), ...(Array.isArray(item.attachments) ? item.attachments : [])]
       const call = tools.get(item.callId)
-      if (call !== undefined) Object.assign(call, { result: item.text, isError: item.isError === true, details: item.details })
-      else rows.push({ kind: 'tool', entryId: item.entryId, block: item.block, callId: item.callId, name: item.name, result: item.text, isError: item.isError === true, details: item.details })
+      if (call !== undefined) Object.assign(call, { result: item.text, content, isError: item.isError === true, details: item.details })
+      else rows.push({ kind: 'tool', entryId: item.entryId, block: item.block, callId: item.callId, name: item.name, result: item.text, content, isError: item.isError === true, details: item.details })
       continue
     }
     if (item.kind === 'failure') {
-      rows.push({ kind: 'failure', entryId: item.entryId, block: item.block, reason: item.reason, detail: item.detail })
+      rows.push({
+        kind: 'failure',
+        entryId: item.entryId,
+        block: item.block,
+        turn: item.turn,
+        reason: item.reason,
+        code: item.code,
+        detail: item.detail,
+      })
       continue
     }
     rows.push({ kind: 'chat', item })

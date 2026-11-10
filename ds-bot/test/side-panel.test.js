@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { drawerMenuKeys, panelHasStrip, stripMenuKeys } from '../src/client/side-model.js'
 
 // The strip shows whenever the Bot has a browser tab or a side chat; side chats
-// need no browser bridge, so DSH Web gets them too.
+// need no browser bridge, so web client gets them too.
 test('the strip shows with only side chats and no browser', () => {
   assert.equal(panelHasStrip(false, 0, 1), true)
   assert.equal(panelHasStrip(false, 0, 0), false)

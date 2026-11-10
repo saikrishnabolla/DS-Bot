@@ -1,3 +1,5 @@
+import { messageFailure, modelFailure } from './model-failure.js'
+
 const LIVE_DOC = 'pi.live'
 
 const finite = value => (Number.isFinite(Number(value)) ? Number(value) : undefined)
@@ -33,6 +35,25 @@ function userItem(entry, message, block) {
   return item
 }
 
+function ownedUserItem(entry, message) {
+  const content = Array.isArray(entry.data?.content) ? entry.data.content : []
+  const attachments = content.filter(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)
+  const referenceLabels = Array.isArray(entry.data?.references)
+    ? entry.data.references.map(reference => reference?.label).filter(label => typeof label === 'string' && label !== '')
+    : []
+  const item = {
+    kind: 'user',
+    text: textBlocks(content).join('\n'),
+    ...common(entry, message),
+  }
+  if (attachments.length > 0) {
+    item.attachments = attachments
+    item.images = attachments.filter(block => block.type === 'image').length
+  }
+  if (referenceLabels.length > 0) item.referenceLabels = referenceLabels
+  return item
+}
+
 function assistantItems(entry, message) {
   const items = []
   const content = Array.isArray(message?.content) ? message.content : []
@@ -60,9 +81,11 @@ function assistantItems(entry, message) {
     }
   }
   if (message?.stopReason === 'error' || message?.stopReason === 'aborted') {
+    const failure = message?.stopReason === 'error' ? messageFailure(message) : undefined
     items.push({
       kind: 'failure',
       reason: message.stopReason,
+      ...(failure === undefined ? {} : { code: failure.code }),
       ...(typeof message.errorMessage === 'string' ? { detail: message.errorMessage } : {}),
       source: 'assistant',
       ...common(entry, message, content.length),
@@ -90,6 +113,7 @@ function toolResultItem(entry, message) {
 function entryItems(entry) {
   if (entry === null || typeof entry !== 'object') return []
   const message = Array.isArray(entry.model) ? entry.model[0] : undefined
+  if (entry.kind === 'ds-bot.user' && message?.role === 'user') return [ownedUserItem(entry, message)]
   if (entry.kind === 'pi.user' && message?.role === 'user') return [userItem(entry, message)]
   if (entry.kind === 'pi.assistant' && message?.role === 'assistant') return assistantItems(entry, message)
   if (entry.kind === 'pi.tool-result' && message?.role === 'toolResult') return [toolResultItem(entry, message)]
@@ -116,11 +140,19 @@ function liveState(value) {
 function runFailureItem(live) {
   const failure = liveState(live).runFailure
   if (failure === null || typeof failure !== 'object') return undefined
+  const taskId = failure.taskId === undefined ? undefined : String(failure.taskId)
+  const reason = String(failure.reason ?? 'faulted')
+  const detail = typeof failure.detail === 'string' ? failure.detail : undefined
+  const code = typeof failure.code === 'string'
+    ? modelFailure({ code: failure.code, message: detail }).code
+    : reason === 'interrupted' ? 'INTERRUPTED'
+      : modelFailure(detail ?? reason).code
   return {
     kind: 'failure',
-    reason: String(failure.reason ?? 'faulted'),
-    ...(typeof failure.detail === 'string' ? { detail: failure.detail } : {}),
-    ...(failure.taskId === undefined ? {} : { taskId: String(failure.taskId) }),
+    reason,
+    code,
+    ...(detail === undefined ? {} : { detail }),
+    ...(taskId === undefined ? {} : { taskId, entryId: `run-failure:${taskId}` }),
     ...(Array.isArray(failure.inputs) ? { inputs: failure.inputs.map(String) } : {}),
     source: 'run',
   }
@@ -130,7 +162,7 @@ export function projectEntries(entries, { live } = {}) {
   const items = []
   for (const entry of Array.isArray(entries) ? entries : []) items.push(...entryItems(entry))
   const failure = runFailureItem(live)
-  if (failure !== undefined) items.push(failure)
+  if (failure !== undefined && !items.some(item => item.kind === 'failure' && item.turn !== undefined && String(item.turn) === failure.taskId)) items.push(failure)
   return items
 }
 

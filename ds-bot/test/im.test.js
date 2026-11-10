@@ -217,7 +217,7 @@ test('outbound: assistant text and member lines go out; hidden turns, user and s
   const room = s.rt.roomOf('r1')
   s.rt.logRoom(room, { who: 'Writer', botId: 'b', text: 'member spoke' })
   s.rt.logRoom(room, { who: 'User', text: 'user spoke' })
-  s.rt.logRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'x', text: 'nope' })
+  s.rt.logRoom(room, { who: 'Cue', kind: 'notice', reason: 'x', text: 'nope' })
   await s.flush()
   assert.equal(s.fake.sent.length, 2)
   assert.equal(s.fake.sent[1].text, '**Writer**: member spoke')
@@ -356,7 +356,7 @@ test('an out-of-range or stale-card number goes to the Bot as a normal message',
   assert.ok(!s.fake.sent.some(entry => /already answered/.test(entry.text ?? '')), 'no stale reply for a bare number')
 })
 
-test('own-chat approval races DSH: IM allow resolves and withdraws the card; late press gets the stale text', async (t) => {
+test('own-chat approval races Cue: IM allow resolves and withdraws the card; late press gets the stale text', async (t) => {
   const s = await start()
   t.after(s.stop)
   const conn = await add(s)
@@ -458,7 +458,7 @@ test('a question button answers its own question even when a newer one has the s
   assert.ok(s.rt.state.questions['a-old'] !== undefined, 'the newer question stays open')
 })
 
-test('DSH answering first settles the race; the original signal aborting cancels', async (t) => {
+test('Cue answering first settles the race; the original signal aborting cancels', async (t) => {
   const s = await start()
   t.after(s.stop)
   const request = { agent: { id: 'a' }, toolName: 'bash', reason: 'r', signal: new AbortController().signal }

@@ -7,7 +7,7 @@ import { createRuntime } from '../index.js'
 import { TEAM_TOOLS } from '../src/host/constants.js'
 import { fakeContext } from './fake-ctx.js'
 
-// tools.js keeps the DSH names a Bot Session never serves in one place; the
+// tools.js keeps the Cue names a Bot Session never serves in one place; the
 // assemble must add none of them.
 const HIDDEN = ['ask_user_question', 'subagent', 'list_subagent_models', 'send_message']
 
@@ -40,7 +40,7 @@ const start = (team = TEAM, services = {}, globals = [], shared = {}) => {
   const home = shared.home ?? mkdtempSync(join(tmpdir(), 'ds-bot-scoped-'))
   if (shared.home === undefined) writeFileSync(join(home, 'state.json'), JSON.stringify(team))
   // `scoped` and `restricted` model each Session's own tool layer, and
-  // `liveAgents` the DSH registry: shared across two runtimes they keep a
+  // `liveAgents` the Cue registry: shared across two runtimes they keep a
   // Session's Agent alive through a disable and re-enable.
   const scoped = shared.scoped ?? []
   const restricted = shared.restricted ?? []
@@ -50,7 +50,7 @@ const start = (team = TEAM, services = {}, globals = [], shared = {}) => {
   // Another plugin's global show_view, in place before ds-bot loads.
   ctx.tools.register({ name: 'show_view', description: 'global', execute: async () => 'global' })
   for (const tool of globals) ctx.tools.register(tool)
-  // DSH refuses a second global registration of one name — the throw that killed
+  // Cue refuses a second global registration of one name — the throw that killed
   // ds-bot's boot in #703 — so the fake refuses the same way.
   const plainRegister = ctx.tools.register.bind(ctx.tools)
   ctx.tools.register = (tool) => {
@@ -71,7 +71,7 @@ const start = (team = TEAM, services = {}, globals = [], shared = {}) => {
           register: (tool) => {
             const entry = { sessionId, name: tool.name, tool }
             scoped.push(entry)
-            // DSH's disposer unregisters; the fake drops the record.
+            // Cue's disposer unregisters; the fake drops the record.
             return () => { const at = scoped.indexOf(entry); if (at !== -1) scoped.splice(at, 1) }
           },
           restrict: (filter) => {
@@ -112,7 +112,7 @@ const start = (team = TEAM, services = {}, globals = [], shared = {}) => {
   }
   // ask_user_question is served, so the deny list is not empty in a Bot scope;
   // a Session's own registrations join its list and shadow globals of one name,
-  // as DSH's scope view does.
+  // as Cue's scope view does.
   ctx.tools.schemas = (agent) => {
     const view = new Map()
     for (const name of ['ask_user_question', 'show_view']) view.set(name, { name })
@@ -199,7 +199,7 @@ test('a Bot moved onto a local agent route gets the approval bridge, and loses i
   rt.hideBotUnusedTools(host.agentOf('b'))
   assert.equal(scopedNames(host, 'b').includes('approve_agent_action'), true)
   assert.equal(scopedNames(host, 'b').filter(name => name === 'message_bot').length, 1)
-  bot.model = 'deepseek-official/deepseek-flash'
+  bot.model = 'deepseek/deepseek-flash'
   rt.hideBotUnusedTools(host.agentOf('b'))
   assert.equal(scopedNames(host, 'b').includes('approve_agent_action'), false)
   assert.equal(scopedNames(host, 'b').includes('message_bot'), true)
@@ -306,7 +306,7 @@ test("a deleted Bot's Session keeps none of the scope when it is adopted as a pl
   assert.equal((await host.call('delete-bot', { id: 'b' })).ok, true)
   assert.deepEqual(scopedNames(host, 'b'), [])
   assert.equal(host.restricted.some(entry => entry.sessionId === 'b'), false)
-  // The Session lives on unowned: adopting it into the DSH Agent must not bring
+  // The Session lives on unowned: adopting it into the Cue Agent must not bring
   // the team tools back.
   const agent = (await host.call('add-agent', {})).value
   assert.equal((await host.call('agent-adopt', { agentId: agent.id, sessionId: 'b' })).ok, true)
@@ -360,7 +360,7 @@ test('a Session that becomes a Bot\'s again gets the scope back', async (t) => {
   assert.ok(hasShowView(host, 'b'))
 })
 
-// #826: after a DSH restart the creation path can miss a live Agent and nothing
+// #826: after a Cue restart the creation path can miss a live Agent and nothing
 // scoped it again, so the Session ran its requests without the team tools. The
 // step's assemble scopes an owned Session the creation path missed and adds the
 // names the request list was already built without.
@@ -391,7 +391,7 @@ test("a Bot's own Session the creation path missed gets the whole scope at the a
   const expected = [...TEAM_TOOLS].filter(name => name !== 'read_browser').sort()
   assert.deepEqual(scopedNames(host, 'a').sort(), expected)
   assert.deepEqual(assembled.tools.map(tool => tool.name).sort(), ['read', ...expected].sort())
-  // The hidden DSH tools are masked and filtered as on the creation path: none
+  // The hidden Cue tools are masked and filtered as on the creation path: none
   // of their names joined the list the assemble added.
   assert.ok(denied(host, 'a'), 'the blocking question tool is denied')
   assert.ok(!HIDDEN.some(name => assembled.tools.some(tool => tool.name === name)))

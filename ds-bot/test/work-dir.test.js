@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { createToolResultMessage, createUserMessage } from '../src/engine/messages.js'
 import { createRuntime } from '../index.js'
 import { SOURCE_KIND } from '../src/host/constants.js'
-import { dshHomeOf } from '../src/host/folders.js'
+import { dataRootOf } from '../src/host/folders.js'
 import { escapeRegExp } from '../src/host/text.js'
 import { fakeApproval, fakeContext } from './fake-ctx.js'
 
@@ -30,24 +30,22 @@ const TEAM = {
   revision: 0,
 }
 
-// DSH_HOME, the team's data inside it, and a project folder beside it. Every Session
+// Cue data directory, the team's data inside it, and a project folder beside it. Every Session
 // starts in the team workspace unless it is made with a cwd. `services` are what
 // ctx.get finds, such as the sandbox policy and approvals.
-// `locked`: another dsh holds the team, so this one only shows it.
+// `locked`: another Cue instance holds the team, so this one only shows it.
 async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, locked = false, root: rootDir } = {}) {
   // The native realpath, as fs/promises uses: on Windows the JS one keeps 8.3 short names.
   const root = rootDir ?? realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
   mkdirSync(root, { recursive: true })
-  const dsh = join(root, 'dsh')
-  const home = join(dsh, 'bot')
+  const dataDir = join(root, 'cue-data')
+  const Cue = dataDir
+  const home = join(dataDir, 'bot')
   const team = join(home, 'workspace')
   const project = join(root, 'project')
   for (const dir of [team, project]) mkdirSync(dir, { recursive: true })
   writeFileSync(join(home, 'state.json'), JSON.stringify(saved))
   if (locked) writeFileSync(join(home, 'state.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), token: 'other' }))
-  const previousHome = process.env.DSH_HOME
-  process.env.DSH_HOME = dsh
-
   const ctx = fakeContext({ services })
   const created = []
   const archived = []
@@ -72,7 +70,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
     }
     return agents.get(sessionId)
   }
-  const registry = new Map([['w1', { id: 'w1', path: team, title: 'DS Bot' }], ...workspaces.map(workspace => [workspace.id, workspace])])
+  const registry = new Map([['w1', { id: 'w1', path: team, title: 'Cue' }], ...workspaces.map(workspace => [workspace.id, workspace])])
   Object.assign(ctx, {
     llm: llm ?? { listProviders: () => [], listModels: async () => [], resolveModelInfo: async () => ({}) },
     workspaceRegistry: {
@@ -80,7 +78,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
       list: () => [...registry.values()],
       resolveByPath: async path => [...registry.values()].find(workspace => workspace.path === path),
       create: async (path) => {
-        const workspace = { id: 'w-new', path, title: 'DS Bot' }
+        const workspace = { id: 'w-new', path, title: 'Cue' }
         registry.set(workspace.id, workspace)
         return workspace
       },
@@ -107,7 +105,7 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
     route = options
     return register(options)
   }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { dataDir: Cue, home })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()
@@ -124,13 +122,11 @@ async function start({ services = {}, workspaces = [], llm, team: saved = TEAM, 
   const stop = async () => {
     // The writes still running finish before their folder goes.
     await ctx.dispose()
-    if (previousHome === undefined) delete process.env.DSH_HOME
-    else process.env.DSH_HOME = previousHome
     rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   }
   // Loading once fills the Session-owner indexes.
   await tool('list_bots', {}, 'a')
-  return { ctx, root, dsh, home, team, project, created, archived, agentOf, call, tool, preStep, state, workingIn, stop }
+  return { ctx, root, Cue, home, team, project, created, archived, agentOf, call, tool, preStep, state, workingIn, stop }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 20))
@@ -146,7 +142,7 @@ const handoffOf = agent => agent.calls.filter(([kind, message]) => kind === 'fol
 
 // Approvals that answer `outcome` and keep every request. Sessions run in `mode`, the
 // default, unless `modes` names another for them; 'workspace-write' writes inside the
-// Session's folder only. Under the 'never' policy DSH answers 'rejected' without asking.
+// Session's folder only. Under the 'never' policy Cue answers 'rejected' without asking.
 const approvalServices = (outcome, { policy = 'on-request', mode = 'workspace-write', modes = {} } = {}) => {
   const requests = []
   return {
@@ -164,26 +160,26 @@ const approvalServices = (outcome, { policy = 'on-request', mode = 'workspace-wr
 }
 const notAllowed = path => `Working in ${path} was not allowed, so nothing changed. The user can make this change in the settings.`
 
-test('DSH_HOME is read as DSH reads it', () => {
-  const dsh = join(homedir(), '.dsh')
-  assert.equal(dshHomeOf(undefined), dsh)
-  assert.equal(dshHomeOf('  '), dsh)
-  assert.equal(dshHomeOf('~'), homedir())
-  assert.equal(dshHomeOf('~/dsh-x'), join(homedir(), 'dsh-x'))
-  assert.equal(dshHomeOf('~\\dsh-x'), join(homedir(), 'dsh-x'))
-  assert.equal(dshHomeOf('dsh-x'), resolve('dsh-x'))
+test('Cue data roots expand home paths', () => {
+  const cue = join(homedir(), '.cue')
+  assert.equal(dataRootOf(undefined), cue)
+  assert.equal(dataRootOf('  '), cue)
+  assert.equal(dataRootOf('~'), homedir())
+  assert.equal(dataRootOf('~/cue-x'), join(homedir(), 'cue-x'))
+  assert.equal(dataRootOf('~\\cue-x'), join(homedir(), 'cue-x'))
+  assert.equal(dataRootOf('cue-x'), resolve('cue-x'))
 })
 
-test('a working folder is a full path to a folder outside the DeepSeek Harness data', async (t) => {
-  const { call, state, workingIn, dsh, home, team, root, project, stop } = await start()
+test('a working folder is a full path to a folder outside the Cue data', async (t) => {
+  const { call, state, workingIn, Cue, home, team, root, project, stop } = await start()
   t.after(stop)
   const error = async workDir => (await call('update-bot', { id: 'b', workDir })).error?.message
   assert.equal(await error('project'), 'Give the full path of the folder, not project')
   assert.equal(await error(join(root, 'missing')), `There is no folder at ${join(root, 'missing')}`)
   writeFileSync(join(project, 'notes.txt'), 'x')
   assert.equal(await error(join(project, 'notes.txt')), `${join(project, 'notes.txt')} is a file, not a folder`)
-  // DSH_HOME, the team's data, and any folder that holds them are refused.
-  for (const guarded of [dsh, home, root]) assert.equal(await error(guarded), `${guarded} holds agent host data, so Bots cannot work there`)
+  // Cue data directory, the team's data, and any folder that holds them are refused.
+  for (const guarded of [Cue, home, root]) assert.equal(await error(guarded), `${guarded} holds agent host data, so Bots cannot work there`)
   // The team workspace and a folder inside it are fine; the workspace itself is no setting.
   assert.equal(state().bots.b.workDir, undefined)
   mkdirSync(join(team, 'site'))
@@ -314,7 +310,7 @@ test('a group\'s folder holds for every member there; only the user or a Main Bo
 })
 
 test('a group\'s permissions hold for every member there in place of its own, until the user clears them', async (t) => {
-  // The preset each Session runs on, as DSH keeps it.
+  // The preset each Session runs on, as Cue keeps it.
   const presetOf = new Map()
   const PRESETS = ['read-only', 'workspace-write', 'danger-full-access']
   const permissionPresets = {
@@ -325,7 +321,7 @@ test('a group\'s permissions hold for every member there in place of its own, un
   const { call, tool, preStep, project, state, stop } = await start({ services: { ...approvalServices('allowed-once').services, permissionPresets } })
   t.after(stop)
 
-  // A preset DSH does not offer changes nothing, not even the rest of the change; the
+  // A preset Cue does not offer changes nothing, not even the rest of the change; the
   // next change that saves would keep it.
   assert.equal((await call('update-room', { id: 'r1', notice: 'Ship it', permission: 'everything' })).ok, false)
   assert.equal(presetOf.size, 0)
@@ -337,7 +333,7 @@ test('a group\'s permissions hold for every member there in place of its own, un
   assert.equal(presetOf.get('gb'), 'read-only')
   assert.match(await tool('list_bots', {}, 'a'), /"Ops" — .*; members work with the read-only permissions here/)
 
-  // Writer has no preset of its own, so its group Session goes back to DSH's default.
+  // Writer has no preset of its own, so its group Session goes back to Cue's default.
   assert.deepEqual((await call('update-room', { id: 'r1', permission: null })).value.changes, ['every member uses its own permissions again'])
   assert.equal(state().rooms.r1.permission, undefined)
   assert.equal(presetOf.get('gb'), 'workspace-write')
@@ -401,7 +397,7 @@ test('a Bot that joins a group with a folder needs the user\'s approval to work 
   assert.equal(requests.length, 1)
 })
 
-test('the folder menu lists DSH projects and the folders Bots use, but not the team workspace', async (t) => {
+test('the folder menu lists Cue projects and the folders Bots use, but not the team workspace', async (t) => {
   const { call, workingIn, root, project, team, stop } = await start({ workspaces: [{ id: 'w2', path: join(rootless(), 'gone'), title: 'Gone' }] })
   t.after(stop)
   const other = join(root, 'other')
@@ -417,7 +413,7 @@ test('the folder menu lists DSH projects and the folders Bots use, but not the t
   assert.equal((await call('folder-pick', {})).error.message, 'This host has no folder chooser')
 })
 
-test('the folder menu browses through the DSH folder picker', async (t) => {
+test('the folder menu browses through the Cue folder picker', async (t) => {
   const asked = []
   const directoryPicker = {
     capability: () => ({
@@ -442,7 +438,7 @@ function rootless() {
 }
 
 test('a Bot the Main Bot creates runs on its creator\'s model unless one is named', async (t) => {
-  // The DSH default is a provider without a key; the Main Bot runs on one that works.
+  // The Cue default is a provider without a key; the Main Bot runs on one that works.
   const providers = { deepseek: ['v4'], official: ['pro'] }
   const env = await start({
     services: { agentDefaultModel: { currentSelection: () => ({ provider: 'official', model: 'pro' }) } },
@@ -536,7 +532,7 @@ test('a folder-triggered part switch is flagged in the work view while it runs',
   assert.equal(seen?.folder, true)
 })
 
-// #209: DSH 0.2.1 checks a Session's folder as it puts a model request together, before
+// #209: the runtime checks a Session's folder as it puts a model request together, before
 // agent/pre-step, and fails the turn when the folder and the one the Session was made in
 // are gone. Its documented way out is to change the Session's folder first.
 function folderService() {
@@ -556,7 +552,7 @@ const assemble = (ctx, agent) => {
   return run.then(() => passed)
 }
 
-test('a Bot whose folder is gone changes to the team folder before DSH checks it, then moves to a fresh part there', async (t) => {
+test('a Bot whose folder is gone changes to the team folder before Cue checks it, then moves to a fresh part there', async (t) => {
   const { sets, service } = folderService()
   const { ctx, call, agentOf, created, project, team, state, preStep, stop } = await start({ services: { workingDirectory: service } })
   t.after(stop)
@@ -567,7 +563,7 @@ test('a Bot whose folder is gone changes to the team folder before DSH checks it
 
   assert.equal(await assemble(ctx, agentOf('s1')), true)
   assert.deepEqual(sets, [['s1', team]])
-  // The pre-step then moves the Bot on to a fresh part in the team workspace. DSH's notice
+  // The pre-step then moves the Bot on to a fresh part in the team workspace. Cue's notice
   // of the change is about the old part, so it stays behind.
   const notice = { id: 'm0', role: 'user', content: [{ type: 'text', text: 'The working directory is now the team folder.' }], source: { kind: 'working-directory' } }
   const input = { id: 'm1', role: 'user', content: [{ type: 'text', text: 'Still there?' }], source: { kind: 'user' } }
@@ -581,7 +577,7 @@ test('a Bot whose folder is gone changes to the team folder before DSH checks it
   assert.equal(sets.length, 1)
 })
 
-test('a team copied from another DSH_HOME moves on to a fresh part in the folder the app names at its first turn', async (t) => {
+test('a team copied from another Cue instance_HOME moves on to a fresh part in the folder the app names at its first turn', async (t) => {
   const copied = { ...TEAM }
   delete copied.workspaceId
   const previous = process.env.DS_BOT_WORKSPACE
@@ -621,7 +617,7 @@ test('the user moves the team workspace, and Bots without a folder of their own 
   assert.equal(state().bots.a.workDir, project)
 })
 
-// #424: DSH's prompt admission wraps any unexpected failure as 'session/agent-busy'
+// #424: Cue's prompt admission wraps any unexpected failure as 'session/agent-busy'
 // with the cause in details.reason. For a Session this team owns the reason reaches
 // the user and the diagnostics log — on the same error, so the gateway still sees a
 // RemoteError and passes its code and details on instead of 'gateway/internal'.
@@ -630,7 +626,6 @@ test('a prompt rejected with a hidden reason shows the reason and logs it', asyn
   t.after(stop)
   ctx.__promptError = Object.assign(new Error('prompt rejected'), {
     code: 'session/agent-busy',
-    isDSHRemoteError: true,
     details: { reason: 'Error: Could not load the "sharp" module', rest: 1 },
   })
   const failure = await ctx.sessionController.prompt({ sessionId: 'r1', content: [] }).then(() => undefined, error => error)
@@ -649,7 +644,6 @@ test('a rejected prompt reason reaches the user cleaned of paths and tokens', as
   t.after(stop)
   ctx.__promptError = Object.assign(new Error('prompt rejected'), {
     code: 'session/attachment-invalid',
-    isDSHRemoteError: true,
     details: { reason: `Cannot read ${join(homedir(), 'key.pem')} or https://hook.example/in?token=t0ken123` },
   })
   const failure = await ctx.sessionController.prompt({ sessionId: 'r1', content: [] }).then(() => undefined, error => error)
@@ -791,7 +785,7 @@ test('input that arrives while a switch runs ends its turn as completed and goes
   assert.deepEqual(agentOf('s1').calls.map(([kind, message]) => [kind, message.source.role ?? textOf(message)]), [['followup', 'handoff'], ['followup', 'Hello again'], ['followup', 'and one more']])
 })
 
-test('a switch that starts mid-turn still rejects its step, the only way DSH ends a step there', async (t) => {
+test('a switch that starts mid-turn still rejects its step, the only way Cue ends a step there', async (t) => {
   const { root, state, call, preStep, stop } = await start()
   t.after(stop)
   await call('team-workspace', { path: join(root, 'moved') })
@@ -800,18 +794,18 @@ test('a switch that starts mid-turn still rejects its step, the only way DSH end
   await until(() => state().bots.b.sessionId === 's1')
 })
 
-test('the team workspace holds no DeepSeek Harness data, apart from the plugin\'s own default', async (t) => {
-  const { root, dsh, home, team, state, call, stop } = await start()
+test('the team workspace holds no Cue data, apart from the plugin\'s own default', async (t) => {
+  const { root, Cue, home, team, state, call, stop } = await start()
   t.after(stop)
   const error = async path => (await call('team-workspace', { path })).error?.message
-  assert.match(await error(join(dsh, 'inside')), /holds agent host data/)
+  assert.match(await error(join(Cue, 'inside')), /holds agent host data/)
   assert.match(await error(root), /holds agent host data/)
   assert.match(await error('relative'), /full path/)
-  assert.equal(existsSync(join(dsh, 'inside')), false)
+  assert.equal(existsSync(join(Cue, 'inside')), false)
   // A folder to be made under a link into the data is refused before anything is made.
-  symlinkSync(dsh, join(root, 'dsh-link'), process.platform === 'win32' ? 'junction' : 'dir')
-  assert.match(await error(join(root, 'dsh-link', 'new')), /holds agent host data/)
-  assert.equal(existsSync(join(dsh, 'new')), false)
+  symlinkSync(Cue, join(root, 'Cue-link'), process.platform === 'win32' ? 'junction' : 'dir')
+  assert.match(await error(join(root, 'Cue-link', 'new')), /holds agent host data/)
+  assert.equal(existsSync(join(Cue, 'new')), false)
   assert.equal(state().workspaceId, 'w1')
   await call('team-workspace', { path: join(root, 'moved') })
   assert.deepEqual((await call('team-workspace', { path: join(home, 'workspace') })).value, { team })
@@ -822,25 +816,25 @@ test('the team workspace holds no DeepSeek Harness data, apart from the plugin\'
   symlinkSync(home, team, process.platform === 'win32' ? 'junction' : 'dir')
   assert.match(await error(team), /holds agent host data/)
   rmSync(team, { recursive: true, force: true })
-  mkdirSync(join(dsh, 'profiles'))
-  symlinkSync(join(dsh, 'profiles'), team, process.platform === 'win32' ? 'junction' : 'dir')
+  mkdirSync(join(Cue, 'profiles'))
+  symlinkSync(join(Cue, 'profiles'), team, process.platform === 'win32' ? 'junction' : 'dir')
   assert.match(await error(team), /holds agent host data/)
   assert.equal(state().workspaceId, 'w-new')
 })
 
-// #508: older profiles, imports and DS_BOT_USER_DSH_HOME can leave a workspace that
+// #508: older profiles, imports and DS_BOT_USER_Cue data directory can leave a workspace that
 // contains a data root; the workspace exception must not open that root's folders.
 test('a team workspace that holds the data still keeps Bots out of it', async (t) => {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
-  const { dsh, home, project, state, call, tool, stop } = await start({
+  const { Cue, home, project, state, call, tool, stop } = await start({
     root,
     workspaces: [{ id: 'w9', path: root, title: 'root' }],
     team: { ...TEAM, workspaceId: 'w9' },
   })
   t.after(stop)
-  mkdirSync(join(dsh, 'profiles'))
+  mkdirSync(join(Cue, 'profiles'))
   const error = async workDir => (await call('update-bot', { id: 'b', workDir })).error?.message
-  for (const guarded of [dsh, join(dsh, 'profiles'), home, join(home, 'memory')]) {
+  for (const guarded of [Cue, join(Cue, 'profiles'), home, join(home, 'memory')]) {
     mkdirSync(guarded, { recursive: true })
     assert.equal(await error(guarded), `${guarded} holds agent host data, so Bots cannot work there`)
   }
@@ -848,18 +842,18 @@ test('a team workspace that holds the data still keeps Bots out of it', async (t
   assert.equal((await call('update-bot', { id: 'b', workDir: project })).value.workDir, project)
   assert.equal(state().bots.b.workDir, project)
   // Nor can a photo be read out of the data root into the team.
-  writeFileSync(join(dsh, 'profiles', 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  const pic = join(dsh, 'profiles', 'pic.png')
-  assert.equal(await tool('update_bot', { avatar: pic }, 'b'), `Could not update the Bot: ${pic} is in DeepSeek Harness data, so it cannot be a Bot's photo. Pass an image from another folder.`)
+  writeFileSync(join(Cue, 'profiles', 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  const pic = join(Cue, 'profiles', 'pic.png')
+  assert.equal(await tool('update_bot', { avatar: pic }, 'b'), `Could not update the Bot: ${pic} is in Cue data, so it cannot be a Bot's photo. Pass an image from another folder.`)
 })
 
 // #508: the exception covers a workspace lying inside a data root, not one equal to
-// it: a workspace that is DSH's home or the team's own data opens every folder in it.
+// it: a workspace that is Cue's home or the team's own data opens every folder in it.
 test('a team workspace that is a data root still keeps Bots out of it', async (t) => {
   const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-  for (const name of ['dsh', 'bot']) {
+  for (const name of ['Cue', 'bot']) {
     const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-work-dir-')))
-    const at = name === 'dsh' ? join(root, 'dsh') : join(root, 'dsh', 'bot')
+    const at = name === 'Cue' ? join(root, 'Cue') : join(root, 'Cue', 'bot')
     const env = await start({
       root,
       workspaces: [{ id: 'w9', path: at, title: name }],
@@ -867,13 +861,13 @@ test('a team workspace that is a data root still keeps Bots out of it', async (t
     })
     t.after(env.stop)
     const error = async workDir => (await env.call('update-bot', { id: 'b', workDir })).error?.message
-    for (const guarded of [join(env.dsh, 'profiles'), join(env.home, 'memory')]) {
+    for (const guarded of [join(env.Cue, 'profiles'), join(env.home, 'memory')]) {
       mkdirSync(guarded, { recursive: true })
       assert.equal(await error(guarded), `${guarded} holds agent host data, so Bots cannot work there`)
     }
-    writeFileSync(join(env.dsh, 'profiles', 'pic.png'), PNG)
-    const pic = join(env.dsh, 'profiles', 'pic.png')
-    assert.equal(await env.tool('update_bot', { avatar: pic }, 'b'), `Could not update the Bot: ${pic} is in DeepSeek Harness data, so it cannot be a Bot's photo. Pass an image from another folder.`)
+    writeFileSync(join(env.Cue, 'profiles', 'pic.png'), PNG)
+    const pic = join(env.Cue, 'profiles', 'pic.png')
+    assert.equal(await env.tool('update_bot', { avatar: pic }, 'b'), `Could not update the Bot: ${pic} is in Cue data, so it cannot be a Bot's photo. Pass an image from another folder.`)
   }
 })
 
@@ -902,20 +896,7 @@ test('a copied team shows its default team workspace before the workspace is reg
   assert.equal((await call('folders', {})).value.team, resolve(join(home, 'workspace')))
 })
 
-test('in the desktop app the user\'s own DSH data is no team workspace and no Bot\'s folder either', async (t) => {
-  const { root, state, call, stop } = await start()
-  t.after(stop)
-  const user = join(root, 'user-dsh')
-  mkdirSync(join(user, 'profiles'), { recursive: true })
-  process.env.DS_BOT_USER_DSH_HOME = user
-  t.after(() => { delete process.env.DS_BOT_USER_DSH_HOME })
-  assert.match((await call('team-workspace', { path: join(user, 'new') })).error?.message, /holds agent host data/)
-  assert.equal(existsSync(join(user, 'new')), false)
-  assert.equal((await call('update-bot', { id: 'b', workDir: join(user, 'profiles') })).error?.message, `${join(user, 'profiles')} holds agent host data, so Bots cannot work there`)
-  assert.equal(state().workspaceId, 'w1')
-})
-
-test('a team folder that was deleted is made again before DSH checks it', async (t) => {
+test('a team folder that was deleted is made again before Cue checks it', async (t) => {
   const { sets, service } = folderService()
   const { ctx, agentOf, team, stop } = await start({ services: { workingDirectory: service } })
   t.after(stop)
@@ -952,7 +933,7 @@ test('a Bot deleted while its chat moves to a new folder leaves no fresh part be
   assert.equal(handoffOf(agentOf(fresh)), undefined)
 })
 
-// DSH 0.2.1's working_directory, run through ds-bot's tools/execute listeners as DSH runs
+// the runtime's working_directory, run through ds-bot's tools/execute listeners as Cue runs
 // them; the last step is the tool, which changes the Session's folder in place.
 async function changeDirectory(ctx, service, agent, cd) {
   let ran = false
@@ -1010,10 +991,10 @@ test('a Bot that changes to a folder outside its working folder makes it its wor
 test('a change out of the working folder that is not allowed changes nothing', async (t) => {
   const { service } = folderService()
   const { services } = approvalServices('rejected')
-  const { ctx, agentOf, dsh, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
+  const { ctx, agentOf, Cue, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
   t.after(stop)
   assert.deepEqual(await changeDirectory(ctx, service, agentOf('b'), project), { error: notAllowed(project), ran: false })
-  const guarded = await changeDirectory(ctx, service, agentOf('b'), dsh)
+  const guarded = await changeDirectory(ctx, service, agentOf('b'), Cue)
   assert.match(guarded.error, /holds agent host data, so Bots cannot work there/)
   assert.equal(guarded.ran, false)
   assert.equal(state().bots.b.workDir, undefined)
@@ -1040,7 +1021,7 @@ test('in a group with a folder of its own a member stays inside it; without one 
   assert.equal(state().rooms.r1.workDir, undefined)
 })
 
-test('Sessions that are not a Bot\'s keep DSH\'s own working_directory', async (t) => {
+test('Sessions that are not a Bot\'s keep Cue\'s own working_directory', async (t) => {
   const { service } = folderService()
   const { requests, services } = approvalServices('rejected')
   const { ctx, agentOf, project, state, stop } = await start({ services: { ...services, workingDirectory: service } })
@@ -1050,7 +1031,7 @@ test('Sessions that are not a Bot\'s keep DSH\'s own working_directory', async (
   assert.deepEqual(Object.values(state().bots).map(bot => bot.workDir), [undefined, undefined])
 })
 
-test('while another dsh has the team open, a Bot cannot leave its working folder', async (t) => {
+test('while another Cue instance has the team open, a Bot cannot leave its working folder', async (t) => {
   const { service } = folderService()
   const { services } = approvalServices('allowed-once')
   const { ctx, agentOf, team, project, state, stop } = await start({ services: { ...services, workingDirectory: service }, locked: true })
@@ -1058,13 +1039,13 @@ test('while another dsh has the team open, a Bot cannot leave its working folder
   mkdirSync(join(team, 'site'))
   assert.equal((await changeDirectory(ctx, service, agentOf('b'), 'site')).ran, true)
   const out = await changeDirectory(ctx, service, agentOf('b'), project)
-  assert.match(out.error, /^Your working folder cannot change now: The Bot team in .* is open in another dsh/)
+  assert.match(out.error, /^Your working folder cannot change now: The Bot team in .* is open in another Cue instance/)
   assert.equal(out.ran, false)
   assert.equal(state().bots.b.workDir, undefined)
 })
 
-// The trimmed path names no folder, so a check of it would let DSH move out unchecked.
-test('the folder is checked as DSH gets it, spaces and all', { skip: process.platform === 'win32' && 'Windows drops trailing spaces from names' }, async (t) => {
+// The trimmed path names no folder, so a check of it would let Cue move out unchecked.
+test('the folder is checked as Cue gets it, spaces and all', { skip: process.platform === 'win32' && 'Windows drops trailing spaces from names' }, async (t) => {
   const { service } = folderService()
   const { services } = approvalServices('allowed-once')
   const { ctx, agentOf, root, state, stop } = await start({ services: { ...services, workingDirectory: service } })
@@ -1230,7 +1211,7 @@ test('a group folder change moves the group\'s own Session to a part in the fold
 test('a group\'s earlier parts page like a Bot\'s own chat', async (t) => {
   const { ctx, call, project, state, stop } = await start()
   t.after(stop)
-  // The earlier part's record is a real group round the way DSH logs it on the
+  // The earlier part's record is a real group round the way Cue logs it on the
   // group's own Session (rc.4): the user's question and a member's posted line as
   // user/message events, then the synthesized group_relay tool/call paired by call
   // id with a tool/result whose message holds the round's replies — the tool name
@@ -1280,7 +1261,7 @@ test('a group\'s earlier parts page like a Bot\'s own chat', async (t) => {
 })
 
 test('the file panel of a group with a folder lists the Session\'s own folder', async (t) => {
-  // DSH's file panel lists a Session at the folder the Session was made in, so no
+  // Cue's file panel lists a Session at the folder the Session was made in, so no
   // lookup override is needed once the group's own Session moved there.
   const { call, agentOf, project, state, stop } = await start()
   t.after(stop)

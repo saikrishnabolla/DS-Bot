@@ -7,7 +7,7 @@ import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
 // Some routes (OpenCode Go among them) turn down every model request that names no
-// Session. DS Bot's own requests name the Session they serve, and the hooks that act
+// Session. Cue's own requests name the Session they serve, and the hooks that act
 // on a Session's own rounds still leave them alone.
 
 const TEAM = {
@@ -38,7 +38,7 @@ async function drain(stream) {
   return chunks
 }
 
-// `ctx.llm.stream` runs the plugin's `llm/stream` listeners in order, as DSH does,
+// `ctx.llm.stream` runs the plugin's `llm/stream` listeners in order, as Cue does,
 // and then a route that turns down a request without a Session. `respond` gives the
 // text of each answer the route lets through.
 function start() {
@@ -171,7 +171,7 @@ test('image readings skip providers without a key and include the read-only path
   assert.deepEqual(bench.requests.map(request => [request.provider, request.model, request.sessionId]), [['deepseek', 'vision', 'r1']])
 })
 
-test('the Session hooks pass DS Bot\'s own requests through, and still act on a Session\'s own rounds', async (t) => {
+test('the Session hooks pass Cue\'s own requests through, and still act on a Session\'s own rounds', async (t) => {
   const { rt, hook, stop } = start()
   t.after(stop)
   await rt.load()

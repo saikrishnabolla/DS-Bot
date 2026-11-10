@@ -38,7 +38,7 @@ export function downloadSaver({ window, ask, staging, getPath, homedir = osHomed
     try {
       mkdirSync(holding, { recursive: true })
     } catch (error) {
-      log.warn(`DS Bot: a download could not start: ${message(error)}`)
+      log.warn(`Cue: a download could not start: ${message(error)}`)
       event.preventDefault()
       return
     }
@@ -50,7 +50,7 @@ export function downloadSaver({ window, ask, staging, getPath, homedir = osHomed
       try {
         target = await ask(name, folder)
       } catch (error) {
-        log.warn(`DS Bot: the save picker failed: ${message(error)}`)
+        log.warn(`Cue: the save picker failed: ${message(error)}`)
         target = null
       }
       if (target === null) item.cancel()
@@ -64,22 +64,22 @@ export function downloadSaver({ window, ask, staging, getPath, homedir = osHomed
       // cannot take the same path.
       if (target === undefined && folder !== undefined) target = freePath(folder, name)
       if (typeof target !== 'string') {
-        log.warn(`DS Bot: a finished download has nowhere to go; it stays at ${staged}`)
+        log.warn(`Cue: a finished download has nowhere to go; it stays at ${staged}`)
         return
       }
       try {
         move(staged, target)
       } catch (error) {
         if (folder === undefined) {
-          log.warn(`DS Bot: a download could not be moved to ${target}; it stays at ${staged}: ${message(error)}`)
+          log.warn(`Cue: a download could not be moved to ${target}; it stays at ${staged}: ${message(error)}`)
           return
         }
         try {
           const fallback = freePath(folder, name)
           move(staged, fallback)
-          log.warn(`DS Bot: a download could not be moved to ${target}; it went to ${fallback} instead: ${message(error)}`)
+          log.warn(`Cue: a download could not be moved to ${target}; it went to ${fallback} instead: ${message(error)}`)
         } catch (secondError) {
-          log.warn(`DS Bot: a download could not be moved to ${target}; it stays at ${staged}: ${message(secondError)}`)
+          log.warn(`Cue: a download could not be moved to ${target}; it stays at ${staged}: ${message(secondError)}`)
           return
         }
       }

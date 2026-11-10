@@ -2,22 +2,8 @@
 // Bot levels: view allows observe, background adds background, foreground adds
 // foreground. A call nothing recognizes counts as foreground: better refused than
 // silently let through.
-export const PROVIDERS = { cua: 'cua', driver: 'cua-driver' }
+export const PROVIDERS = { driver: 'cua-driver' }
 export const KINDS = ['observe', 'background', 'foreground']
-
-// The macOS provider's single `cua` tool dispatches on params.method. Pure reads and
-// consent-gated selection need no lease; activate and hover can raise an app or move
-// the visible pointer, so they are foreground; permission UI opens on the user's
-// screen. Everything else stays in the app's background.
-const CUA_OBSERVE = new Set([
-  'getCapabilities', 'listApps', 'findApps', 'getApp', 'listWindows', 'getState', 'screenshot',
-  'permissionStatus', 'applicationIcons',
-])
-const CUA_FOREGROUND = new Set(['activate', 'hover', 'requestPermission', 'openPermissionSettings'])
-const CUA_BACKGROUND = new Set([
-  'click', 'scroll', 'drag', 'setValue', 'selectText', 'performSecondaryAction',
-  'typeText', 'paste', 'pressKey', 'show', 'launchApp',
-])
 
 // The Cua Driver provider serves one tool per method as `cua_driver_native__<name>`.
 export const DRIVER_PREFIX = 'cua_driver_native__'
@@ -30,7 +16,7 @@ const DRIVER_OBSERVE = new Set([
 // Tools that exist to bring a window to the user or to take over the visible pointer.
 
 // Raising windows and moving the visible cursor are foreground; so is session
-// escalation. Anything the driver adds that DS Bot does not know fails closed to
+// escalation. Anything the driver adds that Cue does not know fails closed to
 // foreground — never silently allowed.
 const DRIVER_BACKGROUND = new Set([
   'launch_app', 'kill_app', 'set_window_frame', 'invoke_menu', 'click', 'double_click',
@@ -42,15 +28,7 @@ const DRIVER_BACKGROUND = new Set([
 ])
 
 // Classify one call. Returns undefined for a tool computer use does not own.
-// `args` is the parsed tool-call arguments object (cua: {method, params}).
 export function classify(name, args = {}) {
-  if (name === 'cua') {
-    const method = typeof args?.method === 'string' ? args.method : ''
-    const kind = CUA_OBSERVE.has(method) ? 'observe'
-      : CUA_FOREGROUND.has(method) ? 'foreground'
-        : CUA_BACKGROUND.has(method) ? 'background' : 'foreground'
-    return { provider: PROVIDERS.cua, kind, method }
-  }
   if (typeof name === 'string' && name.startsWith(DRIVER_PREFIX)) {
     const method = name.slice(DRIVER_PREFIX.length)
     const foreground = args?.foreground === true || args?.delivery_mode === 'foreground' || args?.foreground_fallback === true

@@ -152,6 +152,12 @@ export class OwnedModels {
     return this.#runtime.getModels().map(model => catalogEntry(model, this.#runtime))
   }
 
+  keyRefs() {
+    return new Map(this.#runtime.getProviders()
+      .filter(provider => provider.auth?.apiKey !== undefined)
+      .map(provider => [provider.id, keyRefFor(provider.id)]))
+  }
+
   defaultModel() {
     return this.catalog().find(model => model.needsKey !== true)?.ref
   }
@@ -196,7 +202,7 @@ export class OwnedModels {
   async setProviderKey(provider, value) {
     if (this.#runtime.getProvider(provider) === undefined) throw invalid(`${provider} is not set up`)
     const status = this.#runtime.getProviderAuthStatus(provider)
-    if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside DS Bot and cannot be changed here`)
+    if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside Cue and cannot be changed here`)
     const key = checkKey(value)
     await this.#runtime.login(provider, 'api_key', {
       prompt: async () => key,
@@ -206,7 +212,7 @@ export class OwnedModels {
 
   async clearProviderKey(provider) {
     const status = this.#runtime.getProviderAuthStatus(provider)
-    if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside DS Bot and cannot be changed here`)
+    if (status.source === 'environment') throw invalid(`The API key for ${provider} is set outside Cue and cannot be changed here`)
     await this.#runtime.logout(provider)
   }
 

@@ -12,7 +12,7 @@ test('Pi reasoning and tool results keep their place in the transcript', () => {
   ]), [
     { kind: 'chat', items: [{ kind: 'user', text: 'Check it' }] },
     { kind: 'reasoning', entryId: 'e1', block: 1, text: 'I should inspect the file.', redacted: false },
-    { kind: 'tool', entryId: 'e1', block: 2, callId: 'c1', name: 'read_file', arguments: { path: 'a.txt' }, error: undefined, result: 'hello', isError: false, details: undefined },
+    { kind: 'tool', entryId: 'e1', block: 2, callId: 'c1', name: 'read_file', arguments: { path: 'a.txt' }, error: undefined, result: 'hello', content: [{ type: 'text', text: 'hello' }], isError: false, details: undefined },
     { kind: 'chat', items: [{ kind: 'bot', text: 'Done' }] },
   ])
 })
@@ -20,11 +20,31 @@ test('Pi reasoning and tool results keep their place in the transcript', () => {
 test('orphan results and failures remain visible', () => {
   assert.deepEqual(transcriptSegments([
     { kind: 'tool-result', entryId: 'e2', block: 1, callId: 'c2', name: 'shell', text: 'failed', isError: true },
-    { kind: 'failure', entryId: 'e2', block: 2, reason: 'error', detail: 'Model request failed' },
+    { kind: 'failure', entryId: 'e2', block: 2, turn: 7, reason: 'error', code: 'RATE_LIMIT', detail: 'Model request failed' },
     { kind: 'approval', id: 'a1' },
   ]), [
-    { kind: 'tool', entryId: 'e2', block: 1, callId: 'c2', name: 'shell', result: 'failed', isError: true, details: undefined },
-    { kind: 'failure', entryId: 'e2', block: 2, reason: 'error', detail: 'Model request failed' },
+    { kind: 'tool', entryId: 'e2', block: 1, callId: 'c2', name: 'shell', result: 'failed', content: [{ type: 'text', text: 'failed' }], isError: true, details: undefined },
+    { kind: 'failure', entryId: 'e2', block: 2, turn: 7, reason: 'error', code: 'RATE_LIMIT', detail: 'Model request failed' },
     { kind: 'chat', items: [{ kind: 'approval', id: 'a1' }] },
   ])
+})
+
+test('tool results keep rich content for the original tool cells', () => {
+  const attachment = { type: 'image', attachment: { attachmentId: 'sha256:abc' } }
+  assert.deepEqual(transcriptSegments([
+    { kind: 'tool-call', callId: 'c1', name: 'cua_driver_native__screenshot', arguments: {} },
+    { kind: 'tool-result', callId: 'c1', name: 'cua_driver_native__screenshot', text: 'captured', attachments: [attachment], isError: false },
+  ]), [{
+    kind: 'tool',
+    entryId: undefined,
+    block: undefined,
+    callId: 'c1',
+    name: 'cua_driver_native__screenshot',
+    arguments: {},
+    error: undefined,
+    result: 'captured',
+    content: [{ type: 'text', text: 'captured' }, attachment],
+    isError: false,
+    details: undefined,
+  }])
 })

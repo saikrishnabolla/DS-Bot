@@ -4,7 +4,7 @@ import { ComputerDriverHost } from '../src/computer-driver.mjs'
 import { ComputerRemote, sendComputerResponse } from '../src/computer-remote.mjs'
 
 test('a computer response is dropped when its Host IPC channel has closed', () => {
-  const error = new Error('The DS Bot Host IPC channel is closed')
+  const error = new Error('The Cue Host IPC channel is closed')
   assert.equal(sendComputerResponse({ send: () => { throw error } }, { type: 'ds-bot:computer-response', id: 'closed' }), false)
   assert.equal(sendComputerResponse({ send: () => {} }, { type: 'ds-bot:computer-response', id: 'open' }), true)
 })

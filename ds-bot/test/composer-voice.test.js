@@ -38,11 +38,11 @@ const render = speech => ComposerVoice({
   useRoster: selector => selector({ prefs: {} }),
 })
 
-test('owned speech keeps a composer dictation button while plugin speech keeps its injected mic', () => {
-  const owned = nodes(render({ owned: true })).filter(node => node.props?.className === 'bt-mic')
-  const plugin = nodes(render({})).filter(node => node.props?.className === 'bt-mic')
-  assert.equal(owned.length, 1)
-  assert.equal(plugin.length, 0)
+test('the composer keeps its dictation button with local speech or browser speech', () => {
+  const local = nodes(render({})).filter(node => node.props?.className === 'bt-mic')
+  const browser = nodes(render(undefined)).filter(node => node.props?.className === 'bt-mic')
+  assert.equal(local.length, 1)
+  assert.equal(browser.length, 1)
 })
 
 const catalog = phase => ({

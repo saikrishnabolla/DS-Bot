@@ -263,7 +263,7 @@ test('read_group_chat reads textless events among messages and keeps seq reads c
     [{ kind: 'notice', reason: 'paused', names: ['Writer'], limit: 6 }, '[Paused: Bots have called each other 6 times since the user last wrote here. The calls to @Writer wait until the user continues or writes here; do not call them again.]'],
     [{ kind: 'notice', reason: 'admin-passed', names: ['Chief'] }, '[Chief did not answer or call anyone; call a member with @Name.]'],
     [{ kind: 'lookup' }, '[Writer looked up its own chat]'],
-    [{ kind: 'resumed' }, "[Writer's work here was cut off when DeepSeek Harness restarted; it is picking it back up and posts when done]"],
+    [{ kind: 'resumed' }, "[Writer's work here was cut off when Cue restarted; it is picking it back up and posts when done]"],
     [{ kind: 'cut' }, "[Writer's work here was cut off by a restart again, so it stopped; ask it to go on if it still matters]"],
     [{ kind: 'stopped' }, "[The user stopped Writer's work here]"],
     [{ kind: 'done' }, '[Writer finished the work it was asked for]'],
@@ -1042,7 +1042,7 @@ test('the user stops a member\'s work in a group, and the group shows it', async
   assert.deepEqual(log.map(line => [line.who, line.kind]), [['Writer', 'stopped']])
 })
 
-// #592: DSH's own stop reaches only the round; a member the round moved on from kept working.
+// #592: Cue's own stop reaches only the round; a member the round moved on from kept working.
 test('one press stops the group\'s round and every member at work there, and nothing elsewhere', async (t) => {
   const host = await start(t)
   assert.equal((await host.call('stop-room-work', { roomId: 'r1' })).value, false)
@@ -1410,7 +1410,7 @@ test('the team view says when each Session\'s running turn began, for the clock 
   assert.deepEqual((await host.call('state', {})).value.work.turns, {})
 })
 
-// 公开#124: a Bot deleted while it worked stayed "thinking" until DSH restarted, and the
+// 公开#124: a Bot deleted while it worked stayed "thinking" until Cue restarted, and the
 // Bot that had asked it something never heard back.
 test('deleting a working Bot clears its activity and tells the Bots waiting for its reply', async (t) => {
   const host = await start(t)
@@ -1673,10 +1673,10 @@ test('consecutive 0-tool ack ping-pong relays pause after 6 turns and go on only
   assert.equal(saved().paused, undefined)
 })
 
-// #701: when a group member spawns a DSH subagent and ends its own turn, the member
+// #701: when a group member spawns a Cue subagent and ends its own turn, the member
 // stays marked as working in the group, and stopping the group interrupts the subagent
 // and suppresses its late settlement notice.
-test('a group member with a running DSH subagent stays working and stop-room-work interrupts the subagent (#701)', async (t) => {
+test('a group member with a running Cue subagent stays working and stop-room-work interrupts the subagent (#701)', async (t) => {
   const interrupted = []
   const host = await start(t, undefined, {
     subagents: { interrupt: async (childId, opts) => { interrupted.push({ childId, opts }) } },

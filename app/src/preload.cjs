@@ -1,9 +1,8 @@
 // Gives the page that the app's Host serves the app's own bridge, and the app's start page its
 // own, smaller one; each window's arguments name the one page that gets it. On Windows and
-// macOS it also marks the Host's page for the frameless window the way DSH Desktop's preload
-// does on Windows (apps/desktop/src/preload-windows.ts, preload-platform.ts and
-// preload-theme.ts; see NOTICE), but without data-platform: that puts DSH's shortcuts on
-// native menu input, which this window does not have. So macOS takes DSH's caption-band
+// macOS it also marks the Host's page for the frameless window using the upstream preload
+// behavior listed in NOTICE, but without data-platform: that puts shell shortcuts on
+// native menu input, which this window does not have. So macOS takes the same caption-band
 // layout too, with the traffic lights where Windows has its caption buttons' band.
 const { contextBridge, ipcRenderer } = require('electron')
 const { computerEntriesOf, cursorEventOf } = require('./computer-preload.cjs')
@@ -40,11 +39,12 @@ if (startPage !== undefined) {
         try { run(from) } finally { requestAnimationFrame(() => { requestAnimationFrame(() => { ipcRenderer.send('ds-bot:handoff-ready') }) }) }
       })
     },
-    // DS Bot's settings show and move the app's data location through this.
+    // Cue's settings show and move the app's data location through this.
     dataLocation: () => ipcRenderer.invoke('ds-bot:data-location'),
     moveData: (workspace) => ipcRenderer.invoke('ds-bot:move-data', typeof workspace === 'string' ? workspace : undefined),
+    openSettingsFile: () => ipcRenderer.invoke('ds-bot:open-settings-file'),
     teamWorkspaceChanged: (path) => { ipcRenderer.send('ds-bot:team-workspace', String(path)) },
-    // The Bot browsers, in the shape of DSH Desktop's browser bridge so that ds-bot drives both
+    // The Bot browsers use the same bridge shape on every desktop surface, so ds-bot drives both
     // alike; `forget` clears a key's storage, which here outlives the app.
     browser: browserBridge(),
     // The app's own updater, for the About row's state and buttons.
@@ -508,10 +508,8 @@ function showPicker(request) {
   }, () => {})
 }
 
-// The app's theme (DSH's) and the Bot animation tier (ds-bot's), which the start window takes
-// at the next start.
+// The app follows the system theme; the animation tier carries into the start window.
 function reportLook() {
-  const root = document.documentElement
   const sent = {}
   const send = (channel, value) => {
     if (value === null || value === sent[channel]) return
@@ -519,11 +517,10 @@ function reportLook() {
     ipcRenderer.send(channel, value)
   }
   const report = () => {
-    send('ds-bot:native-theme', root.getAttribute('data-ds-theme-source'))
+    send('ds-bot:native-theme', 'system')
     send('ds-bot:motion', document.body?.getAttribute('data-bt-motion') ?? null)
   }
   const observer = new MutationObserver(report)
-  observer.observe(root, { attributeFilter: ['data-ds-theme-source'] })
   if (document.body !== null) observer.observe(document.body, { attributeFilter: ['data-bt-motion'] })
   report()
 }
@@ -534,7 +531,7 @@ function startBridge() {
   const listeners = new Set()
   let last
   const tell = (listener, state) => {
-    try { listener(state) } catch (error) { console.error('DS Bot: a start state listener failed', error) }
+    try { listener(state) } catch (error) { console.error('Cue: a start state listener failed', error) }
   }
   ipcRenderer.on('ds-bot:start-state', (_event, state) => {
     last = state
@@ -556,13 +553,13 @@ function browserBridge() {
   const viewListeners = new Set()
   ipcRenderer.on('ds-bot:browser-view-changed', (_event, change) => {
     for (const listener of [...viewListeners]) {
-      try { listener(change) } catch (error) { console.error('DS Bot: a browser view listener failed', error) }
+      try { listener(change) } catch (error) { console.error('Cue: a browser view listener failed', error) }
     }
   })
   ipcRenderer.on('ds-bot:browser-open-requested', (_event, request) => {
     if (typeof request?.lease !== 'string' || typeof request.url !== 'string') return
     for (const listener of [...(listeners.get(request.lease) ?? [])]) {
-      try { listener(request.url) } catch (error) { console.error('DS Bot: a browser link handler failed', error) }
+      try { listener(request.url) } catch (error) { console.error('Cue: a browser link handler failed', error) }
     }
   })
   return {
@@ -604,7 +601,7 @@ function updatesBridge() {
   const listeners = new Set()
   ipcRenderer.on('ds-bot:app-update-changed', (_event, state) => {
     for (const listener of [...listeners]) {
-      try { listener(state) } catch (error) { console.error('DS Bot: an update state handler failed', error) }
+      try { listener(state) } catch (error) { console.error('Cue: an update state handler failed', error) }
     }
   })
   return {
@@ -622,10 +619,10 @@ function updatesBridge() {
 function frameless(height, material) {
   const root = document.documentElement
   root.dataset.windowsTitlebar = ''
-  root.style.setProperty('--dsh-windows-titlebar-height', `${height}px`)
-  // DSH keeps the dialog mask off the caption band, which then stays bright above a dimmed
+  root.style.setProperty('--cue-windows-titlebar-height', `${height}px`)
+  // Cue keeps the dialog mask off the caption band, which then stays bright above a dimmed
   // page; here the band is part of the page, so the mask covers it too.
-  root.style.setProperty('--dsh-frame-chrome-top', '0px')
+  root.style.setProperty('--cue-frame-chrome-top', '0px')
   // The traffic lights take their colors from the system.
   if (process.platform === 'win32') captionColors(material === 'mica')
 }
@@ -664,9 +661,9 @@ function captionColors(mica) {
     return `rgb(${red}, ${green}, ${blue})`
   }
   const column = () => {
-    if (!mica) return document.querySelector('div[class*="_sidebarCol"]')
-    const right = document.querySelector('div[class*="_rightbarCol"]')
-    return right !== null && right.getBoundingClientRect().width > 0 ? right : document.querySelector('div[class*="_centerCol"]')
+    if (!mica) return document.querySelector('[data-cue-sidebar]')
+    const right = [...document.querySelectorAll('.bt-panel')].find(element => element.getBoundingClientRect().width > 0)
+    return right ?? document.querySelector('[data-cue-main]')
   }
   let frame
   const surface = () => {
@@ -686,7 +683,7 @@ function captionColors(mica) {
   let tries = 0
   const send = () => {
     const colors = surface()
-    // The frame appears once DSH has booted; until then the main process's colors hold.
+    // The frame appears once Cue has booted; until then the main process's colors hold.
     if (colors === undefined || colors[1] === undefined) {
       if (tries++ < 120) setTimeout(send, 250)
       return
@@ -704,9 +701,9 @@ function captionColors(mica) {
     requestAnimationFrame(() => { queued = false; send() })
   }
   const observer = new MutationObserver(queue)
-  observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style'], childList: true, subtree: true })
+  observer.observe(document.body, { attributes: true, attributeFilter: ['data-cue-dark-theme', 'style'], childList: true, subtree: true })
   observer.observe(document.head, { childList: true, subtree: true, characterData: true })
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-ds-theme-source', 'style'] })
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] })
   // A stylesheet link is added before it loads; its rules apply without another mutation.
   document.head.addEventListener('load', send, true)
   send()

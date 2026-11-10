@@ -1,7 +1,7 @@
 import { rename } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 
-// On Windows a file cannot be replaced while another program has it open: another DSH
+// On Windows a file cannot be replaced while another program has it open: another Cue instance
 // reading the team's state, the search indexer, a virus scanner, a sync client. Those
 // readers let go within moments.
 const BUSY = new Set(['EPERM', 'EACCES', 'EBUSY'])

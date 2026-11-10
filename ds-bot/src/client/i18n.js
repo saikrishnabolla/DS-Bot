@@ -1,6 +1,11 @@
-// Interface copy follows the DSH language. Keys are the English text; `zh` maps them.
-// Copy is looked up at render time and every slot outlet re-renders on a language
-// switch, so nothing caches a translated string.
+// Interface copy follows the host's language. Keys are the English text; `zh`, `zh-TW`,
+// `ja`, `ko`, `es`, `fr` and `de` map them. Copy is looked up at render time.
+import { convertDict, convertHostErrors } from './locales/zh-tw.js'
+import { HOST_ERRORS_JA, JA } from './locales/ja.js'
+import { HOST_ERRORS_KO, KO } from './locales/ko.js'
+import { HOST_ERRORS_ES, ES } from './locales/es.js'
+import { HOST_ERRORS_FR, FR } from './locales/fr.js'
+import { HOST_ERRORS_DE, DE } from './locales/de.js'
 
 export const NAMESPACE = 'ds-bot'
 
@@ -36,6 +41,29 @@ const ZH = {
   'Normal': '正常',
   'Lively': '活泼',
   Settings: '设置',
+  'New task default': '新任务默认',
+  'Built-in': '内置',
+  'Tools': '工具',
+  'Mode details': '模式详情',
+  'How to use': '使用方法',
+  'View configuration': '查看配置',
+  'Loading Agent presets…': '正在加载 Agent 预设…',
+  'Agent presets could not be loaded.': '无法加载 Agent 预设。',
+  'Choose the agent’s tools and how it works. Use Standard mode for everyday tasks, or Creator mode to add capabilities to Cue.': '选择 Agent 的工具和工作方式。日常任务使用标准模式；要为 Cue 添加能力，使用创建者模式。',
+  'Let the agent help me create a preset': '让 Agent 帮我创建预设',
+  Entry: '入口',
+  Module: '模块',
+  Status: '状态',
+  'No plugins match your search.': '没有与搜索匹配的插件。',
+  'Inspect the plugins this deployment ships.': '查看此部署随附的插件。',
+  'Loading plugins': '正在加载插件',
+  'The plugin list could not be loaded.': '无法加载插件列表。',
+  'Search plugins': '搜索插件',
+  'Session plugins': '会话插件',
+  'Composed per session by agent presets': '由 Agent 预设为每个会话组合',
+  '{name} (default)': '{name}（默认）',
+  'Global plugins': '全局插件',
+  'Available to the Cue host': 'Cue 主机可用',
   Usage: '用量',
   Account: '账户',
   Cancel: '取消',
@@ -157,7 +185,7 @@ const ZH = {
   Command: '命令',
   'Arguments (one per line)': '参数（每行一个）',
   'Environment (JSON)': '环境变量（JSON）',
-  '{"API_KEY": "$DSH_SECRET_MY_KEY"}': '{"API_KEY": "$DSH_SECRET_MY_KEY"}',
+  '{"API_KEY": "$CUE_SECRET_MY_KEY"}': '{"API_KEY": "$CUE_SECRET_MY_KEY"}',
   URL: 'URL',
   'Headers (JSON)': '请求头（JSON）',
   'Skill instructions': '技能说明',
@@ -204,8 +232,6 @@ const ZH = {
   'GitHub addresses must start with https://': 'GitHub 地址必须以 https:// 开头',
   'This host cannot load connectors': '这个运行环境不能加载连接器',
   'No such connector': '没有这个连接器',
-  'Classic Agent mode': '经典 Agent 模式',
-  'Bot mode': 'Bot 模式',
   'Switch': '切换',
   '{model} is not available anymore. Pick another model for me.': '{model} 已经不可用了。给我换一个模型吧。',
   "Hi, I'm {name}. I don't have a model yet. How do you want to set one up?": '你好，我是 {name}。我还没有可用的模型。你想怎么配置？',
@@ -224,12 +250,12 @@ const ZH = {
   'Add a provider': '添加服务商',
   'Needs an API key': '需要 API key',
   'Key set': '已设置 key',
-  'Key set outside DS Bot': 'key 在 DS Bot 之外设置',
+  'Key set outside Cue': 'key 在 Cue 之外设置',
   'No models': '没有模型',
   '{count} models': '{count} 个模型',
   // What a Bot runs on
   'Runs on': '运行方式',
-  'DS Bot model': 'DS Bot 模型',
+  'Cue model': 'Cue 模型',
   'Local agent': '本地 Agent',
   'CLI default': 'CLI 默认',
   'Signed in': '已登录',
@@ -237,7 +263,7 @@ const ZH = {
   'Sign-in unknown': '登录状态未知',
   'Looking for agent CLIs…': '正在查找 Agent CLI…',
   'Reading models…': '正在读取模型…',
-  "Answers with a model served by DS Bot, with DS Bot's tools.": '用 DS Bot 里的模型回答，用 DS Bot 的工具。',
+  "Answers with a model served by Cue, with Cue's tools.": '用 Cue 里的模型回答，用 Cue 的工具。',
   'Answers through this CLI on your computer, with its own tools and sign-in.': '通过这台电脑上的 CLI 回答，用它自己的工具和登录。',
   'Change what {name} runs on?': '更换 {name} 的运行方式？',
   'Its own chat starts a new part with a handoff before the next turn.': '下一轮开始前，它的私聊会开新的一段并做好交接。',
@@ -271,7 +297,7 @@ const ZH = {
   'Current session': '当前会话',
   'This page could not be shown.': '这个页面无法显示。',
   'Current': '当前',
-  'This key comes from outside DS Bot, such as an environment variable, and cannot be changed here.': '这个 key 来自 DS Bot 之外（例如环境变量），这里改不了。',
+  'This key comes from outside Cue, such as an environment variable, and cannot be changed here.': '这个 key 来自 Cue 之外（例如环境变量），这里改不了。',
   'and {count} more': '还有 {count} 个',
   'Remove {name}? Bots on its models need another model.': '删除 {name}？用它的模型的 Bot 要换一个模型。',
   'Remove provider': '删除服务商',
@@ -300,8 +326,6 @@ const ZH = {
   'Add at least one model': '至少添加一个模型',
   'Two models have the same id': '有两个模型的 ID 相同',
   'Mode': '模式',
-  'Sign in to DeepSeek': '登录 DeepSeek 账号',
-  'Enter a DeepSeek API key': '填入 DeepSeek API key',
   'Open settings to set up a custom model': '打开设置配置自定义模型',
   'Create a key on the DeepSeek platform ↗': '去 DeepSeek 开放平台创建 Key ↗',
   'The API is billed by usage; the account needs a balance first.': 'API 按用量计费，账户里要先有余额。',
@@ -313,21 +337,15 @@ const ZH = {
   '{provider} did not accept the current API key ({status}).': '{provider} 不接受现在的 API Key（{status}）。',
   '{provider} is out of balance or quota.': '{provider} 的余额或额度不够了。',
   '{provider} is out of balance or quota ({status}).': '{provider} 的余额或额度不够了（{status}）。',
-  'The DeepSeek account balance is too low.': 'DeepSeek 账号余额不足。',
-  'The DeepSeek account sign-in has expired.': 'DeepSeek 账号的登录失效了。',
   'Could not reach the model service.': '连不上模型服务。',
   'Too many requests. Wait a moment, then try again.': '请求太频繁，稍等一会儿再试。',
   'The model service failed.': '模型服务出错了。',
-  'DS Bot stopped before this turn finished.': '这一轮还没完成，DS Bot 就停下了。',
+  'Cue stopped before this turn finished.': '这一轮还没完成，Cue 就停下了。',
   'This turn failed.': '这一轮运行失败了。',
   'The model service': '模型服务',
-  'DeepSeek account': 'DeepSeek 账号',
   'This Bot': '这个 Bot',
   'Enter API key': '填入 API Key',
   'Enter the key again': '重新填 Key',
-  'Sign in with a DeepSeek account': '用 DeepSeek 账号登录',
-  'Use a DeepSeek account instead': '改用账号登录',
-  'Use the DeepSeek account': '改用 DeepSeek 账号',
   'Sign in again': '重新登录',
   'Pick another model': '换个模型',
   'Top up ↗': '去充值 ↗',
@@ -338,7 +356,7 @@ const ZH = {
   'HTTP status': 'HTTP 状态码',
   'Request ID': '请求 ID',
   'Provider message': '原文',
-  'DS Bot': 'DS Bot',
+  'Cue': 'Cue',
 
   // Header
   'Message {name}': '给 {name} 发消息',
@@ -440,7 +458,7 @@ const ZH = {
   Rename: '重命名',
   'Add instructions in Bot settings': '在 Bot 设置里添加说明',
   'No scheduled tasks yet. To add one, tell the Bot in its chat what to do and when.': '还没有定时任务。要添加，在对话里告诉 Bot 做什么、什么时候做。',
-  'The browser is in DSH Desktop and the DS Bot app.': '浏览器在 DSH 桌面版和 DS Bot 应用里。',
+  'The browser is in the Cue app.': '浏览器在 Cue 应用里。',
   'New tab': '新标签页',
   'Close tab': '关闭标签页',
   'Open {title}': '打开 {title}',
@@ -641,17 +659,16 @@ const ZH = {
   'No group chats yet.': '还没有群聊。',
   'A group chat lets several Bots work on one thing with you.': '在群聊里，几个 Bot 和你一起做一件事。',
   'Back to group chats': '返回群聊列表',
-  'DS Bot settings': 'DS Bot 设置',
+  'Cue settings': 'Cue 设置',
   'Settings pages': '设置页面',
   'Advanced settings': '高级设置',
   'Back to models': '返回模型',
-  'Open Plugins': '打开插件页',
   'Open settings': '打开设置',
   'Open settings file': '打开配置文件',
   'Could not open the settings file': '无法打开配置文件',
   'Show code work view': '显示代码工作视图',
   'Could not save. Try again.': '保存失败，请重试',
-  // The sidebar's connection status and DSH Desktop's update status.
+  // The sidebar's connection status and desktop app's update status.
   'Connection lost. Refresh to retry': '连接异常，刷新重试',
   Reconnecting: '重新连接中',
   'Connection lost. Reconnect now': '连接异常，点击立即重连',
@@ -708,20 +725,20 @@ const ZH = {
   '{n} h': '{n} 小时',
   '{n} d': '{n} 天',
 
-  // Plugin updates
-  'DS Bot {version} is available': 'DS Bot {version} 可以更新',
-  'Updating DS Bot…': '正在更新 DS Bot…',
-  'DS Bot {version} is installed. Restart DS Bot to use it.': 'DS Bot {version} 已安装，重启 DS Bot 后生效',
-  'DS Bot {version} is installed.': 'DS Bot {version} 已安装。',
-  'DS Bot update': 'DS Bot 更新',
-  'DS Bot {version}': 'DS Bot {version}',
+  // Cue updates
+  'Cue {version} is available': 'Cue {version} 可以更新',
+  'Updating Cue…': '正在更新 Cue…',
+  'Cue {version} is installed. Restart Cue to use it.': 'Cue {version} 已安装，重启 Cue 后生效',
+  'Cue {version} is installed.': 'Cue {version} 已安装。',
+  'Cue update': 'Cue 更新',
+  'Cue {version}': 'Cue {version}',
   'Update installed': '更新已安装',
-  'Restart DS Bot to start using version {version}.': '重启 DS Bot 后开始使用 {version}。',
+  'Restart Cue to start using version {version}.': '重启 Cue 后开始使用 {version}。',
   'You have {version}.': '当前版本 {version}。',
   'The update did not finish: {reason}': '更新没有完成：{reason}',
   "What's new": '更新说明',
   'Updating…': '正在更新…',
-  'Update DS Bot {version} first.': '先更新 DS Bot {version}。',
+  'Update Cue {version} first.': '先更新 Cue {version}。',
   'Open updates': '打开更新',
 
   // Command palette
@@ -1178,11 +1195,11 @@ const ZH = {
   'Compared with the {count} days before': '与再往前 {count} 天相比',
   '{share}% of all usage from {span}': '占 {span} 全部用量的 {share}%',
   // About
-  'About DS Bot': '关于 DS Bot',
+  'About Cue': '关于 Cue',
   'Version {version}': '版本 {version}',
-  'Star DS Bot on GitHub': '在 GitHub 上给 DS Bot 点 Star',
+  'Star Cue on GitHub': '在 GitHub 上给 Cue 点 Star',
   '{count} stars': '{count} 个 Star',
-  'If DS Bot helps you, a star on GitHub helps more people find it.': '如果 DS Bot 对你有用，欢迎在 GitHub 上点个 Star，让更多人看到它。',
+  'If Cue helps you, a star on GitHub helps more people find it.': '如果 Cue 对你有用，欢迎在 GitHub 上点个 Star，让更多人看到它。',
   Updates: '更新',
   'Check for updates': '检查更新',
   'Checking…': '正在检查…',
@@ -1197,7 +1214,7 @@ const ZH = {
   '{version} is available': '{version} 已发布',
   'Installed from a local folder; update it there.': '从本地文件夹安装，请在那里更新。',
   'Updates are not offered for this install.': '这种安装方式不提供更新。',
-  'Updates come with the DS Bot app.': '随 DS Bot 应用一起更新。',
+  'Updates come with the Cue app.': '随 Cue 应用一起更新。',
   Links: '链接',
   'Source code': '源代码',
   'Release notes': '发布说明',
@@ -1213,7 +1230,7 @@ const ZH = {
   Show: '查看',
   Hide: '收起',
   'GitHub issue': 'GitHub issue',
-  'Opens a new issue in the DS Bot repository with all of this filled in. Nothing is sent until you submit it there.': '在 DS Bot 仓库新建一个 issue，并填好以上内容。你在 GitHub 上提交之前，什么都不会发出。',
+  'Opens a new issue in the Cue repository with all of this filled in. Nothing is sent until you submit it there.': '在 Cue 仓库新建一个 issue，并填好以上内容。你在 GitHub 上提交之前，什么都不会发出。',
   'Report on GitHub': '在 GitHub 上报告',
   'Copied the diagnostics.': '已复制诊断信息。',
   'Could not copy. Select the text below and copy it.': '无法复制。请选中下面的文字手动复制。',
@@ -1225,21 +1242,18 @@ const ZH = {
   'Recent errors': '最近的错误',
   'Recent errors · {count}': '最近的错误 · {count}',
   'No errors recorded.': '没有错误记录。',
-  'Failed model calls and DS Bot problems show here, newest first.': '模型调用失败和 DS Bot 的问题会显示在这里，最新的在前。',
+  'Failed model calls and Cue problems show here, newest first.': '模型调用失败和 Cue 的问题会显示在这里，最新的在前。',
   'Model call': '模型调用',
   'This window': '这个窗口',
   'Error log': '错误日志',
   'Kept on this computer across restarts, up to about 1 MB.': '保存在这台电脑上，重启后仍在，最多约 1 MB。',
   Clear: '清空',
   'Settings → Feedback has the details.': '详情见 设置 → 反馈。',
-  'Could not reach DS Bot. Check that it is still running.': '连不上 DS Bot，请确认它还在运行。',
+  'Could not reach Cue. Check that it is still running.': '连不上 Cue，请确认它还在运行。',
   '{name} stopped: {reason}. Switch its model or ask it to go on.': '{name} 停下了：{reason}。换个模型，或让它继续。',
   'Unknown error': '未知错误',
   'The model has no API key': '模型还没有 API Key',
   'The API key is not in the right format': 'API Key 格式不对',
-  'The DeepSeek account needs a sign-in': 'DeepSeek 账号需要登录',
-  'The DeepSeek account is signed out': 'DeepSeek 账号已退出登录',
-  'The DeepSeek account sign-in has expired': 'DeepSeek 账号的登录失效了',
   'The API key was rejected': 'API 密钥无效',
   'The account is out of quota': '账户额度已用尽',
   'Too many requests to the model': '模型请求太频繁',
@@ -1265,6 +1279,7 @@ const ZH = {
   Members: '成员',
   // Connectors and scheduled tasks
   'Scheduled tasks': '定时任务',
+  'Scheduled tasks are not available.': '定时任务不可用。',
   'Every day': '每天',
   'Every {count} days': '每 {count} 天',
   'Every hour': '每小时',
@@ -1302,12 +1317,9 @@ const ZH = {
   'How many': '数量',
   Unit: '单位',
   'Create task': '创建任务',
-  'Turn on Automation tasks in DSH': '在 DSH 里打开「自动化任务」',
-  'Switch on Automation tasks on the Plugins page in Settings.': '在设置的插件页启用「自动化任务」。',
   'New task': '新建任务',
   'No scheduled tasks yet.': '还没有定时任务。',
   'No scheduled tasks yet. Add one': '还没有定时任务，去添加',
-  'Automation tasks are off in DSH': 'DSH 的「自动化任务」没有打开',
   'Automation tasks are not available in this build': '此版本不提供自动化任务',
   'No such Bot': '没有这个 Bot',
   'No such Bot or group chat': '没有这个 Bot 或群聊',
@@ -1494,11 +1506,11 @@ const ZH = {
 const HOST_ERRORS = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, '连不上邮件服务器 $1，请检查服务器地址。'],
   [/^Model (.+) is not available\. Available: (.*)$/, '模型 $1 不可用。可用的：$2'],
-  [/^The API key for (.+) is set outside DS Bot and cannot be changed here$/, '$1 的 API key 是在 DS Bot 之外设置的，这里改不了'],
+  [/^The API key for (.+) is set outside Cue and cannot be changed here$/, '$1 的 API key 是在 Cue 之外设置的，这里改不了'],
   [/^(.+) takes no API key here$/, '$1 不能在这里填 API key'],
   [/^(.+) is already set up$/, '$1 已经设置过了'],
-  [/^DSH offers no provider (.+)$/, 'DSH 没有服务商 $1'],
-  [/^DSH already offers (.+); add it from its list$/, 'DSH 已经提供 $1，请在常用服务商里添加'],
+  [/^Cue offers no provider (.+)$/, 'Cue 没有服务商 $1'],
+  [/^Cue already offers (.+); add it from its list$/, 'Cue 已经提供 $1，请在常用服务商里添加'],
   [/^The protocol must be one of (.+)$/, '协议只能是 $1'],
   [/^(.+) is not set up$/, '$1 还没有设置'],
   [/^(.+) comes with this setup and cannot be removed$/, '$1 是这个配置自带的，不能删除'],
@@ -1515,7 +1527,7 @@ const HOST_ERRORS = [
   [/^A key must have at least (\d+) characters$/, '密钥至少 $1 个字符'],
   [/^A key can have at most (\d+) characters$/, '密钥最多 $1 个字符'],
   [/^(.+) is not saved yet$/, '$1 还没有保存'],
-  [/^The Bot team in (.+) is open in another dsh \((.+)\)\. This window shows the team but cannot change it; close the other one and reload\.$/, '$1 里的 Bot 团队已在另一个 dsh 中打开（$2）。这个窗口只能查看，不能修改；关掉另一个后刷新。'],
+  [/^The Bot team in (.+) is open in another Cue instance \((.+)\)\. This window shows the team but cannot change it; close the other one and reload\.$/, '$1 里的 Bot 团队已在另一个 Cue 中打开（$2）。这个窗口只能查看，不能修改；关掉另一个后刷新。'],
   [/^HTTP (\d+)$/, '请求失败（HTTP $1）'],
   [/^GitHub answered (\d+)$/, 'GitHub 返回了 $1'],
   [/^Keep the name under (\d+) characters$/, '名字不能超过 $1 个字'],
@@ -1525,7 +1537,6 @@ const HOST_ERRORS = [
   [/^The avatar image is too large: .+$/, '头像图片太大了'],
   [/^There is no folder at (.+)$/, '找不到文件夹 $1'],
   [/^(.+) is a file, not a folder$/, '$1 是文件，不是文件夹'],
-  [/^(.+) holds DeepSeek Harness data, so Bots cannot work there$/, '$1 里有 DeepSeek Harness 的数据，Bot 不能在这里工作'],
   [/^(.+) needs a folder of its own to be private$/, '$1 需要有自己的工作文件夹，才能设为隐私 Bot'],
   [/^(.+) is a Main Bot, so it cannot be private$/, '$1 是主 Bot，不能设为隐私 Bot'],
   [/^(.+) is in a group chat, where every member reads what is said\. Remove it from its groups first$/, '$1 还在群聊里，群成员都能看到群里的内容。请先把它移出群聊'],
@@ -1546,11 +1557,11 @@ const HOST_ERRORS = [
   [/^There is no entry (.+)\.$/, '没有第 $1 条'],
   [/^No entry in [\s\S]* matches "([\s\S]*)"\.[\s\S]*$/, '找不到「$1」这条记忆'],
   [/^"([\s\S]*)" matches (\d+) entries in [\s\S]*$/, '「$1」对应了 $2 条记忆，请说得更具体'],
-  [/^Memory cannot change now: [\s\S]*$/, '现在不能修改记忆：另一个 dsh 正在使用这个 Bot 团队'],
+  [/^Memory cannot change now: [\s\S]*$/, '现在不能修改记忆：另一个 Cue 正在使用这个 Bot 团队'],
 ]
 const HOST_ZH = {
   'Request failed': '请求失败',
-  'Permissions are not available in this DeepSeek Harness': '这个 DeepSeek Harness 不支持权限设置',
+  'Permissions are not available in this Cue host': '这个 Cue 不支持权限设置',
   'Avatar images must be PNG, JPEG, WebP, or GIF': '头像图片必须是 PNG、JPEG、WebP 或 GIF',
   'Avatar image is too large': '头像图片太大了',
   'A Bot needs a name': 'Bot 需要一个名字',
@@ -1590,14 +1601,14 @@ const HOST_ZH = {
   'This side chat is no longer here.': '这个侧边对话已经不在了。',
   'This side question is no longer here.': '这个侧边提问已经不在了。',
   'This Bot has not called a model yet. Send a normal message first.': '这个 Bot 还没有调用过模型，请先正常发一条消息。',
-  'DS Bot restarted before this answer finished.': 'DS Bot 在回答完成前重启了。',
+  'Cue restarted before this answer finished.': 'Cue 在回答完成前重启了。',
   'The model called a tool again after being told not to, so this aside was not answered.': '模型在被要求不要调用工具之后又调用了工具，所以这次没有回答。',
   'The model wrote nothing.': '模型没有写任何内容。',
   'Nothing to ask': '没有要问的内容',
   'Nothing to open': '没有要打开的内容',
   'Nothing to cancel': '没有要取消的内容',
   'Nothing to close': '没有要关闭的内容',
-  'DS Bot is still loading this chat.': 'DS Bot 还在加载这个对话。',
+  'Cue is still loading this chat.': 'Cue 还在加载这个对话。',
   // Computer use
   'Computer use': '电脑操控',
   'Computer': '电脑',
@@ -1613,12 +1624,7 @@ const HOST_ZH = {
   'Computer provider': '提供方',
   'Loading the provider…': '正在加载提供方…',
   'Could not load the provider': '提供方加载失败',
-  'The provider package is not installed': '提供方包未安装',
-  'Install it in this DSH': '在这个 DSH 里安装',
-  'Run {command}, then restart DSH.': '运行 {command}，然后重启 DSH。',
-  'Copy command': '复制命令',
   'Bots get no computer tools until the provider is ready.': '提供方就绪之前，Bot 拿不到电脑工具。',
-  'Another computer-use provider is running': '另一个电脑操控提供方正在运行',
   'Computer use is not available in this build': '此版本不支持电脑操控',
   'Accessibility': '辅助功能',
   'Screen Recording': '屏幕录制',
@@ -1648,6 +1654,57 @@ const HOST_ZH = {
 }
 Object.assign(ZH, HOST_ZH)
 
+const ZH_TW = convertDict(ZH)
+const HOST_ERRORS_ZH_TW = convertHostErrors(HOST_ERRORS)
+
+export const LANGUAGES = [
+  { id: 'zh-TW', label: '繁體中文', fallback: 'zh' },
+  { id: 'ja', label: '日本語', fallback: 'en' },
+  { id: 'ko', label: '한국어', fallback: 'en' },
+  { id: 'es', label: 'Español', fallback: 'en' },
+  { id: 'fr', label: 'Français', fallback: 'en' },
+  { id: 'de', label: 'Deutsch', fallback: 'en' },
+]
+
+export const DICTIONARY = {
+  zh: ZH,
+  'zh-TW': ZH_TW,
+  ja: JA,
+  ko: KO,
+  es: ES,
+  fr: FR,
+  de: DE,
+}
+
+const HOST_ERROR_TABLE = {
+  zh: HOST_ERRORS,
+  'zh-TW': HOST_ERRORS_ZH_TW,
+  ja: HOST_ERRORS_JA,
+  ko: HOST_ERRORS_KO,
+  es: HOST_ERRORS_ES,
+  fr: HOST_ERRORS_FR,
+  de: HOST_ERRORS_DE,
+}
+
+const DATE_LOCALES = {
+  zh: 'zh-CN',
+  'zh-TW': 'zh-TW',
+  ja: 'ja-JP',
+  ko: 'ko-KR',
+  es: 'es-ES',
+  fr: 'fr-FR',
+  de: 'de-DE',
+  en: 'en-US',
+}
+
+export function resolveLanguage(tag) {
+  const lower = String(tag ?? '').toLowerCase()
+  if (lower === 'zh-tw' || lower === 'zh-hk' || lower === 'zh-mo' || lower.startsWith('zh-hant')) return 'zh-TW'
+  if (lower.startsWith('zh')) return 'zh'
+  const primary = lower.split('-')[0]
+  return Object.hasOwn(DICTIONARY, primary) ? primary : 'en'
+}
+
 const fill = (text, params) => (params
   ? text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match))
   : text)
@@ -1655,15 +1712,29 @@ const fill = (text, params) => (params
 let service = null
 let bound = null
 
-// `locale` is the DSH locale service; without one, copy stays English.
+// `locale` is the host's locale service; without one, copy stays English.
 export function installLocale(locale) {
   if (!locale || typeof locale.register !== 'function' || typeof locale.bind !== 'function') return () => {}
   service = locale
   bound = locale.bind(NAMESPACE)
-  const off = locale.register(NAMESPACE, 'zh', ZH)
+  const offs = []
+  if (typeof locale.addLanguage === 'function') {
+    const existing = new Set((locale.getLocale?.()?.locales ?? []).map(item => String(item.id).toLowerCase()))
+    for (const definition of LANGUAGES) {
+      if (existing.has(definition.id.toLowerCase())) continue
+      try {
+        const off = locale.addLanguage(definition)
+        if (typeof off === 'function') offs.push(off)
+      } catch { /* already registered */ }
+    }
+  }
+  for (const [languageId, dictionary] of Object.entries(DICTIONARY)) {
+    const off = locale.register(NAMESPACE, languageId, dictionary)
+    if (typeof off === 'function') offs.push(off)
+  }
   return () => {
     if (service === locale) { service = null; bound = null }
-    if (typeof off === 'function') off()
+    for (let index = offs.length - 1; index >= 0; index -= 1) offs[index]()
   }
 }
 
@@ -1673,21 +1744,19 @@ export function t(key, params) {
 
 // A message from the host, in the interface language.
 export function hostText(message) {
-  if (!language().startsWith('zh')) return message
+  const active = resolveLanguage(language())
+  if (active === 'en') return message
   if (Object.hasOwn(ZH, message)) return t(message)
-  for (const [pattern, template] of HOST_ERRORS) {
+  for (const [pattern, template] of HOST_ERROR_TABLE[active] ?? []) {
     if (pattern.test(message)) return message.replace(pattern, template)
   }
   return message
 }
 
-// The active DSH language tag, for dates and times.
+// The active language tag, for dates and times.
 export function language() {
   const active = service?.getLocale?.().active
   return typeof active === 'string' ? active : 'en'
 }
 
-export const dateLocale = () => (language().startsWith('zh') ? 'zh-CN' : 'en-US')
-
-// Translations for the tests: the Chinese dictionary itself.
-export const DICTIONARY = { zh: ZH }
+export const dateLocale = () => DATE_LOCALES[resolveLanguage(language())] ?? 'en-US'

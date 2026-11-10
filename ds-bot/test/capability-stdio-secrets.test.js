@@ -9,7 +9,7 @@ import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
 // The fixture stands in for an MCP server: it reports back the argv and env it was
-// started with, so the test sees exactly what the plugin passed to the child process.
+// started with, so the test sees exactly what the mount passed to the child process.
 const FIXTURE = fileURLToPath(new URL('./fixtures/echo-argv-env.mjs', import.meta.url))
 
 const team = () => ({
@@ -33,8 +33,8 @@ const team = () => ({
 
 const secret = (name, value, scope = 'all') => ({ name, value, purpose: '', scope, requestedBy: null, createdAt: 1, updatedAt: 1 })
 
-// An Agent whose plugin() really starts the configured command, like the mounted MCP
-// client would, so the resolved args and env can be checked at the process boundary.
+// An Agent whose mountMcp() really starts the configured command, so the resolved
+// args and env can be checked at the process boundary.
 function spawningAgent(id, spawned) {
   const disposers = []
   return {
@@ -45,8 +45,8 @@ function spawningAgent(id, spawned) {
         const dispose = execute()
         if (typeof dispose === 'function') disposers.push(dispose)
       },
-      plugin(plugin, config) {
-        const record = { plugin, config, sessionId: id, disposed: false }
+      async mountMcp(config) {
+        const record = { config, sessionId: id, disposed: false }
         spawned.push(record)
         if (config?.transport === 'stdio') {
           record.output = JSON.parse(execFileSync(config.command, config.args, {
@@ -66,9 +66,7 @@ async function setup({ state = team(), secrets = [] } = {}) {
   writeFileSync(join(home, 'state.json'), JSON.stringify(state))
   if (secrets.length > 0) writeFileSync(join(home, 'secrets.json'), JSON.stringify({ secrets }))
   const spawned = []
-  const mcpPlugin = { name: 'mcp-client', apply() {} }
-  const loader = { import: async () => ({ default: mcpPlugin }), unwrapExports: exports => exports.default }
-  const ctx = fakeContext({ services: { loader } })
+  const ctx = fakeContext()
   const rt = createRuntime(ctx, { home, github: false, diagnosticsFile: false })
   ctx.sessionTitle = { rename: async () => {} }
   rt.resolveAgent = async sessionId => ({ session: { id: sessionId } })
@@ -78,7 +76,6 @@ async function setup({ state = team(), secrets = [] } = {}) {
     ctx,
     rt,
     spawned,
-    mcpPlugin,
     async dispose() {
       ctx.dispose()
       await rt.scheduleCapabilitiesReconcile()
@@ -104,8 +101,8 @@ test('stdio MCP args resolve secret references like env does, and the child proc
   t.after(() => env.dispose())
   const mount = await mountStdio(env, {
     name: 'echo',
-    args: [FIXTURE, '--token', '$DSH_SECRET_MCP_TOKEN', 'pre$DSH_SECRET_MCP_TOKEN/$DSH_SECRET_MCP_REGION-post', 'plain'],
-    env: { ECHO_ARGV_ENV_NAMES: 'MCP_ENV', MCP_ENV: '$DSH_SECRET_MCP_REGION' },
+    args: [FIXTURE, '--token', '$CUE_SECRET_MCP_TOKEN', 'pre$CUE_SECRET_MCP_TOKEN/$CUE_SECRET_MCP_REGION-post', 'plain'],
+    env: { ECHO_ARGV_ENV_NAMES: 'MCP_ENV', MCP_ENV: '$CUE_SECRET_MCP_REGION' },
   })
   assert.ok(mount, 'the capability was not mounted')
   assert.deepEqual(mount.config.args, [FIXTURE, '--token', 'fake-dummy-secret-125', 'prefake-dummy-secret-125/fake-region-125-post', 'plain'])
@@ -126,7 +123,7 @@ test('a missing or forbidden secret in stdio args keeps the server from starting
   // MCP_TOKEN is scoped to chief, so worker's mount must fail before the process starts.
   const denied = await mountStdio(env, {
     name: 'denied',
-    args: [FIXTURE, '$DSH_SECRET_MCP_TOKEN'],
+    args: [FIXTURE, '$CUE_SECRET_MCP_TOKEN'],
     env: {},
     botId: 'worker',
   })
@@ -139,7 +136,7 @@ test('a missing or forbidden secret in stdio args keeps the server from starting
   // A name that is not saved at all fails the same way.
   const missing = await mountStdio(env, {
     name: 'missing',
-    args: [FIXTURE, 'x$DSH_SECRET_NO_SUCH_KEY'],
+    args: [FIXTURE, 'x$CUE_SECRET_NO_SUCH_KEY'],
     env: {},
     botId: 'chief',
   })

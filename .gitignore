@@ -10,12 +10,7 @@ node_modules/
 /app/build/runtime-cache/
 /app/build/preload.cjs
 
-# A DeepSeek Harness checkout for the tests and the test bench.
-/deepseek-harness/
-
-# Test bench, local DSH data and the screenshots of dev/check.sh.
-.dsh-test*/
-.dsh-home/
+# Local screenshots.
 /shots/
 .playwright-mcp/
 
@@ -24,9 +19,6 @@ node_modules/
 
 # Persistent data for start.ps1 (profiles, credentials, chats and Bot files).
 /.ds-bot-local/
-
-# Browser-plugin bench output (the HTML report is written beside it and committed).
-/browser-plugins/bench/out/
 
 # Local Docker deployment data.
 /docker/data/

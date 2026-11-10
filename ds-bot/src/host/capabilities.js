@@ -2,9 +2,8 @@ import { createHash } from 'node:crypto'
 import { encodeUrlComponent } from './secrets.js'
 import { own } from './store.js'
 
-const MCP_CLIENT = '@earendil-works/pi-mcp'
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
-const SECRET_REFERENCE = /\$DSH_SECRET_([A-Z][A-Z0-9_]*)/g
+const SECRET_REFERENCE = /\$CUE_SECRET_([A-Z][A-Z0-9_]*)/g
 const ENSURE_TIMEOUT_MS = 15_000
 
 // Connector ids are reserved: a capability named like one would collide with
@@ -61,7 +60,6 @@ export function install(rt) {
   const chains = new WeakMap()
   const queued = new WeakSet()
   const sessionStatuses = new Map()
-  let pluginPromise
   let scheduled = null
   let loadingSecrets = 0
   let stopped = false
@@ -256,17 +254,6 @@ export function install(rt) {
     ...(item.items ? { items: [...item.items] } : {}),
   }))
 
-  async function loadMcpPlugin() {
-    if (!pluginPromise) {
-      pluginPromise = (async () => {
-        const loader = ctx.get?.('loader')
-        if (typeof loader?.import !== 'function') throw new Error('This host cannot load MCP servers.')
-        const exports = await loader.import(MCP_CLIENT)
-        return loader.unwrapExports?.(exports) ?? exports?.default ?? exports
-      })()
-    }
-    return pluginPromise
-  }
   function secretFor(name, botId) {
     const value = rt.canUseSecret(name, botId) ? rt.secretValue(name) : undefined
     if (value === undefined) throw new Error(`Secret ${name} is missing or unavailable for this Bot.`)
@@ -315,23 +302,9 @@ export function install(rt) {
     statusSet(bot.id, name, sessionId, { state: 'connecting' })
     try {
       if (stopped) return
-      let fiber
-      if (item.kind === 'skill' && typeof agent.ctx.mountSkill === 'function') {
-        fiber = agent.ctx.mountSkill(config)
-      } else if (item.kind === 'mcp' && typeof agent.ctx.mountMcp === 'function') {
-        fiber = await agent.ctx.mountMcp(config)
-      } else if (item.kind === 'skill') {
-        const plugin = {
-          name: `ds-bot-capability-skill-${name}`,
-          inject: ['skills'],
-          apply(c) {
-            c.effect(() => c.skills.register({ name: config.name, description: config.description, source: 'runtime', content: config.content }))
-          },
-        }
-        fiber = agent.ctx.plugin(plugin)
-      } else {
-        fiber = agent.ctx.plugin(await loadMcpPlugin(), config)
-      }
+      const fiber = item.kind === 'skill'
+        ? agent.ctx.mountSkill(config)
+        : await agent.ctx.mountMcp(config)
       if (stopped) { await disposeMount({ fiber }); return }
       agentMounts.set(name, { key, fiber })
       await fiber.await()

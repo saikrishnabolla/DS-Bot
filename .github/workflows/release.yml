@@ -83,7 +83,7 @@ jobs:
 
       - run: npm ci --no-fund --no-audit
       - run: npm test
-      - run: node scripts/build-client.mjs --check
+      - run: node scripts/build-office.mjs --check
       - run: npm run lint
 
       - name: Pack (dry run)
@@ -138,8 +138,8 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: DS-Bot-win-x64
-          path: app/dist-pack/DS-Bot-*-win-x64.exe
+          name: Cue-win-x64
+          path: app/dist-pack/Cue-*-win-x64.exe
           retention-days: 7
           if-no-files-found: error
           compression-level: 0
@@ -150,7 +150,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          installer="dist-pack/DS-Bot-$(node -p "require('./package.json').version")-win-x64.exe"
+          installer="dist-pack/Cue-$(node -p "require('./package.json').version")-win-x64.exe"
           gh release upload "$TAG" "$installer" "$installer.blockmap" dist-pack/latest.yml --clobber
 
   app-macos:
@@ -188,8 +188,8 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: DS-Bot-mac-${{ matrix.arch }}
-          path: app/dist-pack/DS-Bot-*-mac-${{ matrix.arch }}.zip
+          name: Cue-mac-${{ matrix.arch }}
+          path: app/dist-pack/Cue-*-mac-${{ matrix.arch }}.zip
           retention-days: 7
           if-no-files-found: error
           compression-level: 0
@@ -199,9 +199,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          zip="dist-pack/DS-Bot-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
-          legacy="$(node scripts/legacy-release-assets.mjs "$zip")"
-          gh release upload "$TAG" "$zip" "$legacy" --clobber
+          zip="dist-pack/Cue-$(node -p "require('./package.json').version")-mac-${{ matrix.arch }}.zip"
+          legacy_output="$(node scripts/legacy-release-assets.mjs "$zip")"
+          legacy=()
+          while IFS= read -r alias; do legacy+=("$alias"); done <<< "$legacy_output"
+          gh release upload "$TAG" "$zip" "${legacy[@]}" --clobber
 
   app-linux:
     name: Desktop app packages (Linux x64)
@@ -236,15 +238,15 @@ jobs:
         # The dry run never uploads, so it checks here that every file the release attaches exists.
         run: |
           version="$(node -p "require('./package.json').version")"
-          ls -l "dist-pack/DS-Bot-$version-linux-x86_64.AppImage" "dist-pack/DS-Bot-$version-linux-amd64.deb" dist-pack/latest-linux.yml
+          ls -l "dist-pack/Cue-$version-linux-x86_64.AppImage" "dist-pack/Cue-$version-linux-amd64.deb" dist-pack/latest-linux.yml
       - name: Keep the packages for real-device checks
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: DS-Bot-linux-x64
+          name: Cue-linux-x64
           path: |
-            app/dist-pack/DS-Bot-*-linux-x86_64.AppImage
-            app/dist-pack/DS-Bot-*-linux-amd64.deb
+            app/dist-pack/Cue-*-linux-x86_64.AppImage
+            app/dist-pack/Cue-*-linux-amd64.deb
           retention-days: 7
           if-no-files-found: error
           compression-level: 0
@@ -256,8 +258,11 @@ jobs:
         # The AppImage carries its block map inside the file, so there is no .blockmap to attach.
         run: |
           version="$(node -p "require('./package.json').version")"
-          legacy="$(node scripts/legacy-release-assets.mjs "dist-pack/DS-Bot-$version-linux-amd64.deb")"
-          gh release upload "$TAG" "dist-pack/DS-Bot-$version-linux-x86_64.AppImage" "dist-pack/DS-Bot-$version-linux-amd64.deb" "$legacy" dist-pack/latest-linux.yml --clobber
+          deb="dist-pack/Cue-$version-linux-amd64.deb"
+          legacy_output="$(node scripts/legacy-release-assets.mjs "$deb")"
+          legacy=()
+          while IFS= read -r alias; do legacy+=("$alias"); done <<< "$legacy_output"
+          gh release upload "$TAG" "dist-pack/Cue-$version-linux-x86_64.AppImage" "$deb" "${legacy[@]}" dist-pack/latest-linux.yml --clobber
 
   downloads:
     name: Download table, checksums and Latest
@@ -280,7 +285,7 @@ jobs:
         if: github.event_name == 'release'
         run: |
           version="$(node -p "require('./package.json').version")"
-          gh release download "$TAG" --dir "$RUNNER_TEMP/packages" --pattern "DS-Bot-$version-*"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/packages" --pattern "Cue-$version-*"
           gh release view "$TAG" --json body --jq .body > "$RUNNER_TEMP/notes.md"
       # The dry run has no release, so it checks the table and the checksums on the packages
       # that the app jobs kept.
@@ -288,7 +293,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/download-artifact@v4
         with:
-          pattern: DS-Bot-*
+          pattern: Cue-*
           path: ${{ runner.temp }}/packages
           merge-multiple: true
       - name: Write the download table and the checksums

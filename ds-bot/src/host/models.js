@@ -5,15 +5,12 @@ import { normalize, splitRef } from './text.js'
 
 const CATALOG_TTL_MS = 10_000
 const ROUTE_WAIT_MS = 30_000
-// The DeepSeek account's sign-in grant (dsh-deepseek-account-platform).
-const ACCOUNT_RECORD = 'deepseek-account-platform/default'
-
 export function install(rt) {
   const { ctx, state } = rt
 
   let modelsSynced = null
   let catalogCache = { at: 0, value: [] }
-  // Routes DSH serves that cannot answer a request at all — a hosted loop engine
+  // Routes Cue serves that cannot answer a request at all — a hosted loop engine
   // publishes one so its Sessions can be prompted. Once one refuses with
   // HOSTED_ENGINE_ROUTE it is remembered with the models its provider served then,
   // and nothing chooses it again until that provider serves different models.
@@ -36,21 +33,12 @@ export function install(rt) {
   // only with the provider, which also drops the catalog cache.
   const reasoningCache = new Map()
   const dropCatalog = () => { catalogCache = { at: 0, value: [] } }
-  // A key set or a sign-in may be the user's fix for a Bot's failed turn (turns.js); a
-  // key removed or a sign-out is not. A provider that registers or changes fixes
-  // nothing by itself: providers register late at every start.
+  // A key set may be the user's fix for a Bot's failed turn (turns.js); a key
+  // removed is not. A provider that registers or changes fixes nothing by itself.
   ctx.on?.('llm/adapters-updated', () => { dropCatalog(); reasoningCache.clear(); return forgetChangedRefusals() })
   ctx.on?.('credentials/reference-updated', async (ref) => {
     dropCatalog()
     if (await inPlace(credentials => credentials.describe(ref))) rt.unblockBots?.({ ref })
-  })
-  // A sign-in writes the account's record. A sign-out removes it, and so does a token
-  // the provider refused, while the turn that failed on it still runs. Other plugins'
-  // records (an OAuth token refresh) say nothing about the account.
-  ctx.on?.('credentials/record-updated', async (key) => {
-    dropCatalog()
-    if (String(key) !== ACCOUNT_RECORD) return
-    if (await inPlace(credentials => credentials.describeRecord(key))) rt.unblockBots?.({ signedIn: true })
   })
   ctx.on?.('settings/document-updated', dropCatalog)
 
@@ -77,7 +65,7 @@ export function install(rt) {
     return value
   }
 
-  // A provider's model list can change in DSH settings without any event, so a picker
+  // A provider's model list can change in settings without any event, so a picker
   // that is about to be used asks for a `fresh` one. Entries for models a Bot uses
   // also carry their `reasoning`, so the picker can offer thinking levels.
   async function catalog({ fresh = false } = {}) {
@@ -97,7 +85,7 @@ export function install(rt) {
         })
       }
     }
-    // DSH serves a provider's models whether or not its key is set; without one, every
+    // Cue lists a provider's models whether or not its key is set; without one, every
     // turn on them fails.
     const missing = await rt.missingKeys?.([...new Set(entries.map(entry => entry.provider))]) ?? new Set()
     for (const entry of entries) if (missing.has(entry.provider)) entry.needsKey = true
@@ -113,7 +101,7 @@ export function install(rt) {
     return answerable(entries)
   }
 
-  // The profile default model of DSH as set, served or not, and able to answer.
+  // The host's default model as set, served or not, and able to answer.
   const defaultRef = () => {
     const selection = ctx.get?.('agentDefaultModel')?.currentSelection?.()
     if (!selection?.provider || !selection?.model) return undefined
@@ -127,7 +115,7 @@ export function install(rt) {
   const usableOf = entries => keyed(entries).filter(entry => !isLocal(entry.ref))
   // By the catalog as last listed, without waiting for a fresh one.
   const isUsable = ref => keyed(catalogCache.value).some(entry => entry.ref === ref)
-  // The profile default model of DSH, when it is served and usable; else the first
+  // The host's default model, when it is served and usable; else the first
   // usable model; else none.
   function pickDefault(entries) {
     const usable = usableOf(entries)
@@ -139,7 +127,7 @@ export function install(rt) {
   const defaultModel = async () => pickDefault(await catalog())
 
   // The model a create that names none starts on: the team's pick while the catalog
-  // still serves it, else the DSH default. A create fixes the ref then, so a later
+  // still serves it, else the Cue default. A create fixes the ref then, so a later
   // change of either default leaves the Bot alone.
   const defaultBotModel = async () => {
     const entries = await catalog()
@@ -148,7 +136,7 @@ export function install(rt) {
   }
 
   // A local agent's model, by its full ref only, so a short name never moves a Bot onto
-  // a CLI. Its CLI is asked only when DS Bot does not know the model yet.
+  // a CLI. Its CLI is asked only when Cue does not know the model yet.
   async function resolveLocalModel(ref) {
     const { provider, model } = splitRef(ref)
     const known = await ctx.llm.listModels(provider).catch(() => [])
@@ -175,7 +163,7 @@ export function install(rt) {
 
   // A Bot with no model yet waits for the user to pick one and changes nothing. A
   // model that is no longer served falls back to the last one it ran on, then the
-  // default; a fallback is never one that needs a key, nor a local agent. A local
+  // host default; a fallback is never one that needs a key, nor a local agent. A local
   // agent that is gone stays the Bot's: its turn fails with the repair card.
   async function desiredModel(bot) {
     if (!bot.model) return undefined
@@ -216,7 +204,7 @@ export function install(rt) {
     return resolveEffort(ref, wanted).catch(() => undefined)
   }
 
-  // DSH's selectModel also saves the selection as the profile default model, in the
+  // The session controller also saves the selection as the profile default model, in the
   // background. A Bot's model is its own, so the user's default is written back after
   // it. Selections run one at a time and wait for the write-back: profile writes land in
   // submission order, so the next one reads the user's default, not a Bot's.

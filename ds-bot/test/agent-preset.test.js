@@ -7,7 +7,7 @@ import { format } from 'node:util'
 import { createRuntime } from '../index.js'
 import { fakeContext } from './fake-ctx.js'
 
-// Fei2411/DS-Bot#37: under DSH Desktop's default PTC preset a model may call only
+// Fei2411/DS-Bot#37: under desktop app's default PTC preset a model may call only
 // run_code, so the group_relay call made for a group chat's Session was turned down
 // and no group message reached its Bots.
 
@@ -73,7 +73,7 @@ const relayCall = async (relay, tools) => {
   return chunks.find(chunk => chunk.type === 'block-end').block
 }
 
-test('a new Bot Session is made with the standard preset when DSH serves it', async (t) => {
+test('a new Bot Session is made with the standard preset when Cue serves it', async (t) => {
   const { rt, created, stop } = start({ presets: [{ id: 'ptc' }, { id: 'standard' }] })
   t.after(stop)
   await rt.load()
@@ -81,7 +81,7 @@ test('a new Bot Session is made with the standard preset when DSH serves it', as
   assert.deepEqual(created, [{ workspaceId: 'w1', agentPreset: 'standard' }])
 })
 
-test('without a usable standard preset a Bot Session keeps DSH\'s default', async (t) => {
+test('without a usable standard preset a Bot Session keeps Cue\'s default', async (t) => {
   for (const presets of [undefined, [{ id: 'ptc' }], [{ id: 'standard', broken: 'failed to start' }]]) {
     const { rt, created, stop } = start({ presets })
     t.after(stop)

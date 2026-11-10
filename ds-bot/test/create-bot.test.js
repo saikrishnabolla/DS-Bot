@@ -7,7 +7,7 @@ const models = [
   { ref: 'cloud/qwen-max', name: 'Qwen Max', providerName: 'Cloud' },
 ]
 
-test('the form starts on the team default model, then the DSH default, else the first served one', () => {
+test('the form starts on the team default model, then the Cue default, else the first served one', () => {
   assert.equal(startModel({ models, defaultModel: 'cloud/qwen-max' }), 'cloud/qwen-max')
   assert.equal(startModel({ models, defaultModel: 'gone/model' }), 'ollama/ds-flash')
   assert.equal(startModel({ models, defaultModel: null }), 'ollama/ds-flash')

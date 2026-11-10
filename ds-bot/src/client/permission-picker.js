@@ -8,7 +8,7 @@ const DANGER = new Set(['danger-full-access'])
 export const presetDanger = value => DANGER.has(value)
 export const presetName = (value, catalog) => (LABELS[value] ? t(LABELS[value]) : catalog?.options?.find(option => option.value === value)?.name ?? value)
 
-// The presets DeepSeek Harness offers, as one segmented choice. A pick shows at once
+// The presets Cue offers, as one segmented choice. A pick shows at once
 // and holds until the saved value catches up, or falls back when `onPick` resolves
 // false. `repick` lets the shown preset be picked again.
 export function PermissionPicker({ catalog, saved, onPick, repick = false }) {

@@ -6,26 +6,86 @@ import { BackgroundNotice } from './background-notice.mjs'
 import { createTray } from './tray.mjs'
 
 export const SHELL_TEXT = {
-  en: {
-    tooltip: 'DS Bot',
-    open: 'Open DS Bot',
-    quit: 'Quit DS Bot',
-    notice: 'DS Bot keeps running in the system tray. Its Bots go on working while the window is closed.',
-    noticeConfirm: 'OK',
-    fallback: 'The system tray is not available, so DS Bot cannot stay in the background. Do you want to end it?',
-    cancel: 'Cancel',
-    stopAll: 'Stop all',
+  "en": {
+    "tooltip": "Cue",
+    "open": "Open Cue",
+    "quit": "Quit Cue",
+    "notice": "Cue keeps running in the system tray. Its Bots go on working while the window is closed.",
+    "noticeConfirm": "OK",
+    "fallback": "The system tray is not available, so Cue cannot stay in the background. Do you want to end it?",
+    "cancel": "Cancel",
+    "stopAll": "Stop all"
   },
-  zh: {
-    tooltip: 'DS Bot',
-    open: '打开 DS Bot',
-    quit: '退出 DS Bot',
-    notice: 'DS Bot 会留在系统托盘里继续运行，关掉窗口时 Bot 们照常工作。',
-    noticeConfirm: '好',
-    fallback: '系统托盘不可用，DS Bot 不能留在后台。要结束它吗？',
-    cancel: '取消',
-    stopAll: '全部停止',
+  "zh": {
+    "tooltip": "Cue",
+    "open": "打开 Cue",
+    "quit": "退出 Cue",
+    "notice": "Cue 会留在系统托盘里继续运行，关掉窗口时 Bot 们照常工作。",
+    "noticeConfirm": "好",
+    "fallback": "系统托盘不可用，Cue 不能留在后台。要结束它吗？",
+    "cancel": "取消",
+    "stopAll": "全部停止"
   },
+  "zh-TW": {
+    "tooltip": "Cue",
+    "open": "打開 Cue",
+    "quit": "結束 Cue",
+    "notice": "Cue 會留在系統匣裡繼續運行，關掉視窗時 Bot 們照常工作。",
+    "noticeConfirm": "好",
+    "fallback": "系統匣不可用，Cue 不能留在背景。要結束它嗎？",
+    "cancel": "取消",
+    "stopAll": "全部停止"
+  },
+  "ja": {
+    "tooltip": "Cue",
+    "open": "Cue を開く",
+    "quit": "Cue を終了",
+    "notice": "Cue はシステムトレイで動作し続けます。ウィンドウを閉じても Bot は作業を続けます。",
+    "noticeConfirm": "OK",
+    "fallback": "システムトレイが利用できないため、Cue をバックグラウンドに残せません。終了しますか？",
+    "cancel": "キャンセル",
+    "stopAll": "すべて停止"
+  },
+  "ko": {
+    "tooltip": "Cue",
+    "open": "Cue 열기",
+    "quit": "Cue 종료",
+    "notice": "Cue은 시스템 트레이에서 계속 실행됩니다. 창을 닫아도 Bot은 계속 작업합니다.",
+    "noticeConfirm": "확인",
+    "fallback": "시스템 트레이를 사용할 수 없어 Cue을 백그라운드에 유지할 수 없습니다. 종료할까요?",
+    "cancel": "취소",
+    "stopAll": "모두 중지"
+  },
+  "es": {
+    "tooltip": "Cue",
+    "open": "Abrir Cue",
+    "quit": "Salir de Cue",
+    "notice": "Cue sigue ejecutándose en la bandeja del sistema. Sus Bots continúan trabajando mientras la ventana está cerrada.",
+    "noticeConfirm": "Aceptar",
+    "fallback": "La bandeja del sistema no está disponible, por lo que Cue no puede permanecer en segundo plano. ¿Quieres cerrarlo?",
+    "cancel": "Cancelar",
+    "stopAll": "Detener todo"
+  },
+  "fr": {
+    "tooltip": "Cue",
+    "open": "Ouvrir Cue",
+    "quit": "Quitter Cue",
+    "notice": "Cue continue de fonctionner dans la barre d’état système. Ses Bots continuent de travailler lorsque la fenêtre est fermée.",
+    "noticeConfirm": "OK",
+    "fallback": "La barre d’état système n’est pas disponible, Cue ne peut donc pas rester en arrière-plan. Voulez-vous l’arrêter ?",
+    "cancel": "Annuler",
+    "stopAll": "Tout arrêter"
+  },
+  "de": {
+    "tooltip": "Cue",
+    "open": "Cue öffnen",
+    "quit": "Cue beenden",
+    "notice": "Cue läuft im Systembereich weiter. Seine Bots arbeiten weiter, während das Fenster geschlossen ist.",
+    "noticeConfirm": "OK",
+    "fallback": "Der Systembereich ist nicht verfügbar, daher kann Cue nicht im Hintergrund bleiben. Möchtest du es beenden?",
+    "cancel": "Abbrechen",
+    "stopAll": "Alle stoppen"
+  }
 }
 
 /**
@@ -141,7 +201,7 @@ export function createShell(options) {
     } catch (error) {
       // Without a tray the window stays where the user can reach it; the app never vanishes.
       tray = undefined
-      log.warn(`DS Bot: the system tray is not available: ${error instanceof Error ? error.message : String(error)}`)
+      log.warn(`Cue: the system tray is not available: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -153,12 +213,12 @@ export function createShell(options) {
     const t = text()
     try {
       const { response } = await options.fallback.show({
-        type: 'question', title: 'DS Bot', message: t.fallback,
+        type: 'question', title: 'Cue', message: t.fallback,
         buttons: [t.quit, t.cancel], defaultId: 1, cancelId: 1, noLink: true,
       })
       if (response === 0) { quit(); return }
     } catch (error) {
-      log.warn(`DS Bot: the fallback quit could not be asked: ${error instanceof Error ? error.message : String(error)}`)
+      log.warn(`Cue: the fallback quit could not be asked: ${error instanceof Error ? error.message : String(error)}`)
     }
     // The window stays in the task bar, where the user can reach it.
     target.minimize()

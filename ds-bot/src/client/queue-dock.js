@@ -2,7 +2,7 @@ import { createElement as h, Fragment, useEffect, useId, useMemo, useRef, useSta
 import { t } from './i18n.js'
 import { ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CloseIcon, PaperclipIcon, PencilIcon, QueueIcon, TrashIcon } from './icons.js'
 
-// The queue dock above the composer, drawn by DS Bot in place of the shell's own
+// The queue dock above the composer, drawn by Cue in place of the shell's own
 // (same slot, same id 'queue'). The session inbox also queues the team's mail —
 // requests, replies and reports a delivery sends with agent.followup arrive as
 // kind 'bot' — but they are the Bot's incoming messages, not drafts of the user.
@@ -193,26 +193,26 @@ export function QueueDock({ useSession, useProjection, updateQueue, loadImage, r
 }
 
 export const QUEUE_CSS = `
-.bt-queue-dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance,0px) - var(--dsh-composer-side-clearance,0px) - var(--dsh-composer-dock-inset,0px) - var(--dsh-composer-dock-inset,0px));max-width:calc(var(--dsh-composer-card-max-width,748px) - var(--dsh-composer-dock-inset,0px) - var(--dsh-composer-dock-inset,0px));margin:0 auto calc(0px - var(--dsh-composer-stack-gap,8px) - 3px);padding:0 var(--dsh-composer-dock-inset,0px);flex:none}
-.bt-queue-panel{position:relative;isolation:isolate;width:100%;padding:2px 0;border-radius:var(--dsw-radius-lg,14px) var(--dsw-radius-lg,14px) 0 0;overflow:hidden}
-.bt-queue-panel:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu,var(--bt-main));backdrop-filter:var(--dsw-menu-backdrop-filter,none);content:"";pointer-events:none;position:absolute;inset:0}
+.bt-queue-dock{box-sizing:border-box;width:calc(100% - var(--cue-composer-side-clearance,0px) - var(--cue-composer-side-clearance,0px) - var(--cue-composer-dock-inset,0px) - var(--cue-composer-dock-inset,0px));max-width:calc(var(--cue-composer-card-max-width,748px) - var(--cue-composer-dock-inset,0px) - var(--cue-composer-dock-inset,0px));margin:0 auto calc(0px - var(--cue-composer-stack-gap,8px) - 3px);padding:0 var(--cue-composer-dock-inset,0px);flex:none}
+.bt-queue-panel{position:relative;isolation:isolate;width:100%;padding:2px 0;border-radius:var(--cue-ui-radius-lg,14px) var(--cue-ui-radius-lg,14px) 0 0;overflow:hidden}
+.bt-queue-panel:before{z-index:-1;border-radius:inherit;background:var(--cue-ui-specific-menu,var(--bt-main));backdrop-filter:var(--cue-ui-menu-backdrop-filter,none);content:"";pointer-events:none;position:absolute;inset:0}
 .bt-queue-panel:after{border:.5px solid var(--bt-line-2);border-bottom:none;border-radius:inherit;content:"";pointer-events:none;position:absolute;inset:0}
-.bt-queue-head{box-sizing:border-box;width:100%;height:36px;border:0;border-radius:var(--dsw-radius-md,10px);background:none;color:var(--bt-ink);text-align:left;font:inherit;cursor:pointer;display:flex;align-items:center;gap:10px;padding:4px 12px}
+.bt-queue-head{box-sizing:border-box;width:100%;height:36px;border:0;border-radius:var(--cue-ui-radius-md,10px);background:none;color:var(--bt-ink);text-align:left;font:inherit;cursor:pointer;display:flex;align-items:center;gap:10px;padding:4px 12px}
 .bt-queue-head:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
 .bt-queue-head:disabled{cursor:default}
 .bt-queue-lead{color:var(--bt-ink-3);flex:none;display:grid;place-items:center}
 .bt-queue-count{min-width:0;flex:auto;font-size:13px;font-weight:500;line-height:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-queue-chev{width:14px;height:14px;color:var(--bt-ink-3);flex:none;display:grid;place-items:center}
 .bt-queue-list{max-height:180px;margin:0;padding:0;list-style:none;overflow-y:auto}
-.bt-queue-row{box-sizing:border-box;min-height:36px;width:100%;border-radius:var(--dsw-radius-md,10px);display:flex;align-items:center;gap:10px;padding:4px 5px 4px 12px}
+.bt-queue-row{box-sizing:border-box;min-height:36px;width:100%;border-radius:var(--cue-ui-radius-md,10px);display:flex;align-items:center;gap:10px;padding:4px 5px 4px 12px}
 .bt-queue-row+.bt-queue-row{box-shadow:inset 0 1px 0 var(--bt-line)}
 .bt-queue-attachments{flex:none;min-width:0;max-width:55%;display:flex;gap:4px;overflow:hidden}
 .bt-queue-pending .bt-queue-attachments{flex-shrink:1}
-.bt-queue-file{box-sizing:border-box;height:24px;min-width:74px;flex:0 180px;border:.5px solid var(--bt-line);border-radius:var(--dsw-radius-sm,6px);background:var(--bt-main);display:inline-flex;align-items:center;gap:4px;padding:0 6px;overflow:hidden}
+.bt-queue-file{box-sizing:border-box;height:24px;min-width:74px;flex:0 180px;border:.5px solid var(--bt-line);border-radius:var(--cue-ui-radius-sm,6px);background:var(--bt-main);display:inline-flex;align-items:center;gap:4px;padding:0 6px;overflow:hidden}
 .bt-queue-fileicon{flex:none;width:16px;height:16px;color:var(--bt-ink-3);display:inline-flex}
 .bt-queue-filename{min-width:0;flex:auto;font-size:13px;line-height:18px;color:var(--bt-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-queue-filesize{flex:none;font-size:10px;color:var(--bt-ink-3);white-space:nowrap}
-.bt-queue-thumb{width:24px;height:24px;border:.5px solid var(--bt-line);border-radius:var(--dsw-radius-xs,4px);background:var(--bt-main);object-fit:cover}
+.bt-queue-thumb{width:24px;height:24px;border:.5px solid var(--bt-line);border-radius:var(--cue-ui-radius-xs,4px);background:var(--bt-main);object-fit:cover}
 .bt-queue-preview{min-width:0;flex:auto;font-size:13px;color:var(--bt-ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-queue-edit{min-width:0;flex:auto;box-sizing:border-box;border:0;outline:none;resize:none;background:none;color:var(--bt-ink);font:inherit;font-size:13px;line-height:20px;max-height:120px;padding:4px 0}
 .bt-queue-actions{flex:none;display:flex;align-items:center;gap:10px}

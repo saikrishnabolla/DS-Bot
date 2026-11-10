@@ -1,4 +1,4 @@
-// The Bot shell's frame geometry: the left column (open, avatar rail, drawer or
+// Cue's frame geometry: the left column (open, avatar rail, drawer or
 // hidden), the Bot panel and the conversation share the window. The conversation
 // keeps at least MIN_CHAT px; the column folds to a rail of avatars before the
 // chat is squeezed, and an open panel that no longer fits folds away or covers
@@ -9,8 +9,6 @@ import { STORAGE } from './storage.js'
 export const MIN_CHAT = 420
 export const RAIL_WIDTH = 88
 export const PANEL_MIN = { details: 320, browser: 360, side: 320 }
-// The shell collapses its own sidebar below this width.
-export const DSH_NARROW = 1024
 // The open column's width range; a drag released short of RAIL_SNAP lands on the rail.
 export const SIDEBAR_MIN = 264
 export const SIDEBAR_MAX = 420
@@ -61,17 +59,6 @@ export function dragColumn(x, viewport) {
 
 // The top-left switch hides the whole column and brings back the one it hid.
 export const toggledPref = (pref, shown) => (pref === 'hidden' ? shown : 'hidden')
-
-// The shell measures the window on its own frame, a beat apart from us, and
-// re-applies its own rule when it does: a flip this soon after a width change is
-// the shell settling, not a gesture.
-export const RESIZE_SETTLE_MS = 500
-// A flip of the shell's collapsed flag counts as the user's own switch gesture
-// only when we did not request it, the width has settled, and it stayed on one
-// side of the auto-collapse line (a crossing is the shell's own rule firing).
-export const userSidebarToggle = ({ before, after, requested = false, sinceResize = Infinity }) =>
-  before.collapsed !== after.collapsed && !requested && sinceResize >= RESIZE_SETTLE_MS
-  && (before.viewport < DSH_NARROW) === (after.viewport < DSH_NARROW)
 
 // The user's column survives restarts: `pref` is 'open' by default, 'rail' after
 // a drag down to it, 'hidden' after the switch; `shown` is what the switch brings

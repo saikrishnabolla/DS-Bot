@@ -1,6 +1,6 @@
 ---
 name: issue-triage
-description: 给 DS Bot 仓库的 Issue 和 PR 分诊：打类型、优先级、领域标签，判断该关闭、追问、转讨论还是留着做，并把结论写回 GitHub。触发词：分诊、整理 Issue、打标签、打优先级、这个该不该关、追问报告人、needs-info 到期。
+description: 给 Cue 仓库的 Issue 和 PR 分诊：打类型、优先级、领域标签，判断该关闭、追问、转讨论还是留着做，并把结论写回 GitHub。触发词：分诊、整理 Issue、打标签、打优先级、这个该不该关、追问报告人、needs-info 到期。
 ---
 
 # Issue 分诊
@@ -52,7 +52,7 @@ node .agents/skills/issue-triage/scripts/snapshot.mjs --out /tmp/triage
 | 已修，未发版 | `dev` 上有提交或已合并的 PR 修了它 | 不关。评论写明 PR 号，等发版时 Release PR 的 `Fixes #N` 自动关 |
 | 已修，已发版 | `main` 上有修复，CHANGELOG 有记录，或能指出守住它的测试 | `completed` 关，评论写具体的 PR、提交或测试名 |
 | 重复 | 和另一个 Issue 是同一个原因 | 加 `duplicate`，链接那一个，`not planned` 关 |
-| 上游 | 原因在 DSH 或别的插件 | 加 `upstream`，链接该去的地方。我们这边无事可做时 `not planned` 关 |
+| 上游 | 原因在 Pi Durable 或其他依赖 | 加 `upstream`，链接该去的地方。我们这边无事可做时 `not planned` 关 |
 | 提问 | 怎么装、怎么用 | 在网页上 **Convert to discussion**，转到 Q&A（CLI 做不了，见 gotchas） |
 | 缺信息 | 现象定位不了，没有版本、日志或复现步骤 | 加 `needs-info`，追问一次（模板见下） |
 | `needs-info` 到期 | 追问后 14 天没有新信息 | `not planned` 关，评论写「没有收到补充信息，补充后会重新打开」 |
@@ -71,7 +71,7 @@ node .agents/skills/issue-triage/scripts/snapshot.mjs --out /tmp/triage
 
 ```text
 感谢反馈。为了找到原因，请补充：
-1. DS Bot 和 DSH 的版本。
+1. Cue 的版本和操作系统。
 2. ……（具体缺的东西）
 3. ……
 

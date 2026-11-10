@@ -13,7 +13,7 @@ const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
 // motion.js; they run in each test's jsdom document through the vm context.
 const { outputFiles } = await build({
   stdin: {
-    contents: "export { installStyles, installCompiledStyles } from './src/client/styles.js'",
+    contents: "export { installStyles } from './src/client/styles.js'",
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
@@ -29,10 +29,9 @@ const react = {
   useMemo: make => make(), useRef: current => ({ current }), useId: () => 'id',
 }
 
-const tick = () => new Promise(resolve => setImmediate(resolve))
-// DS Bot's style tags in a document, all of them or those of one group.
+// Cue's style tags in a document, all of them or those of one group.
 const tagged = (document, tag) => [...document.head.querySelectorAll('style')]
-  .filter(style => style.dataset.dshBot !== undefined && (tag === undefined || style.dataset.dshBot === tag))
+  .filter(style => style.dataset.cue !== undefined && (tag === undefined || style.dataset.cue === tag))
 
 const bench = () => {
   const { window } = new JSDOM('<!doctype html><html><head></head><body></body></html>')
@@ -48,62 +47,20 @@ const bench = () => {
   return { window, module }
 }
 
-// #228: our style tags carry the client module id, so another module's materialization
-// cannot claim them and its teardown cannot delete them.
-test('every DS Bot style is tagged for the ds-bot client module', () => {
+test('every Cue style is tagged by its group', () => {
   const { window, module } = bench()
-  const { installStyles, installCompiledStyles } = module.exports
+  const { installStyles } = module.exports
   const { document } = window
 
   const plain = installStyles('a{color:red}', 'mentions')
-  installCompiledStyles('.b{position:fixed}', 'shell')
-  const [compiled] = tagged(document, 'shell')
-  for (const style of [plain, compiled]) {
-    assert.equal(style.dataset.dshBot !== undefined, true)
-    assert.equal(style.dataset.plugin, 'ds-bot')
-    assert.equal(style.matches('style:not([data-plugin])'), false)
-  }
-})
-
-test('a compiled style removed from outside comes back, until its cleanup runs', async () => {
-  const { window, module } = bench()
-  const { installCompiledStyles } = module.exports
-  const { document } = window
-  const dispose = installCompiledStyles('.b{position:fixed}', 'shell')
-  const [style] = tagged(document, 'shell')
-  assert.ok(style.isConnected)
-
-  style.remove()
-  await tick()
-  assert.equal(style.isConnected, true, 'the observer puts a removed node back')
-
-  dispose()
-  await tick()
-  assert.equal(style.isConnected, false)
-  // Later page changes cannot resurrect it.
-  const late = document.createElement('style')
-  document.head.appendChild(late)
-  await tick()
-  assert.equal(style.isConnected, false)
-})
-
-test('mounting and unmounting compiled styles twice leaves no extra nodes', async () => {
-  const { window, module } = bench()
-  const { installCompiledStyles } = module.exports
-  const { document } = window
-  for (let round = 0; round < 2; round += 1) {
-    const dispose = installCompiledStyles('.b{position:fixed}', 'shell')
-    await tick()
-    dispose()
-  }
-  await tick()
-  assert.equal(tagged(document).length, 0)
+  assert.equal(plain.dataset.cue, 'mentions')
+  assert.deepEqual(tagged(document, 'mentions'), [plain])
 })
 
 test('the chat-room rule is installed through installStyles, so it is owned too', () => {
   const pane = readFileSync(new URL('../src/client/frame-watch.js', import.meta.url), 'utf8')
   assert.match(pane, /installStyles\(.*'chat-room'/)
-  assert.equal(pane.includes("dataset.dshBot = 'chat-room'"), false)
+  assert.equal(pane.includes("dataset.cue = 'chat-room'"), false)
 })
 
 test('message tools anchor to the bottom of a long reply in both layouts', () => {

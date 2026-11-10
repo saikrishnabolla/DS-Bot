@@ -3,7 +3,7 @@
 // disconnect frames mean reconnect), the Web API (xoxb- token) for sends and
 // edits. A message in an `im` channel is direct; `app_mention` is the group
 // trigger. Buttons are Block Kit actions; block_actions come back as
-// interactive envelopes. Wire details ported from dsh-im (MIT, see NOTICE).
+// interactive envelopes. Wire details ported from Cue-im (MIT, see NOTICE).
 import { chunkMarkdown } from '../format.js'
 
 const API = 'https://slack.com/api/'

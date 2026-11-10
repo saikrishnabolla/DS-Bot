@@ -1,4 +1,4 @@
-import { createElement as h, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { createElement as h, useState } from 'react'
 import { currentPart, isHiddenTurn } from './text.js'
 import { CheckIcon, CopyIcon } from './icons.js'
 import { ModelKeyCard, manageModels } from './model-menu.js'
@@ -7,22 +7,17 @@ import { hostText, t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // A failed turn in a Bot's chat: what went wrong and what the user can do about it,
-// in place of DSH's row. The copy and the fixes go by DSH's stable failure code, never
+// in place of the default error row. The copy and fixes use the host's stable failure code, never
 // by the provider's message, which shows only under Technical details. The chat node
 // carries no HTTP status or request id; the host keeps them, with the failing route's
 // provider, on the Bot as `blocked` while a credential or balance failure stands.
 
-const OFFICIAL = 'deepseek-official'
-const ACCOUNT = 'deepseek-account'
+const OFFICIAL = 'deepseek'
 const TOP_UP_URL = 'https://platform.deepseek.com/top_up'
-// How long a sign-in started here waits for the account's models before the user picks.
-const ACCOUNT_MODELS_WAIT_MS = 20_000
-const SIGNED_OUT = new Set(['ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID'])
-// Failures of an API key route; the account route never has them.
 const KEY_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH'])
 // Until the credentials change the host keeps these on the Bot, and a retry would fail
 // the same way, so Retry waits for the fix.
-const CREDENTIAL_CODES = new Set([...KEY_CODES, ...SIGNED_OUT])
+const CREDENTIAL_CODES = KEY_CODES
 
 // The sentence for one failure. `status` is the HTTP status, when the host has it.
 export function failureText(code, { name, provider, status }) {
@@ -35,31 +30,23 @@ export function failureText(code, { name, provider, status }) {
     case 'QUOTA': return status === undefined
       ? t('{provider} is out of balance or quota.', { provider })
       : t('{provider} is out of balance or quota ({status}).', { provider, status })
-    case 'ACCOUNT_QUOTA': return t('The DeepSeek account balance is too low.')
-    case 'ACCOUNT_SIGN_IN_REQUIRED':
-    case 'ACCOUNT_SIGNED_OUT':
-    case 'ACCOUNT_TOKEN_INVALID': return t('The DeepSeek account sign-in has expired.')
     case 'TRANSPORT':
     case 'TIMEOUT': return t('Could not reach the model service.')
     case 'RATE_LIMIT': return t('Too many requests. Wait a moment, then try again.')
     case 'SERVER': return t('The model service failed.')
-    case 'INTERRUPTED': return t('DS Bot stopped before this turn finished.')
+    case 'INTERRUPTED': return t('Cue stopped before this turn finished.')
     default: return knownFailure(code) ?? t('This turn failed.')
   }
 }
 
 // The fixes one failure offers, the one to try first leading. Each is offered only
-// where this window can carry it out. A Bot moved onto the account route since a key
-// failure has nothing left to fix there.
-export function fixesFor(code, { canSignIn, official, topUp, onAccount = false }) {
-  if (onAccount && KEY_CODES.has(code)) return []
-  if (SIGNED_OUT.has(code)) return canSignIn ? ['sign-in-again'] : ['model']
+// where this window can carry it out.
+export function fixesFor(code, { official }) {
   switch (code) {
-    case 'MISSING_CREDENTIAL': return ['key', canSignIn ? 'sign-in' : null, 'model'].filter(Boolean)
+    case 'MISSING_CREDENTIAL': return ['key', 'model']
     case 'INVALID_CREDENTIAL': return ['rekey', 'model']
-    case 'AUTH': return ['rekey', canSignIn ? 'use-account' : null, 'model'].filter(Boolean)
+    case 'AUTH': return ['rekey', 'model']
     case 'QUOTA': return official ? ['top-up'] : []
-    case 'ACCOUNT_QUOTA': return topUp ? ['top-up'] : []
     default: return []
   }
 }
@@ -69,37 +56,8 @@ export const retryShown = (code, blocked) => !CREDENTIAL_CODES.has(code) || bloc
 const FIX_LABELS = {
   key: () => t('Enter API key'),
   rekey: () => t('Enter the key again'),
-  'sign-in': signedIn => (signedIn ? t('Use the DeepSeek account') : t('Sign in with a DeepSeek account')),
-  'use-account': () => t('Use a DeepSeek account instead'),
-  'sign-in-again': () => t('Sign in again'),
   model: () => t('Pick another model'),
   'top-up': () => t('Top up ↗'),
-}
-
-const NO_SUBSCRIBE = () => () => {}
-const NO_VIEW = () => null
-
-// The shell account plugin's view of the DeepSeek account: its sign-in status and links.
-function useAccountView(actions) {
-  const entry = actions.signInEntry?.() ?? null
-  const ops = useMemo(() => entry?.inject?.() ?? {}, [entry])
-  const source = ops.hooks?.account
-  const read = source ? () => source.getSnapshot()?.view ?? null : NO_VIEW
-  return useSyncExternalStore(source?.subscribe ?? NO_SUBSCRIBE, read, read)
-}
-
-// The DeepSeek account's own top-up page.
-const topUpOf = (view) => {
-  const url = view?.links?.topUpUrl
-  return typeof url === 'string' && url.startsWith('https://') ? url : undefined
-}
-
-// The account route's model for a Bot moved onto it: the DSH default when it is one,
-// else the first one listed. The account lists its models only once it is signed in,
-// a moment after the sign-in itself.
-export function accountModel(roster) {
-  const models = (roster.models ?? []).filter(model => model.provider === ACCOUNT)
-  return (models.find(model => model.ref === roster.defaultModel) ?? models[0])?.ref
 }
 
 const providerOf = (bot, roster) => {
@@ -107,9 +65,9 @@ const providerOf = (bot, roster) => {
   if (!ref) return undefined
   return (roster.models ?? []).find(model => model.ref === ref)?.provider ?? ref.split('/')[0]
 }
-// A provider without a key may not be in the catalog yet, so DeepSeek's own two routes
-// keep a readable name instead of their id.
-const KNOWN_PROVIDERS = { 'deepseek-official': 'DeepSeek', 'deepseek-account': 'DeepSeek account' }
+// A provider without a key may not be in the catalog yet, so the built-in DeepSeek
+// route keeps a readable name instead of its id.
+const KNOWN_PROVIDERS = { deepseek: 'DeepSeek' }
 const providerName = (roster, provider) => (provider === undefined
   ? t('The model service')
   : (roster.models ?? []).find(model => model.provider === provider)?.providerName
@@ -121,7 +79,7 @@ export function failureFacts(data, blocked) {
   if (data.code) facts.push(['Code', t('Code'), data.code])
   if (blocked?.status !== undefined) facts.push(['HTTP status', t('HTTP status'), String(blocked.status)])
   if (blocked?.requestId) facts.push(['Request ID', t('Request ID'), blocked.requestId])
-  // DSH already blanks an AUTH message; it never shows here either way.
+  // Authentication messages can contain sensitive provider details.
   if (data.code !== 'AUTH' && data.message) facts.push(['Message', t('Provider message'), data.message])
   return facts
 }
@@ -145,63 +103,27 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
   const bot = roster.byId?.[sessionId]
   // A later turn, or a later part of the Bot's chat, has moved past this failure.
   const later = useTurnClock(state => Object.keys(state[sessionId] ?? {}).some(turn => Number(turn) > data.turn))
-  const account = useAccountView(actions)
-  const signedIn = account?.status === 'credential-stored'
-  const topUp = topUpOf(account)
   const [keying, setKeying] = useState(false)
   const [retry, setRetry] = useState('idle')
   const [error, setError] = useState('')
-  // A sign-in started here to leave a failing key route, with the model the Bot was on.
-  const [joining, setJoining] = useState(null)
   const blocked = bot?.blocked?.code === data.code ? bot.blocked : undefined
   const provider = blocked?.provider ?? providerOf(bot, roster)
   const text = failureText(data.code, { name: bot?.name ?? t('This Bot'), provider: providerName(roster, provider), status: blocked?.status })
   const facts = failureFacts(data, blocked)
   const current = bot !== undefined && currentPart(bot) === sessionId && !later
-  // The key route never takes the account's credential, so a sign-in alone leaves the Bot
-  // failing; it moves onto the account route. With no account model listed yet, the
-  // user picks one.
-  const moveToAccount = () => {
-    const model = accountModel(roster)
-    if (model === undefined) { actions.showDetails?.(sessionId); return }
-    if (model === bot.model) return
-    setError('')
-    void Promise.resolve(actions.updateBot(bot.id, { model })).catch(failure => setError(hostText(failure?.message ?? String(failure))))
-  }
-  const listed = accountModel(roster)
-  useEffect(() => {
-    if (joining === null || !signedIn) return undefined
-    // A model the user picked meanwhile stands.
-    if (bot === undefined || bot.model !== joining.from) { setJoining(null); return undefined }
-    if (listed !== undefined) { setJoining(null); moveToAccount(); return undefined }
-    // The account's models come with the next listing; without them for a while, the
-    // user picks.
-    void actions.refreshModels?.()
-    const timer = setTimeout(() => { setJoining(null); actions.showDetails?.(sessionId) }, ACCOUNT_MODELS_WAIT_MS)
-    return () => clearTimeout(timer)
-  }, [joining, signedIn, listed])
   const settled = () => h('div', { className: 'bt-fail', 'data-settled': '', role: 'status' },
     h('div', { className: 'bt-fail-head' }, h('span', { className: 'bt-fail-dot', 'aria-hidden': true }), h('span', { className: 'bt-fail-text' }, text)),
     h(TechnicalDetails, { facts }))
   if (!current) return settled()
   const official = provider === OFFICIAL
-  const canSignIn = typeof actions.signIn === 'function' && actions.canSignIn?.() === true
   const keyHere = typeof actions.setProviderKey === 'function' && provider !== undefined
-  const keyElsewhere = official && actions.openHarnessOnboarding ? () => actions.openHarnessOnboarding(OFFICIAL) : manageModels(actions)
-  const viaAccount = () => {
-    if (signedIn) { moveToAccount(); return }
-    setJoining({ from: bot.model })
-    actions.signIn()
-  }
+  const keyElsewhere = manageModels(actions)
   const runs = {
     key: keyHere ? () => setKeying(value => !value) : keyElsewhere,
     rekey: keyHere ? () => setKeying(value => !value) : keyElsewhere,
-    'sign-in': viaAccount,
-    'use-account': viaAccount,
-    'sign-in-again': () => actions.signIn(),
     model: actions.showDetails ? () => actions.showDetails(sessionId) : undefined,
   }
-  const fixes = fixesFor(data.code, { canSignIn, official, topUp: topUp !== undefined, onAccount: provider === ACCOUNT }).filter(fix => fix === 'top-up' || runs[fix] !== undefined)
+  const fixes = fixesFor(data.code, { official }).filter(fix => fix === 'top-up' || runs[fix] !== undefined)
   // A turn another Bot asked for answers that Bot, which was already told it failed.
   // Retry would answer the user's last message instead, so it is not offered.
   const asked = isHiddenTurn(roster, sessionId, data.turn)
@@ -217,10 +139,10 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
   const button = (fix, primary) => {
     const className = primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm'
     if (fix === 'top-up') {
-      return h('a', { key: fix, className: `${className} bt-fail-link`, href: data.code === 'ACCOUNT_QUOTA' ? topUp : TOP_UP_URL, target: '_blank', rel: 'noopener noreferrer' }, FIX_LABELS[fix]())
+      return h('a', { key: fix, className: `${className} bt-fail-link`, href: TOP_UP_URL, target: '_blank', rel: 'noopener noreferrer' }, FIX_LABELS[fix]())
     }
     const toggles = keyHere && (fix === 'key' || fix === 'rekey')
-    return h('button', { key: fix, type: 'button', className, 'aria-expanded': toggles ? keying : undefined, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
+    return h('button', { key: fix, type: 'button', className, 'aria-expanded': toggles ? keying : undefined, onClick: () => runs[fix]() }, FIX_LABELS[fix]())
   }
   const retryButton = primary => h('button', { key: 'retry', type: 'button', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : t('Retrying…'))
   const row = retryFirst

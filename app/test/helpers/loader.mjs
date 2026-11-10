@@ -1,5 +1,5 @@
 // The loader of the main process test: it puts the test doubles in place of the packages
-// that would need a display, a DSH install or the network. This loader runs in a thread of
+// that would need a display, a Cue install or the network. This loader runs in a thread of
 // its own (module.register), for the Node versions without module.registerHooks.
 const here = new URL('./', import.meta.url)
 const fake = (name) => ({ url: new URL(name, here).href, shortCircuit: true })

@@ -3,7 +3,10 @@ import { markNoted, noteClientError } from './diagnostics.js'
 
 const ROUTE = 'api/bot'
 // Refusals carry a message meant for the user, who sees it where they acted.
-const REFUSALS = new Set(['bot/refused', 'bot/invalid', 'bot/read-only', 'bot/not-found', 'bot/browser-off'])
+const REFUSALS = new Set([
+  'bot/refused', 'bot/invalid', 'bot/read-only', 'bot/not-found', 'bot/browser-off',
+  'session/queue-item-not-found', 'session/steer-unavailable', 'session/queue-action-invalid',
+])
 
 export const call = async (endpoint, payload, signal) => {
   let response
@@ -20,7 +23,7 @@ export const call = async (endpoint, payload, signal) => {
     if (error?.name === 'AbortError') throw error
     noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: 'NETWORK' }))
     // The browser's own text ("Failed to fetch", "Load failed") does not say what failed.
-    throw markNoted(Object.assign(new Error(t('Could not reach DS Bot. Check that it is still running.')), { code: 'NETWORK', cause: error }))
+    throw markNoted(Object.assign(new Error(t('Could not reach Cue. Check that it is still running.')), { code: 'NETWORK', cause: error }))
   }
   if (!response.ok) {
     const error = Object.assign(new Error(hostText(`HTTP ${response.status}`)), { code: `HTTP_${response.status}` })

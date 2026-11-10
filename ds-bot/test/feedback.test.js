@@ -38,7 +38,7 @@ function page(window) {
       throw new Error(`no platform module ${name}`)
     },
   })
-  const actions = { diagnostics: async () => ({ markdown: '| DS Bot | 0.1.6 |', issuesUrl: ISSUES, entries: [], total: 0 }) }
+  const actions = { diagnostics: async () => ({ markdown: '| Cue | 0.1.6 |', issuesUrl: ISSUES, entries: [], total: 0 }) }
   let pending
   const run = (promise) => { pending = promise; return promise }
   const tree = module.exports.FeedbackPage({ actions, run, Section: 'section', Row: 'row' })
@@ -57,7 +57,7 @@ function page(window) {
 // the page said the browser blocked the new window.
 test('on the Desktop, "Report on GitHub" hands the issue address to the system browser', async () => {
   const opened = []
-  const window = { dshDesktop: { protocolVersion: 1 }, open: (url = '') => { opened.push(String(url)); return null } }
+  const window = { open: () => ({ opener: null, close() {}, location: { set href(url) { opened.push(String(url)) } } }) }
   const { notes, report } = page(window)
   await report()
   assert.equal(opened.length, 1)

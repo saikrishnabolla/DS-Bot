@@ -66,7 +66,7 @@ test('projects failures, reset and compaction without exposing compaction summar
   assert.deepEqual(items.map(item => item.kind), ['bot', 'failure', 'divider', 'divider', 'user', 'divider', 'failure'])
   assert.deepEqual(items.filter(item => item.kind === 'divider').map(item => item.reason), ['reset', 'reset', 'compaction'])
   assert.equal(items.some(item => item.text === 'private summary'), false)
-  assert.deepEqual(items.at(-1), { kind: 'failure', reason: 'interrupted', detail: 'host stopped', taskId: '19', inputs: ['7'], source: 'run' })
+  assert.deepEqual(items.at(-1), { kind: 'failure', reason: 'interrupted', code: 'INTERRUPTED', detail: 'host stopped', taskId: '19', inputs: ['7'], source: 'run', entryId: 'run-failure:19' })
 })
 
 test('projects stable append-only stream events and resets a rewritten partial', () => {

@@ -40,7 +40,7 @@ test('leaving voice mode aborts the active transcription', async () => {
 
 test('a reply published synchronously during subscribe is spoken once', () => {
   const consumed = []
-  // DSH's target publishes on subscribe, before watch() returns the disposer.
+  // Cue's target publishes on subscribe, before watch() returns the disposer.
   const watch = (listener) => { listener(); return () => {} }
   const off = watchReply(() => 'the answer', watch, text => consumed.push(text))
   assert.deepEqual(consumed, ['the answer'])

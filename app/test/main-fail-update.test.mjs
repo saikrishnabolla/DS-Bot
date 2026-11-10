@@ -1,7 +1,7 @@
 // A start that fails while a new version downloads offers it on the failure page's update banner
 // instead of a message box (start-window §7): the download's progress, 〔重试〕 after a failed
 // download, 「手动下载」, then the install. The Electron parts are test doubles: no display, no
-// DSH, no data of the user.
+// Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { app, state } from './helpers/fake-electron.mjs'

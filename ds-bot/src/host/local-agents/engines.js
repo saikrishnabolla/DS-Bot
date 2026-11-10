@@ -8,7 +8,7 @@ export const KINDS = ['acp', 'codex', 'claude']
 // `signedIn` says how to tell whether the CLI is signed in: a command that prints
 // it, or a credential file under the home folder (see probeSignIn).
 // Local-agent routes live under their own prefix. Before it they shared the
-// provider namespace, so a CLI named like a provider DSH or another plugin
+// provider namespace, so a CLI named like a provider Cue or another plugin
 // ships (`opencode`) took that provider's name and the LLM service failed to
 // load with a duplicate adapter.
 export const ROUTE_PREFIX = 'local-'
@@ -32,7 +32,7 @@ export const ENGINES = Object.fromEntries(Object.entries(CLIS).map(([id, spec]) 
 export const CUSTOM_PREFIX = `${ROUTE_PREFIX}acp-`
 
 // LEGACY: the route a ref saved before the prefix names, or undefined when its
-// provider was never a local-agent route. `opencode` is also a provider DSH
+// provider was never a local-agent route. `opencode` is also a provider Cue
 // ships, so an old `opencode/...` ref is ambiguous: the caller decides.
 const OLD_CUSTOM_PREFIX = 'acp-'
 export const AMBIGUOUS_OLD_ROUTES = new Set(['opencode'])
@@ -73,7 +73,7 @@ export function validateCustom({ name, command, args }) {
   return clean
 }
 
-// The permission preset DS Bot gives the Bot, mapped to each driver's mode.
+// The permission preset Cue gives the Bot, mapped to each driver's mode.
 // An ACP agent that lists its modes gets one of them or none: an agent with no
 // matching mode keeps its own (see acp.js).
 export const MODES = {

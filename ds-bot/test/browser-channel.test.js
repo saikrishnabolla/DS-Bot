@@ -94,7 +94,7 @@ test('pageText pages long text and lists controls on the first page only', () =>
     text: 'x'.repeat(25),
     items: [
       { role: 'link', name: 'Docs', href: 'https://example.com/docs' },
-      { role: 'textbox', name: 'Search', value: 'dsh' },
+      { role: 'textbox', name: 'Search', value: 'Cue' },
       { role: 'button', name: 'Go', disabled: true },
     ],
   }
@@ -104,7 +104,7 @@ test('pageText pages long text and lists controls on the first page only', () =>
   assert.match(first, /Selected by the user: "picked words"/)
   assert.match(first, /Text \(characters 0–10 of 25; call read_browser with from: 10 for more\):\nxxxxxxxxxx\n/)
   assert.match(first, /\[1\] link "Docs" → https:\/\/example\.com\/docs/)
-  assert.match(first, /\[2\] textbox "Search" \(value "dsh"\)/)
+  assert.match(first, /\[2\] textbox "Search" \(value "Cue"\)/)
   assert.match(first, /… and 1 more/)
   const last = pageText(page, { from: 20, size: 10 })
   assert.match(last, /Text \(characters 20–25 of 25\):\nxxxxx$/)

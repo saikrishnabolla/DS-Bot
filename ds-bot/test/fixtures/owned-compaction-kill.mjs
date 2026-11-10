@@ -7,7 +7,7 @@ import { OwnedHost } from '../../src/engine/owned-host.js'
 const [mode, dataDir, savedTaskId] = process.argv.slice(2)
 const uiDir = join(dataDir, 'ui')
 await mkdir(uiDir, { recursive: true })
-await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
 
 const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
 const faux = fauxProvider()

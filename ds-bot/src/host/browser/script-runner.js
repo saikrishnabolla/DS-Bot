@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 export const SCRIPT_TIMEOUT = 20_000
 const CHILD = fileURLToPath(new URL('./script-child.js', import.meta.url))
 
-// The child sees none of the host's environment (keys, tokens, DSH_HOME). Windows needs
+// The child sees none of the host's environment (keys, tokens, data paths). Windows needs
 // SystemRoot to start a process; the desktop app's host is Electron run as Node, and so
 // must the child be.
 function childEnv() {

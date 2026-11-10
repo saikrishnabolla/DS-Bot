@@ -1,11 +1,9 @@
-// DS Bot: a team of long-lived Bots on top of ordinary dsh root Sessions.
-// Every Bot is one root Session; the roster, rooms, and the bot-to-bot exchange log live
-// in one JSON file under DSH_HOME so they survive restarts without new Session event types.
+// Cue's standalone runtime. Every Bot owns a durable conversation; the roster, rooms,
+// and Bot-to-Bot exchange log live in one JSON file under Cue's data directory.
 import { join } from 'node:path'
 import * as diagnostics from './src/host/diagnostics.js'
 import * as store from './src/host/store.js'
 import * as models from './src/host/models.js'
-import * as providers from './src/host/providers.js'
 import * as permissions from './src/host/permissions.js'
 import * as turns from './src/host/turns.js'
 import * as steer from './src/host/steer.js'
@@ -49,27 +47,20 @@ import * as localAgents from './src/host/local-agents/index.js'
 
 export { COLORS } from './src/host/constants.js'
 
-export const name = 'ds-bot'
-export const inject = ['llm', 'tools', 'systemPrompt', 'sessionController', 'sessions', 'sessionTitle', 'workspaceRegistry', 'connection']
-
 // Each module's install(rt) registers its listeners, tools, and effects, and puts on `rt`
 // the functions other modules call; they call them through `rt` at run time, never during
 // install. Listeners run and tools are listed in registration order, so this order holds:
 // usage meters model requests after every listener that rewrites them. privacy checks a
 // call before the hooks of tools do, so a closed call never reaches a card they show.
-const MODULES = [diagnostics, store, models, providers, permissions, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, groupLog, goals, approvals, resume, memory, parts, images, avatarLibrary, secrets, connectors, capabilities, learning, schedules, browser, browserPlugins, computer, usage, update, thinking, feed, im, channel, officeSkills, goalSkills, localAgents]
-
-export function apply(ctx, config = {}) {
-  createRuntime(ctx, config)
-}
+const MODULES = [diagnostics, store, models, permissions, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, groupLog, goals, approvals, resume, memory, parts, images, avatarLibrary, secrets, connectors, capabilities, learning, schedules, browser, browserPlugins, computer, usage, update, thinking, feed, im, channel, officeSkills, goalSkills, localAgents]
 
 export function createRuntime(ctx, config = {}) {
-  const dshHome = config.dataDir ?? folders.dshHomeOf(process.env.DSH_HOME)
-  const home = config.home ?? join(dshHome, 'bot')
+  const dataDir = config.dataDir ?? (config.home === undefined ? folders.dataRootOf(process.env.CUE_HOME) : config.home)
+  const home = config.home ?? join(dataDir, 'bot')
   const rt = {
     ctx,
     config,
-    dshHome,
+    dataDir,
     home,
     statePath: join(home, 'state.json'),
     // The Bot-only tools each module defines; tools.js registers them in each
@@ -80,14 +71,13 @@ export function createRuntime(ctx, config = {}) {
       mainRole: config.mainRole ?? 'Chief of Staff',
     },
   }
+  Object.assign(rt, typeof config.modelBoundary === 'function' ? config.modelBoundary(rt) : config.modelBoundary ?? {})
   for (const module of MODULES) module.install(rt)
   // A live Agent can be scoped before the last module has added its tools (the memory
   // module starts a load during install): complete the scope now that every tool is in.
   rt.syncScopedTools?.()
-  // dsh can load this plugin again in place, its files replaced while it runs: dsh
-  // keeps the turns and child agents it had, while this runtime starts with empty
-  // maps. Adopt them now, so Stop, the group view and a late child settle still see
-  // the work. A fresh start has nothing to adopt.
+  // Durable work can survive a runtime restart while the in-memory maps start empty.
+  // Adopt it now so Stop, the group view, and a late child result still see the work.
   void rt.adoptLiveWork?.().catch(error => rt.warn?.('ds-bot: adopting the work still running failed: %s', error))
   return rt
 }

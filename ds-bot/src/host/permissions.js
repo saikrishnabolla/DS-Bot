@@ -2,7 +2,7 @@
 // Session it speaks from, so a fresh part or a new group Session keeps it. A group may
 // set one preset for all its members there, in place of each member's own, as it may
 // set one working folder.
-// DSH offers Auto review for the current Session only, so neither a Bot nor a group keeps it.
+// Cue offers Auto review for the current Session only, so neither a Bot nor a group keeps it.
 const SESSION_ONLY = 'auto'
 
 export function install(rt) {
@@ -10,7 +10,7 @@ export function install(rt) {
 
   const presets = () => ctx.get?.('permissionPresets')
 
-  // The presets DSH offers, or undefined when the profile has none.
+  // The presets Cue offers, or undefined when the profile has none.
   function permissionCatalog() {
     const service = presets()
     if (service === undefined) return undefined
@@ -30,7 +30,7 @@ export function install(rt) {
   }
 
   // Sets the preset on one of the Bot's Sessions: its group's there, else its own; a Bot
-  // without one keeps DSH's default. `room` is for a group Session not indexed yet.
+  // without one keeps Cue's default. `room` is for a group Session not indexed yet.
   // Returns the preset it set, or undefined when it set none.
   async function applyPermission(bot, sessionId, room = roomOfSession(sessionId)) {
     const name = () => room?.permission ?? bot.permission
@@ -40,7 +40,7 @@ export function install(rt) {
 
   function checkPreset(name, whose) {
     const service = presets()
-    if (service === undefined) throw new Error('Permissions are not available in this DeepSeek Harness')
+    if (service === undefined) throw new Error('Permissions are not available in this Cue host')
     const wanted = String(name ?? '').trim()
     if (wanted === SESSION_ONLY) throw new Error(`Auto review applies to one Session only and cannot be ${whose} permission`)
     service.resolve(wanted)

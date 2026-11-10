@@ -31,7 +31,7 @@ const teamHome = (extra = {}) => {
   writeFileSync(join(home, 'state.json'), JSON.stringify({ ...TEAM, ...extra }))
   return home
 }
-const mounts = ctx => { const list = []; ctx.plugin = (given, config) => { const m = { config, disposed: false }; list.push(m); return { await: async () => {}, dispose: () => { m.disposed = true } } }; return list }
+const mounts = ctx => { const list = []; ctx.mountMcp = async (config) => { const m = { config, disposed: false }; list.push(m); return { await: async () => {}, dispose: () => { m.disposed = true } } }; return list }
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
 
 // --- oauth.js --------------------------------------------------------------
@@ -421,8 +421,6 @@ test('connector-set offFor yields deny prefixes; empty client id keeps the token
 test('custom connectors get unique ids that never collide with the catalog', async (t) => {
   const home = teamHome()
   const ctx = fakeContext()
-  const plugin = { name: 'mcp', apply() {} }
-  ctx.get = name => name === 'loader' ? { import: async () => ({ default: plugin }), unwrapExports: e => e.default } : undefined
   const list = mounts(ctx)
   const rt = createRuntime(ctx, { home, github: false })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true }) })
@@ -736,7 +734,7 @@ test('163 and 126 presets send the IMAP ID identity', () => {
   for (const domain of ['163.com', '126.com']) {
     const options = imapOptions({ address: `${'me'}@${domain}`, imap: { host: `imap.${domain}`, port: 993, secure: true } }, { password: 'x' })
     assert.deepEqual(options.id, IMAP_ID)
-    assert.equal(options.id.vendor, 'DS Bot')
+    assert.equal(options.id.vendor, 'Cue')
   }
 })
 

@@ -1,4 +1,4 @@
-// Delivery: how one Bot, the user, or DS Bot itself puts a message into a Bot Session.
+// Delivery: how one Bot, the user, or Cue itself puts a message into a Bot Session.
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '../engine/messages.js'
 import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
@@ -23,10 +23,10 @@ export function install(rt) {
     if (deferred && role === 'report') return `[Group chat "${roomName}" · replies to your post · you read them during your last task; go on with the work they are for now${goesOn}]`
     if (deferred && role !== 'room') return `[Message from ${fromName} · you read it during your last task; answer it now]`
     if (retried && role !== 'room') return '[Your last reply wrote a tool call as text, so nothing ran]'
-    if (resumed && role === 'resume') return '[DeepSeek Harness restarted while you were working]'
-    if (resumed && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted while you were working on it]`
-    if (resent && role === 'reply') return `[Reply from ${fromName} · DeepSeek Harness restarted before it could reach you]`
-    if (resent && role !== 'room') return `[Message from ${fromName} · DeepSeek Harness restarted before it could reach you]`
+    if (resumed && role === 'resume') return '[Cue restarted while you were working]'
+    if (resumed && role !== 'room') return `[Message from ${fromName} · Cue restarted while you were working on it]`
+    if (resent && role === 'reply') return `[Reply from ${fromName} · Cue restarted before it could reach you]`
+    if (resent && role !== 'room') return `[Message from ${fromName} · Cue restarted before it could reach you]`
     if (role === 'reply') return `[Reply from ${fromName}${goesOn}]`
     if (role === 'stopped') return `[Stopped by ${fromName}]`
     if (role === 'room') return `[Group chat "${roomName}" · ${note}]`
@@ -53,7 +53,7 @@ export function install(rt) {
   // `askedBy` is the member whose @mention called a group turn (groups.js).
   // `fromRoomId`: the group whose Session the sender wrote from; the reply goes back
   // to that Session (turns.js). `images` and `files` go along as image and file blocks,
-  // which DSH projects for the recipient's model and tools. `length`: the whole message's
+  // which Cue projects for the recipient's model and tools. `length`: the whole message's
   // length when it went as a file (attachLong). `work`: the work (handoffs.js) a
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange.
@@ -134,9 +134,9 @@ export function install(rt) {
     return { text: entry.text, whole: false }
   }
 
-  // A message a Bot sends past MESSAGE_INLINE_MAX goes as a DSH file: it is stored once,
+  // A message a Bot sends past MESSAGE_INLINE_MAX goes as a Cue file: it is stored once,
   // not in every Session it reaches, and the model reads it with its file tools when it
-  // needs it. Undefined when this DSH cannot store files.
+  // needs it. Undefined when this Cue cannot store files.
   async function attachLong(text, name) {
     if (text.length <= MESSAGE_INLINE_MAX) return { text, files: [] }
     try {

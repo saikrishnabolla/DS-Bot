@@ -1,13 +1,13 @@
-// One right-side panel at a time: the Bot drawer and DSH's right column never
+// One right-side panel at a time: the Bot drawer and Cue's right column never
 // share the window (public#456: both open squeezed the conversation). Whichever
 // the user asked for last wins.
 
-// DSH's AppFrame marks the column on the frame element: `data-rightbar-collapsed`
+// Cue's AppFrame marks the column on the frame element: `data-rightbar-collapsed`
 // while it has no track, `data-rightbar-fullscreen` while a narrow viewport
 // presents it fullscreen — with no track, so the two marks come together and it
 // still counts as open. `data-rightbar-col` is the column itself, mounted
 // whenever the frame is, so a frame with neither mark is open. These names are
-// DSH's frame attributes.
+// Cue's frame attributes.
 export const RIGHTBAR_ATTRIBUTES = ['data-rightbar-collapsed', 'data-rightbar-fullscreen']
 
 // The column's on-screen state, read off the document.

@@ -32,7 +32,7 @@ test('the whale is only a stored look: the browser gives no Bot a look by its pl
 test('Bot settings is the only settings entry; nothing is called Team settings', () => {
   const dir = new URL('../src/client/', import.meta.url)
   const sources = readdirSync(dir).filter(name => name.endsWith('.js')).map(name => [name, readFileSync(new URL(name, dir), 'utf8')])
-  for (const [name, text] of [...sources, ['client.js', readFileSync(new URL('../client.js', import.meta.url), 'utf8')]]) {
+  for (const [name, text] of sources) {
     assert.ok(!text.includes('Team settings'), `${name} still names Team settings`)
   }
   const text = name => sources.find(([file]) => file === name)[1]

@@ -17,15 +17,15 @@ function bench() {
 test('every window reaches the host model providers, and key changes read the team again', async () => {
   const { actions, sent, pulls } = bench()
   await actions.providers()
-  await actions.setProviderKey('deepseek-official', 'sk-test-ok')
-  await actions.setProviderKey('deepseek-official', null)
+  await actions.setProviderKey('deepseek', 'sk-test-ok')
+  await actions.setProviderKey('deepseek', null)
   await actions.addProvider({ provider: 'router', key: 'k' })
   await actions.providerModels({ baseURL: 'https://gateway.example/v1', api: 'openai-completions', key: '' })
   await actions.removeProvider('router')
   assert.deepEqual(sent, [
     ['providers', undefined],
-    ['provider-key', { provider: 'deepseek-official', value: 'sk-test-ok' }],
-    ['provider-key', { provider: 'deepseek-official', value: null }],
+    ['provider-key', { provider: 'deepseek', value: 'sk-test-ok' }],
+    ['provider-key', { provider: 'deepseek', value: null }],
     ['provider-add', { provider: 'router', key: 'k' }],
     ['provider-models', { baseURL: 'https://gateway.example/v1', api: 'openai-completions', key: '' }],
     ['provider-remove', { provider: 'router' }],
@@ -42,17 +42,18 @@ test('Retry after a failed turn asks the host to resume the Bot, with nothing bu
 })
 
 test('send keeps canonical chat references separate from visible text', async () => {
-  const { actions, sent } = bench()
-  const reference = { sessionId: 'research', label: 'Chat with Researcher', ref: '@[Chat with Researcher](dsh-session:InJlc2VhcmNoIg)' }
+  const { actions, sent, pulls } = bench()
+  const reference = { sessionId: 'research', label: 'Chat with Researcher', ref: '@[Chat with Researcher](cue-session:InJlc2VhcmNoIg)' }
   await actions.send('chief', 'Use @Chat with Researcher', [], [reference])
   assert.deepEqual(sent, [['send', {
     sessionId: 'chief',
     content: [{ type: 'text', text: 'Use @Chat with Researcher' }],
     references: [reference],
   }]])
+  assert.equal(pulls(), 0)
 })
 
-test('openModels opens DS Bot settings on the Models page and closes the menus', () => {
+test('openModels opens Cue settings on the Models page and closes the menus', () => {
   const { actions, ui } = bench()
   actions.openModels()
   assert.deepEqual(ui.getSnapshot().settings, { page: 'models', id: null })

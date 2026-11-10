@@ -1,7 +1,7 @@
-// The Bot browsers' webviews in the app window, adapted from DeepSeek Harness
-// apps/desktop/src/browser-guests.ts (see NOTICE). ds-bot asks for a lease on a storage key
+// The Bot browsers' webviews in the app window, adapted from the upstream desktop
+// browser implementation listed in NOTICE. ds-bot asks for a lease on a storage key
 // (`bot:<id>`) and creates a webview that carries the lease; only such a webview attaches, and it
-// gets fixed preferences. Unlike DSH Desktop's, a key's storage is kept on disk: a Bot stays signed
+// gets fixed preferences. A key's storage is kept on disk: a Bot stays signed
 // in after a restart until ds-bot forgets the key.
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -39,7 +39,7 @@ export function requestAllowed(value, origin) {
 }
 
 const keyOf = (key) => {
-  if (typeof key !== 'string' || key.length === 0 || key.length > KEY_MAX) throw new Error('DS Bot: a browser storage key is required')
+  if (typeof key !== 'string' || key.length === 0 || key.length > KEY_MAX) throw new Error('Cue: a browser storage key is required')
   return key
 }
 
@@ -85,10 +85,10 @@ export class BotBrowserGuests {
 
   /** Close a lease's guest; its partition's storage stays. */
   async release(owner, id) {
-    if (typeof id !== 'string') throw new Error('DS Bot: invalid browser lease')
+    if (typeof id !== 'string') throw new Error('Cue: invalid browser lease')
     const lease = this.#leases.get(id)
     if (lease === undefined) return
-    if (lease.owner !== owner) throw new Error('DS Bot: the browser lease belongs to another window')
+    if (lease.owner !== owner) throw new Error('Cue: the browser lease belongs to another window')
     this.#leases.delete(id)
     const guest = lease.guest
     if (guest !== undefined && !guest.isDestroyed()) {

@@ -171,7 +171,7 @@ export function LearningDock(props) {
 
 export const LEARNING_CSS = `
 .bt-learning-stack{display:flex;flex-direction:column;gap:4px}
-.bt-learning-dock{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto;box-sizing:border-box}
+.bt-learning-dock{width:100%;max-width:var(--cue-chat-content-width,748px);margin:0 auto;box-sizing:border-box}
 .bt-learning-card .bt-q-head{gap:12px}
 .bt-learning-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--bt-hover);color:var(--bt-ink-2)}
 .bt-learning-icon svg{width:18px;height:18px}

@@ -6,7 +6,18 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, test } from 'node:test'
-import { createShell } from '../src/shell.mjs'
+import { PREVIOUS_PRODUCT_NAME } from '../src/legacy.mjs'
+import { createShell, SHELL_TEXT } from '../src/shell.mjs'
+
+test('the desktop shell carries every supported interface locale', () => {
+  assert.deepEqual(Object.keys(SHELL_TEXT), ['en', 'zh', 'zh-TW', 'ja', 'ko', 'es', 'fr', 'de'])
+  const keys = Object.keys(SHELL_TEXT.en).sort()
+  for (const [language, messages] of Object.entries(SHELL_TEXT)) {
+    assert.deepEqual(Object.keys(messages).sort(), keys, `${language}: keys differ`)
+    assert.equal(messages.tooltip, 'Cue')
+    assert.doesNotMatch(JSON.stringify(messages), new RegExp(`DeepSeek Harness|${PREVIOUS_PRODUCT_NAME}|\\bDSH\\b`, 'u'))
+  }
+})
 
 /** A window like Electron's: the shell shows, hides, focuses and minimizes it. */
 class FakeWindow extends EventEmitter {
@@ -62,7 +73,7 @@ function harness({ platform = 'win32', trayFails = false, busy = false, ready = 
     },
     platform,
     messages: () => ({
-      tooltip: 'DS Bot', open: 'Open', quit: 'Quit', notice: 'The app goes on.', noticeConfirm: 'OK',
+      tooltip: 'Cue', open: 'Open', quit: 'Quit', notice: 'The app goes on.', noticeConfirm: 'OK',
       fallback: 'The system tray is not available, so the app cannot stay in the background. Do you want to end it?', cancel: 'Cancel',
     }),
     trayImage: () => {

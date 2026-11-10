@@ -4,12 +4,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { apply } from '../index.js'
+import { createRuntime } from '../index.js'
 import { signIn } from '../src/host/connectors/index.js'
 import { fakeContext } from './fake-ctx.js'
 
 const fresh = () => `ghp_${randomBytes(16).toString('hex')}`
 const answer = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body })
+
+test('connector mounts contain no plugin-loader compatibility path', () => {
+  const source = readFileSync(new URL('../src/host/connectors/index.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /\.plugin\(|get\?\.\(['"]loader['"]\)|@earendil-works\/pi-mcp/u)
+})
 
 test('signIn asks GitHub who owns the token', async () => {
   const token = fresh()
@@ -40,18 +45,12 @@ const teamHome = () => {
   return home
 }
 
-// A loader that hands out a fake MCP client and records each mount.
+// The owned MCP mount records each connector mount.
 function setup({ fail = false, github = { api: 'https://gh.test' } } = {}) {
   const home = teamHome()
   const mounts = []
-  const plugin = { name: 'mcp-client', apply() {} }
-  const loader = {
-    import: async name => { assert.equal(name, '@earendil-works/pi-mcp'); return { default: plugin } },
-    unwrapExports: exports => exports.default,
-  }
-  const ctx = fakeContext({ services: { loader } })
-  ctx.plugin = (given, config) => {
-    assert.equal(given, plugin)
+  const ctx = fakeContext()
+  ctx.mountMcp = async (config) => {
     const mount = { config, disposed: false }
     mounts.push(mount)
     return {
@@ -60,7 +59,7 @@ function setup({ fail = false, github = { api: 'https://gh.test' } } = {}) {
     }
   }
   capture(ctx)
-  apply(ctx, { home, github })
+  createRuntime(ctx, { home, github })
   return { ctx, home, mounts }
 }
 
@@ -155,7 +154,7 @@ test('github: false hides only the GitHub connector', async (t) => {
   const home = teamHome()
   const ctx = fakeContext()
   capture(ctx)
-  apply(ctx, { home, github: false })
+  createRuntime(ctx, { home, github: false })
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
   const rows = (await call(ctx, 'state', {})).value.connectors.connectors
   assert.equal(rows.find(row => row.id === 'github'), undefined)

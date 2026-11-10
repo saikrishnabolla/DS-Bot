@@ -1,5 +1,5 @@
 import { createElement as h, useRef, useState } from 'react'
-import { FishLogo } from './dsh-primitives.js'
+import { FishLogo } from './ui-primitives.js'
 import { PlusIcon, PeopleIcon, ArrowUpIcon } from './icons.js'
 import { AdminStar, BotMark } from './mark.js'
 import { useEscape } from './overlay-hooks.js'

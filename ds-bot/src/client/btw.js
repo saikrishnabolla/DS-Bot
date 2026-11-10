@@ -1,7 +1,7 @@
 // The earlier `/btw` aside cards. Their contents are read-only; the user can
 // delete a card when it is no longer wanted.
 import { createElement as h, useEffect, useState } from 'react'
-import { MarkdownText } from './dsh-primitives.js'
+import { MarkdownText } from './ui-primitives.js'
 import { hostText, t } from './i18n.js'
 import { CloseIcon } from './icons.js'
 import { messageClock } from './text.js'

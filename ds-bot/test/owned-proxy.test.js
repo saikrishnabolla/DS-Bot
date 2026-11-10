@@ -15,7 +15,7 @@ const listen = server => new Promise((resolve, reject) => {
 
 const close = server => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
 
-test('owned proxy resolves launch variables with DeepSeek Harness precedence and safe diagnostics', () => {
+test('owned proxy resolves launch variables with Cue precedence and safe diagnostics', () => {
   const lower = 'http://lower.test:8080'
   const upper = 'http://upper.test:8080'
   const { policy, diagnostics } = resolveProxyPolicy({

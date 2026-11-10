@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { EMPTY_ROSTER, indexRoster, isAgentSession } from '../src/client/sources.js'
-import { groupsFor } from '../src/client/surface.js'
 
 const ROSTER_VALUE = {
   revision: 3,
@@ -32,8 +31,6 @@ test('a roster without agents still answers the index reads', () => {
   assert.deepEqual(roster.agentOf, {})
 })
 
-// The plain flag decides which groups mount: an Agent Session keeps the shell and
-// withdraws only the conversation replacements.
 test('isAgentSession follows the roster first, the cache before it is ready', () => {
   const roster = indexRoster(ROSTER_VALUE)
   assert.equal(isAgentSession(roster, new Set(), 's1'), true)
@@ -45,9 +42,4 @@ test('isAgentSession follows the roster first, the cache before it is ready', ()
   assert.equal(isAgentSession(roster, new Set(['m1']), 'm1'), false)
   assert.equal(isAgentSession(EMPTY_ROSTER, new Set(), ''), false)
   assert.equal(isAgentSession(EMPTY_ROSTER, new Set(), undefined), false)
-})
-
-test('the plain flag maps to the mounted groups', () => {
-  assert.deepEqual(groupsFor({ mode: 'bot', plain: isAgentSession(indexRoster(ROSTER_VALUE), new Set(), 's1') }), { shell: true, conversation: false })
-  assert.deepEqual(groupsFor({ mode: 'bot', plain: isAgentSession(indexRoster(ROSTER_VALUE), new Set(), 'm1') }), { shell: true, conversation: true })
 })

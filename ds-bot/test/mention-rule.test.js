@@ -9,7 +9,7 @@ import { linkMentions, MENTION_ORIGIN } from '../src/client/text.js'
 
 const bots = [{ id: 'a', name: '新 Bot' }, { id: 'b', name: '新 Bot 2' }, { id: 'c', name: 'Chief' }, { id: 'k', name: 'K' }]
 
-// The user's bubble is drawn by a module that needs the DSH platform; only its pure part runs here.
+// The user's bubble is drawn by a module that needs the Cue platform; only its pure part runs here.
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL('../src/client/user-message.js', import.meta.url))],
   bundle: true, format: 'cjs', platform: 'node', write: false,

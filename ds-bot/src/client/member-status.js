@@ -143,7 +143,7 @@ function ApprovalCard({ approval, bot, actions }) {
     approval.reason ? h('div', { className: 'bt-mw-reason' }, approval.reason) : null,
     approval.detail?.code ? h('code', { className: 'bt-mw-code', title: approval.detail.code }, approval.detail.code) : null,
     // Own-chat approvals are answerable for IM and the phone app; here the Bot's
-    // own DSH card stays the place to answer, so the row still opens that chat.
+    // own Cue card stays the place to answer, so the row still opens that chat.
     approval.answerable && approval.roomId !== undefined
       ? h('div', { className: 'bt-mw-actions' },
         h('button', { type: 'button', className: 'bt-q-btn', disabled: busy, onClick: () => answer('reject') }, t('Reject')),
@@ -173,7 +173,7 @@ export function StopMemberWork({ entry, bot, room, actions }) {
   return h('button', { type: 'button', className: 'bt-member-stop', disabled: stopping, 'aria-label': `${t('Stop')} · ${bot.name}`, onClick: stop }, t('Stop'))
 }
 
-// The group's work stops all at once from its details: DSH's own stop reaches only the
+// The group's work stops all at once from its details: Cue's own stop reaches only the
 // round, and a member the round moved on from keeps working.
 export function StopRoomWork({ room, entries, actions }) {
   const [stopping, setStopping] = useState(false)
@@ -214,7 +214,7 @@ export const MEMBER_CSS = `
 .bt-mw-ask{color:#b7791f;flex:none}
 .bt-mw-dot{flex:none;color:var(--bt-ink-3)}
 .bt-mw-doing{flex:0 1 auto}
-body[data-ds-dark-theme] .bt-mw-ask{color:#f0b84a}
+body[data-cue-dark-theme] .bt-mw-ask{color:#f0b84a}
 @keyframes bt-mw-in{from{transform:translateY(8px) scale(.94)}}
 @keyframes bt-mw-out{to{opacity:0;transform:translateY(6px) scale(.96);filter:blur(3px)}}
 @keyframes bt-mw-seat{from{opacity:0;scale:.6}}
@@ -238,7 +238,7 @@ body[data-ds-dark-theme] .bt-mw-ask{color:#f0b84a}
 .bt-member-what{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .bt-member-time{flex:none;margin-left:.3em;font-variant-numeric:tabular-nums}
 .bt-member-state.bt-mw-ask{color:#b7791f}
-body[data-ds-dark-theme] .bt-member-state.bt-mw-ask{color:#f0b84a}
+body[data-cue-dark-theme] .bt-member-state.bt-mw-ask{color:#f0b84a}
 .bt-member-stop{flex:none;height:26px;padding:0 11px;border:0;border-radius:999px;background:var(--bt-main);box-shadow:inset 0 0 0 .5px var(--bt-line-2);color:var(--bt-ink-2);font:inherit;font-size:12px;cursor:pointer;transition:background-color .12s ease,color .12s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-member-stop:hover{background:var(--bt-active);color:var(--bt-ink)}
 .bt-member-stop:active:not(:disabled){scale:.94}

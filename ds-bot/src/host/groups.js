@@ -20,8 +20,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript'
-import { createUserMessage } from '../engine/messages.js'
+import { createUserMessage, currentToolNames } from '../engine/messages.js'
 import { defineTool } from '../engine/tool-definition.js'
 import { GROUP_LINE_READ, LATE_ANSWER, ROOM_IDLE_RELAY_LIMIT, ROOM_REPLY_TIMEOUT_MS, ROOM_STEP_GAP_MS, ROOM_WORK_GRACE_MS, SOURCE_KIND, TEAM_TOOLS, TEXT_KEPT } from './constants.js'
 import { escapeRegExp, headOf, splitRef, textOf } from './text.js'
@@ -116,7 +115,7 @@ const noticeText = (line) => {
 // `text` is what to show of a message line, by default what the log keeps of it.
 export const lineText = (line, text = line.text) => {
   if (line.kind === 'lookup') return `[${speakerOf(line)} looked up its own chat${line.text ? ` for "${line.text}"` : ''}]`
-  if (line.kind === 'resumed') return `[${speakerOf(line)}'s work here was cut off when DeepSeek Harness restarted; it is picking it back up and posts when done]`
+  if (line.kind === 'resumed') return `[${speakerOf(line)}'s work here was cut off when Cue restarted; it is picking it back up and posts when done]`
   if (line.kind === 'cut') return `[${speakerOf(line)}'s work here was cut off by a restart again, so it stopped; ask it to go on if it still matters]`
   if (line.kind === 'stopped') return `[The user stopped ${speakerOf(line)}'s work here]`
   if (line.kind === 'done') return `[${speakerOf(line)} finished the work it was asked for]`
@@ -193,7 +192,7 @@ const roomKickoff = language => `The user just created this group and has not wr
 
 const ROOM_READ_MAX = 30
 
-// DSH cannot open the Session at all: it is gone, or its stored log is corrupt. DSH
+// Cue cannot open the Session at all: it is gone, or its stored log is corrupt. Cue
 // reports a corrupt log only in the message of a generic failure.
 const lostSession = error => error?.code === 'session/not-found' || /\bis corrupt\b|\bcorrupt session log\b/i.test(String(error?.message ?? ''))
 const fileLine = file => `[File "${file.name}" (${file.bytes} bytes) attached]`
@@ -288,7 +287,7 @@ export function install(rt) {
   // the round is.
   const noteFailure = (room, name, failure) => {
     ensureRoomLog(room)
-    appendRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'failed', names: [name], detail: failureLine(failure) })
+    appendRoom(room, { who: 'Cue', kind: 'notice', reason: 'failed', names: [name], detail: failureLine(failure) })
   }
 
   async function roomFolderNotice(roomId, folder) {
@@ -296,7 +295,7 @@ export function install(rt) {
     if (room === undefined || folder === undefined || room.workDir !== folder || room.folderNotice === folder) return
     ensureRoomLog(room)
     room.folderNotice = folder
-    appendRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'folder', path: folder })
+    appendRoom(room, { who: 'Cue', kind: 'notice', reason: 'folder', path: folder })
     const text = noticeText({ reason: 'folder', path: folder })
     for (const round of rt.roomProgress.values()) {
       if (round.roomId === room.id) round.replies.push({ kind: 'folder', text, time: Date.now() })
@@ -402,7 +401,7 @@ export function install(rt) {
     return lines
   }
 
-  // Members whose turn or DSH subagent in this group is running, and since when.
+  // Members whose turn or Cue subagent in this group is running, and since when.
   const workingIn = room => room.members.flatMap((id) => {
     const sessionId = room.sessions?.[id]
     const entry = rt.live.get(sessionId)
@@ -597,7 +596,7 @@ export function install(rt) {
     for (const waiter of waitersOf(sessionId)) waiter.work()
   }
   // The group Session's inbox changed: a running round looks for the user's messages
-  // once DSH has finished the change.
+  // once Cue has finished the change.
   rt.nudgeRoom = (roomId) => {
     for (const round of rt.roomProgress.values()) {
       if (round.roomId === roomId) setImmediate(() => round.nudge?.())
@@ -682,7 +681,7 @@ export function install(rt) {
       if (message.source?.kind !== 'user') continue
       const content = Array.isArray(message.content) ? message.content : []
       const text = textOf(content)
-      if (text === '' || content.some(block => block?.type !== 'text') || text.includes('dsh-session:')) break
+      if (text === '' || content.some(block => block?.type !== 'text') || text.includes('cue-session:')) break
       lines.push({ id: message.id, text, ...(viaOf(message.source) ? { via: viaOf(message.source) } : {}) })
     }
     return lines
@@ -757,7 +756,7 @@ export function install(rt) {
     if (room.idlePaused === undefined || room.idlePaused.noticed === true) return
     room.idlePaused.noticed = true
     const names = callees.map(peer => peer.name)
-    appendRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'paused', idle: true, from: member.name, limit: ROOM_IDLE_RELAY_LIMIT, names })
+    appendRoom(room, { who: 'Cue', kind: 'notice', reason: 'paused', idle: true, from: member.name, limit: ROOM_IDLE_RELAY_LIMIT, names })
     round.replies.push({ kind: 'paused', idle: true, botId: member.id, name: member.name, color: member.color, count: room.idlePaused.count ?? ROOM_IDLE_RELAY_LIMIT, limit: ROOM_IDLE_RELAY_LIMIT, names, time: Date.now() })
     void rt.save().catch(() => {})
   }
@@ -831,7 +830,7 @@ export function install(rt) {
     // An answer that came, or is still coming, means the round is not left silent.
     const answered = round.slots.some(slot => ['posted', 'working', 'waiting-approval'].includes(slot.status))
     if (alone && !answered) {
-      appendRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'admin-passed', names: [round.soleAdmin.name] })
+      appendRoom(room, { who: 'Cue', kind: 'notice', reason: 'admin-passed', names: [round.soleAdmin.name] })
       // The round the user watched shows the same notice as one line of its replies.
       round.replies.push({ kind: 'admin-passed', botId: round.soleAdmin.id, name: round.soleAdmin.name, color: round.soleAdmin.color, time: Date.now() })
       await rt.save()
@@ -928,7 +927,7 @@ export function install(rt) {
         // The round moved on without this member: the log shows the call and then
         // silence, which reads as a lost message. The group is told the baton was
         // dropped, and what brings the member back.
-        appendRoom(room, { who: 'DS Bot', kind: 'notice', reason: 'missed', names: [member.name], minutes: Math.round(ROOM_REPLY_TIMEOUT_MS / 60000) })
+        appendRoom(room, { who: 'Cue', kind: 'notice', reason: 'missed', names: [member.name], minutes: Math.round(ROOM_REPLY_TIMEOUT_MS / 60000) })
       }
     }
     // A result the admin asked for reports its goal task; a failed model call puts it back.
@@ -1342,7 +1341,7 @@ export function install(rt) {
     const member = rt.botOf(owner?.botId)
     if (room === undefined || member === undefined || !room.members.includes(member.id)) return
     const text = stripOwnName(member.name, reply)
-    // While a DSH subagent of this member is still running, the member's work is not
+    // While a Cue subagent of this member is still running, the member's work is not
     // finished yet: post any non-empty text as a progress line and keep its batch open.
     if (rt.hasSubagents?.(sessionId) === true) {
       if (!isPass(text)) {
@@ -1452,7 +1451,7 @@ export function install(rt) {
   rt.withRoomSteps = (lines, reply) => (lines === '' ? reply : isPass(reply) ? lines : `${lines}\n\n${reply}`)
 
   // The user stops a member's work in this group from the group's details, including
-  // any running DSH subagents it spawned (#701). Messages still waiting for that
+  // any running Cue subagents it spawned (#701). Messages still waiting for that
   // member here go with it.
   async function stopMemberWork(roomId, botId) {
     await rt.load()
@@ -1566,7 +1565,7 @@ export function install(rt) {
 
   // A group chat's own Session never consults the model: models drift from "only call
   // group_relay" (they message one member directly when the user names it), so the
-  // relay step is synthesized here. Auxiliary calls such as titles, and DS Bot's own
+  // relay step is synthesized here. Auxiliary calls such as titles, and Cue's own
   // calls for the room such as image readings, still reach the model.
   const opensRelay = message => message.role === 'user'
     && (message.source?.kind === 'user' || message.source?.kind === 'schedule' || (message.source?.kind === SOURCE_KIND && (message.source.role === 'post' || message.source.role === 'kickoff' || message.source.role === 'goal')))
@@ -1589,7 +1588,7 @@ export function install(rt) {
     if (!declared.has('group_relay') && !declared.has('run_code')) {
       rt.warn('ds-bot: group %s cannot relay: group_relay is not available in its Session', room.name)
       return {
-        content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart DS Bot; if it keeps happening, report it.' }],
+        content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart Cue; if it keeps happening, report it.' }],
         stopReason: 'stop',
       }
     }
@@ -1616,10 +1615,10 @@ export function install(rt) {
           const latest = [...transcript].reverse()
             .find(message => message.role === 'assistant' || message.role === 'tool' || message.role === 'toolResult' || opensRelay(message))
           if (latest?.role !== 'user') return { content: [], stopReason: 'stop' }
-          const declared = new Set(getCurrentTools(messages).map(tool => tool.name))
+          const declared = new Set(currentToolNames(messages))
           if (!declared.has('group_relay')) {
             return {
-              content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart DS Bot; if it keeps happening, report it.' }],
+              content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart Cue; if it keeps happening, report it.' }],
               stopReason: 'stop',
             }
           }

@@ -39,7 +39,7 @@ async function start({ fail = {}, services = {}, home: reuse, state: seed = TEAM
   const root = reuse === undefined
     ? realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-switch-')))
     : join(reuse, '..', '..')
-  const home = reuse ?? join(root, 'dsh', 'bot')
+  const home = reuse ?? join(root, 'Cue', 'bot')
   const team = join(home, 'workspace')
   const project = join(root, 'project')
   for (const dir of [team, project]) mkdirSync(dir, { recursive: true })
@@ -158,7 +158,7 @@ async function start({ fail = {}, services = {}, home: reuse, state: seed = TEAM
   const tool = (name, args, sessionId) => rt.teamTools.find(d => d.name === name).execute(args, { agent: agentOf(sessionId), name, callId: 'c1' })
   const preStep = (sessionId, messages = [], step = 1) => ctx.listeners.get('agent/pre-step').at(-1)(
     { agent: agentOf(sessionId), messages, step, signal: AbortSignal.timeout(60_000) }, async () => 'next')
-  // A Session event as DSH emits it, on the Session the test's Agent holds.
+  // A Session event as Cue emits it, on the Session the test's Agent holds.
   let seq = 0
   const emit = (sessionId, type, data) => {
     const session = agentOf(sessionId).session
@@ -186,7 +186,7 @@ const until = async (check, ms = 3000) => {
 
 const text = message => message.content.map(block => block.text ?? '').join('\n')
 const inboxTexts = agent => [...agent.inbox.nextStep, ...agent.inbox.nextTurn].map(text)
-const PAUSE = 'DS Bot paused your turn for a context check. Go on with it now from where you stopped.'
+const PAUSE = 'Cue paused your turn for a context check. Go on with it now from where you stopped.'
 const said = (id, body, exchangeId) => ({ id, role: 'user', content: [{ type: 'text', text: body }], source: { kind: 'user', ...(exchangeId ? { exchangeId } : {}) } })
 // A folder outside the team workspace asks for approval once; then the move is allowed.
 const services = {

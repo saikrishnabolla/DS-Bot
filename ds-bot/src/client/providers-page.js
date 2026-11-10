@@ -1,5 +1,5 @@
-// The Models page of a window that has no DSH settings of its own: the model providers
-// DSH serves, with their API keys and models, and the providers it can add. DSH keeps
+// The Models page of a window that has no Cue settings of its own: the model providers
+// Cue serves, with their API keys and models, and the providers it can add. Cue keeps
 // all of it; a key only ever travels from these inputs to the host.
 import { createElement as h, useEffect, useState } from 'react'
 import { CheckIcon, ChevronRightIcon, TrashIcon } from './icons.js'
@@ -32,7 +32,7 @@ export function ProvidersPage({ actions, run, Section, advanced = null }) {
       })),
       adding ? h(AddProvider, { key: 'add', view, apply, actions, onDone: () => setAdding(false) }) : null),
     adding ? null : h('div', { key: 'add', className: 'bt-actions' }, h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => setAdding(true) }, t('Add a provider'))),
-    // DSH's own Models page: each model's context, output, inputs, thinking levels and order.
+    // Cue's own Models page: each model's context, output, inputs, thinking levels and order.
     advanced ? h('div', { key: 'advanced', className: 'bt-set-card' },
       h('button', { type: 'button', className: 'bt-set-row bt-bs-row bt-advanced', onClick: advanced },
         h('span', { className: 'bt-set-copy' }, h('span', null, t('Advanced settings'))), h(ChevronRightIcon))) : null,
@@ -42,7 +42,7 @@ export function ProvidersPage({ actions, run, Section, advanced = null }) {
 function keyState(key) {
   if (key === null) return null
   if (!key.configured) return ['missing', t('Needs an API key')]
-  return key.writable ? ['set', t('Key set')] : ['outside', t('Key set outside DS Bot')]
+  return key.writable ? ['set', t('Key set')] : ['outside', t('Key set outside Cue')]
 }
 
 function ProviderRow({ provider, apply, actions, open, onToggle }) {
@@ -59,7 +59,7 @@ function ProviderRow({ provider, apply, actions, open, onToggle }) {
       state ? h('span', { className: 'bt-set-control' }, h('span', { className: 'bt-provider-state', 'data-state': state[0] }, state[1])) : null),
     open ? h('div', { className: 'bt-secret-edit' },
       provider.key?.writable ? h(KeyEditor, { provider, apply, actions }) : null,
-      provider.key && !provider.key.writable ? h('div', { className: 'bt-set-hint' }, t('This key comes from outside DS Bot, such as an environment variable, and cannot be changed here.')) : null,
+      provider.key && !provider.key.writable ? h('div', { className: 'bt-set-hint' }, t('This key comes from outside Cue, such as an environment variable, and cannot be changed here.')) : null,
       provider.models.length > 0 ? h('div', { className: 'bt-secret-edit-block' },
         h('div', { className: 'bt-secret-edit-label' }, t('Models')),
         h('div', { className: 'bt-provider-models' },

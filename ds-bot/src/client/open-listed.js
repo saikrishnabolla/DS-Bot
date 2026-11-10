@@ -1,4 +1,4 @@
-// DSH's main view opens only a Session that its client list already holds; any other id
+// Cue's main view opens only a Session that its client list already holds; any other id
 // throws `sessions.retain: unknown session`. A part the Host made a moment ago, or any part
 // before the first list arrives, waits for the list; a newer navigation — through here or
 // elsewhere — drops the wait.

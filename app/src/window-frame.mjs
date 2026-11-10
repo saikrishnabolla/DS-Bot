@@ -1,6 +1,6 @@
 // The frameless window: the page reaches the window's top edge, and the system window controls
 // stand in a band at its top, over the page (the caption buttons on Windows, the traffic lights
-// on macOS), as in DeepSeek Harness apps/desktop (windows-layout.ts and main.ts; see NOTICE).
+// on macOS), as in Cue apps/desktop (windows-layout.ts and main.ts; see NOTICE).
 // Linux keeps the system title bar.
 
 /** Height of the caption band in device-independent pixels. */

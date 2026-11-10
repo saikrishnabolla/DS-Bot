@@ -1,10 +1,11 @@
-/* The frame around the Bot views. The views bring their own stylesheets (main.js); these
-   rules give the frame the sizes the views have in DSH. Colors come from the --bt-* variables. */
+/* The frame around the Bot views. The views bring their own stylesheets (main.js).
+   Colors come from the --bt-* variables. */
 html,body,#root{height:100%;margin:0}
-body{color-scheme:light;background:var(--bt-main);color:var(--bt-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
-body[data-ds-dark-theme]{color-scheme:dark}
-::-webkit-scrollbar{width:12px;height:12px}
-::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:12px;background:var(--bt-line-2) content-box}
+body{color-scheme:light;background:var(--bt-main);color:var(--bt-ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;text-autospace:normal}
+body[data-cue-dark-theme]{color-scheme:dark}
+@supports (corner-shape:superellipse(1.5)){*,::before,::after{corner-shape:superellipse(1.5)}}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{border:0;border-radius:999px;background:var(--bt-line-2)}
 ::-webkit-scrollbar-thumb:hover{background-color:var(--bt-ink-3)}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 
@@ -15,7 +16,7 @@ body[data-ds-dark-theme]{color-scheme:dark}
    moves the window (BAND in src/main.mjs); its first row of controls sits centered in it.
    The system draws its window buttons over the band: at the right end on Windows and Linux
    (--dsb-buttons-w wide), at the left end on macOS. */
-:root{--dsb-band:48px;--dsb-buttons-w:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,100vw));--dsh-frame-overlay-top:calc(var(--dsb-band) + 8px)}
+:root{--dsb-band:48px;--dsb-buttons-w:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,100vw));--cue-frame-overlay-top:calc(var(--dsb-band) + 12px)}
 .dsb-band{position:absolute;inset:0 0 auto;height:var(--dsb-band);pointer-events:none;-webkit-app-region:drag;app-region:drag}
 .dsb-frame :is(button,a,input,textarea,select,label,[role=button]),body>:not(#root){-webkit-app-region:no-drag;app-region:no-drag}
 .bt-panel .bt-drawer-top{padding-top:6px;padding-right:calc(17px + var(--dsb-buttons-w))}
@@ -31,24 +32,18 @@ body[data-ds-dark-theme]{color-scheme:dark}
 .dsb-expand{flex:none;width:36px;height:36px;margin:6px 0 12px;padding:0;border:0;border-radius:50%;background:none;display:inline-grid;place-items:center;cursor:pointer;transition:background-color .12s ease}
 html[data-mac] .dsb-frame .dsb-side{padding-top:var(--dsb-band)}
 .dsb-expand:hover{background:color-mix(in srgb,var(--bt-ink) 6%,transparent)}
-.dsb-side-foot{display:flex;align-items:center;gap:9px;padding:8px 6px 6px}
-.dsb-frame[data-rail] .dsb-side-foot{margin:0 -5px;padding:8px 0 6px}
-.dsb-settings{padding:0;border:0;background:none;border-radius:50%;cursor:pointer}
-.dsb-settings:hover .bt-you{background:color-mix(in srgb,var(--bt-ink) 9%,var(--bt-sidebar))}
-
 /* Conversation: a floating header pill over the transcript, and the composer below. */
-.dsb-main{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bt-main);--dsh-chat-content-width:min(960px,100%)}
+.dsb-main{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bt-main);--cue-chat-content-width:min(960px,100%);transition:margin-right 360ms cubic-bezier(.2,.8,.2,1)}
 .dsb-head{position:absolute;top:0;left:0;right:0;z-index:8;display:flex;justify-content:center;padding:4px 0 0;pointer-events:none}
 .dsb-head::before{content:"";position:absolute;inset:0 0 auto;height:60px;background:linear-gradient(to bottom,var(--bt-main),color-mix(in srgb,var(--bt-main) 0%,transparent));pointer-events:none;z-index:-1}
 .dsb-head .bt-head{flex:1 1 auto;width:100%}
 .dsb-chat{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 /* A thin gutter kept for the scrollbar, so the column does not move when one appears. */
-.dsb-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-gutter:stable;margin-right:2px;padding:60px 11px 16px 16px}
-.dsb-scroll::-webkit-scrollbar{width:5px}
+.dsb-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-gutter:stable;margin-right:2px;padding:60px 11px 16px 0}
 .dsb-scroll::-webkit-scrollbar-thumb{border:0;border-radius:5px;background:var(--bt-line-2)}
 .dsb-column{max-width:min(960px,100%);margin:0 auto}
 .dsb-flow{display:flex;flex-direction:column;gap:6px}
-/* The first separator sits where DSH puts a transcript's opening time. */
+/* Leave extra space above the transcript's opening time. */
 .dsb-flow>.bt-time-sep{margin:8px 0 2px}
 .dsb-flow>.bt-time-sep:first-child{margin:17px 0 6px}
 .dsb-flow>.bt-urow+.bt-astack,.dsb-flow>.bt-urow+.bt-time-sep+.bt-astack{margin-top:10px}

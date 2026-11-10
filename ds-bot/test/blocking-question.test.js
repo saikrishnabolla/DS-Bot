@@ -19,14 +19,14 @@ const team = () => ({
     writer: { id: 'writer', sessionId: 'writer', name: 'Writer', role: 'Write', instructions: '', createdAt: 2 },
   },
   rooms: { room: { id: 'room', name: 'Desk', members: ['chief', 'writer'], sessions: { writer: 'room-writer' }, admin: 'chief', mode: 'everyone' } },
-  agents: { dsh: { id: 'dsh', name: 'Agent', sessions: ['plain'], createdAt: 3 } },
+  agents: { Cue: { id: 'Cue', name: 'Agent', sessions: ['plain'], createdAt: 3 } },
   exchanges: [],
   exchangeTurns: {},
   questions: {},
   revision: 1,
 })
 
-// dsh keeps one Agent per Session and fires agent/created, waiting for its listeners,
+// Cue keeps one Agent per Session and fires agent/created, waiting for its listeners,
 // the first time a Session resolves one. restrict() calls are recorded per Session and
 // throw when deny holds throwOn (a name in the Agent's own scope fails the whole list);
 // ctx.on() listeners are recorded per Session too, with their disposal.
@@ -99,7 +99,7 @@ async function setup({ served = ['read', 'ask_user', QUESTION], goals, throwOn }
   return { ctx, rt, agentFor, hidden, hiddenIn, guard, sent, scopedListeners, stop }
 }
 
-// DSH's goal service, holding one goal per Session; block() records what was asked.
+// Cue's goal service, holding one goal per Session; block() records what was asked.
 function goalService() {
   const current = new Map()
   const blocked = []
@@ -116,7 +116,7 @@ function goalService() {
   }
 }
 
-// What DSH logs when /goal starts a goal: a snapshot change of the Session's goal log.
+// What Cue logs when /goal starts a goal: a snapshot change of the Session's goal log.
 const startGoal = (ctx, goals, sessionId) => {
   const goal = { id: `goal-${sessionId}`, revision: 1, objective: 'Ship it', phase: 'active', maxGoalRounds: 256 }
   goals?.current.set(sessionId, goal)
@@ -132,7 +132,7 @@ const until = async (check) => {
   }
 }
 
-test('a Bot\'s own chat and its group Session lose dsh\'s blocking question tool; other Sessions keep it', async (t) => {
+test('a Bot\'s own chat and its group Session lose Cue\'s blocking question tool; other Sessions keep it', async (t) => {
   const { agentFor, hidden, hiddenIn, stop } = await setup()
   t.after(stop)
   for (const id of ['chief', 'writer', 'room-writer', 'plain', 'elsewhere']) await agentFor(id)
@@ -173,9 +173,9 @@ test('the guard refuses the blocking question tool in Bot Sessions only', async 
 })
 
 // FeiZhuLulu/DS-Bot#77: a new Bot told never to use a question tool was opened
-// with "use ask_user", and a model that picked dsh's ask_user_question for it held the
+// with "use ask_user", and a model that picked Cue's ask_user_question for it held the
 // Bot until the card was answered, with other Bots' messages queued behind it.
-test('a new Bot that rules out question tools opens without one and cannot block on dsh\'s', async (t) => {
+test('a new Bot that rules out question tools opens without one and cannot block on Cue\'s', async (t) => {
   const { rt, hiddenIn, guard, sent, stop } = await setup()
   t.after(stop)
   const receiver = await rt.createBot({ name: 'Receiver', instructions: 'Never use ask_user or any question tool.', createdBy: 'chief' })
@@ -188,13 +188,13 @@ test('a new Bot that rules out question tools opens without one and cannot block
   assert.match(guard(QUESTION, receiver.id), /Bots cannot use ask_user_question/)
 })
 
-// Fei2411/DS-Bot#133: /goal in a group chat started DSH's goal rounds, which the
+// Fei2411/DS-Bot#133: /goal in a group chat started Cue's goal rounds, which the
 // group never answered, so round after round ran and showed the raw goal prompt.
 test('a Bot\'s chat and its group Sessions lose the goal tools; other Sessions keep them', async (t) => {
   const { agentFor, hidden, stop } = await setup({ served: ['read', 'ask_user', QUESTION, 'create_goal', 'update_goal', 'get_goal'] })
   t.after(stop)
   for (const id of ['chief', 'room-writer', 'plain']) await agentFor(id)
-  // A DSH Agent Session ('plain') has its own mask, which leaves the goal tools.
+  // A Cue Agent Session ('plain') has its own mask, which leaves the goal tools.
   assert.deepEqual(hidden.filter(([, deny]) => deny.includes('create_goal')), [
     ['chief', [QUESTION, 'create_goal', 'update_goal', 'get_goal']],
     ['room-writer', [QUESTION, 'create_goal', 'update_goal', 'get_goal']],
@@ -208,7 +208,7 @@ test('a goal started in a Bot chat or a group is blocked; one elsewhere runs', a
   const ids = ['writer', 'room', 'room-writer', 'plain']
   for (const id of ids) await agentFor(id)
   for (const id of ids) startGoal(ctx, goals, id)
-  // The block waits until DSH has handed the change to every listener.
+  // The block waits until Cue has handed the change to every listener.
   assert.deepEqual(goals.blocked, [])
   await until(() => goals.blocked.length === 3)
   await new Promise(resolve => setTimeout(resolve, 20))
@@ -217,7 +217,7 @@ test('a goal started in a Bot chat or a group is blocked; one elsewhere runs', a
   assert.equal(goals.current.get('plain').phase, 'active')
 })
 
-test('without DSH\'s goal service a goal change is left alone', async (t) => {
+test('without Cue\'s goal service a goal change is left alone', async (t) => {
   const { ctx, rt, agentFor, stop } = await setup()
   t.after(stop)
   const warnings = []
@@ -228,7 +228,7 @@ test('without DSH\'s goal service a goal change is left alone', async (t) => {
   assert.deepEqual(warnings, [])
 })
 
-// Fei2411/DS-Bot#798: a Bot could call dsh's delegation tools; the child agents they
+// Fei2411/DS-Bot#798: a Bot could call Cue's delegation tools; the child agents they
 // start run out of the user's sight and die with the part that started them.
 test('a Bot\'s chat and its group Sessions lose the delegation tools; other Sessions keep them', async (t) => {
   const servedDelegation = ['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents', 'workflow']
@@ -287,12 +287,12 @@ test('Bot Sessions filter the hidden tools and their guidance out of the prompt 
   t.after(stop)
   for (const id of ['chief', 'room-writer', 'plain']) await agentFor(id)
   const filters = scopedListeners.filter(record => record.event === 'system-prompt/assemble')
-  // Bot Sessions get the hidden-tools filter and the computer-use filter. The room's own
-  // Session and a plain Agent get neither while DS Bot has mounted no provider.
-  assert.deepEqual(filters.map(record => record.sessionId), ['chief', 'chief', 'room-writer', 'room-writer'])
+  // Bot Sessions get the hidden-tools filter. The room's own Session and a plain
+  // Agent get none.
+  assert.deepEqual(filters.map(record => record.sessionId), ['chief', 'room-writer'])
   // Resolving the same Agent again adds no listener.
   await rt.resolveAgent('chief')
-  assert.equal(scopedListeners.length, 4)
+  assert.equal(scopedListeners.length, 2)
   const filtered = await filters[0].listener({}, {}, async () => ({
     sections: [{ name: 'bot-identity' }, { name: 'tool:goal' }, { name: 'tool:workflow' }, { name: 'tool:subagent' }, { name: 'tool:bash' }],
     contexts: [{ name: 'x' }],
@@ -303,7 +303,7 @@ test('Bot Sessions filter the hidden tools and their guidance out of the prompt 
   assert.deepEqual(filtered.tools.map(tool => tool.name), ['read', 'message_bot'])
   assert.deepEqual(filtered.contexts, [{ name: 'x' }])
   assert.deepEqual(filtered.variables, { a: 1 })
-  // Fei2411/DS-Bot#814: DSH 0.2.2 adds the tool list after this waterfall, so the
+  // Fei2411/DS-Bot#814: the runtime adds the tool list after this waterfall, so the
   // assembly it passes has none; the guidance is still filtered and no tools appear.
   const current = await filters[0].listener({}, {}, async () => ({
     sections: [{ name: 'bot-identity' }, { name: 'tool:subagent' }],
@@ -318,18 +318,11 @@ test('Bot Sessions filter the hidden tools and their guidance out of the prompt 
     variables: {},
   }))
   assert.deepEqual(team.sections.map(section => section.name), ['bot-identity'])
-  // The computer-use filter keeps everything but the provider's own sections.
-  const computer = await filters[1].listener({}, {}, async () => ({
-    sections: [{ name: 'bot-identity' }, { name: 'computer-use:dsh-cua' }],
-    contexts: [],
-    variables: {},
-  }))
-  assert.deepEqual(computer, { sections: [{ name: 'bot-identity' }], contexts: [], variables: {} })
   await stop()
   for (const record of scopedListeners) assert.equal(record.disposed, true)
 })
 
-// DSH 0.2.2's schedule tools can deliver to a new Session, outside the team.
+// the runtime's schedule tools can deliver to a new Session, outside the team.
 test('a Bot schedules only into its own chat', async (t) => {
   const { ctx, stop } = await setup()
   t.after(stop)

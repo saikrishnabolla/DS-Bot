@@ -1,5 +1,5 @@
 // Telegram Bot API adapter: getUpdates long polling in, sendMessage out. Parts of the
-// protocol mapping follow dsh-im (MIT, © 2026 xmanrui — see NOTICE).
+// protocol mapping follow Cue-im (MIT, © 2026 xmanrui — see NOTICE).
 import { chunkTelegram } from '../format.js'
 import { retryDelay, retryWait } from './retry.js'
 

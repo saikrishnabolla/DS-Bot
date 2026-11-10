@@ -1,30 +1,24 @@
-// Browser storage keys. Values saved under the plugin's legacy names (dsh-bot-team, dsh-bot)
-// move to the current keys once, so a renamed install keeps its unread marks, reactions,
-// visits, theme, panel width and Bot browser tabs.
+// Browser storage keys.
 export const STORAGE = {
   unread: 'ds-bot:unread',
   reactions: 'ds-bot:reactions',
   seen: 'ds-bot:seen',
   prefs: 'ds-bot:prefs',
-  surface: 'ds-bot:surface',
   agentSessions: 'ds-bot:agent-sessions',
   browserWidth: 'ds-bot:browser-width',
   sidebar: 'ds-bot:sidebar',
   browsers: 'ds-bot.browser.v2',
 }
 
-// Newest legacy name first: when both exist, the more recent value wins.
-const LEGACY_PREFIXES = ['dsh-bot:', 'dsh-bot-team:']
 // The v1 store kept one page per Bot; v2 keeps a tab strip per Bot.
-const LEGACY_BROWSER_KEYS = ['ds-bot.browser.v1', 'dsh-bot.browser.v1']
+const LEGACY_BROWSER_KEYS = ['ds-bot.browser.v1']
 // The saved theme only paints the first frame before the team loads; it follows the
 // host's rename of the theme ids.
 const LEGACY_THEMES = { grok: 'mono' }
 
 export function legacyKeys(key) {
   if (key === STORAGE.browsers) return LEGACY_BROWSER_KEYS
-  const name = key.slice(key.indexOf(':') + 1)
-  return LEGACY_PREFIXES.map(prefix => `${prefix}${name}`)
+  return []
 }
 
 // One page per Bot becomes one tab per Bot; a v2 store already present wins.
@@ -52,16 +46,6 @@ const migrateBrowsers = (storage) => {
 }
 
 export function migrateStorage(storage = globalThis.localStorage) {
-  for (const key of Object.values(STORAGE)) {
-    if (key === STORAGE.browsers) continue
-    for (const legacy of legacyKeys(key)) {
-      try {
-        const value = storage.getItem(legacy)
-        if (value !== null && storage.getItem(key) === null) storage.setItem(key, value)
-        storage.removeItem(legacy)
-      } catch { /* storage unavailable */ }
-    }
-  }
   try { migrateBrowsers(storage) } catch { /* storage unavailable */ }
   try {
     const prefs = JSON.parse(storage.getItem(STORAGE.prefs) ?? 'null')

@@ -56,7 +56,7 @@ const team = (bots = {}) => ({
   },
 })
 
-// DSH's provider registry, as far as these rules use it: one model provider, and the
+// Cue's provider registry, as far as these rules use it: one model provider, and the
 // routes the local agent adapter registers.
 function fakeLlm() {
   const routes = new Map()
@@ -86,14 +86,15 @@ function fakeLlm() {
 
 async function start(t, { saved = team() } = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-run-mode-')))
-  const dsh = join(root, 'dsh')
-  const home = join(dsh, 'bot')
+  const dataDir = join(root, 'cue-data')
+  const Cue = dataDir
+  const home = join(dataDir, 'bot')
   const workspace = join(home, 'workspace')
   mkdirSync(workspace, { recursive: true })
   const starts = join(root, 'starts.log')
   writeFileSync(join(home, 'state.json'), JSON.stringify(saved).replaceAll('__STARTS__', starts.replaceAll('\\', '\\\\')))
-  const previousHome = process.env.DSH_HOME
-  process.env.DSH_HOME = dsh
+  const previousDataDir = process.env.CUE_DATA_DIR
+  process.env.CUE_DATA_DIR = Cue
 
   const llm = fakeLlm()
   const ctx = fakeContext({})
@@ -137,14 +138,14 @@ async function start(t, { saved = team() } = {}) {
     }
     return agents.get(sessionId)
   }
-  const registry = new Map([['w1', { id: 'w1', path: workspace, title: 'DS Bot' }]])
+  const registry = new Map([['w1', { id: 'w1', path: workspace, title: 'Cue' }]])
   Object.assign(ctx, {
     llm,
     workspaceRegistry: {
       get: id => registry.get(id),
       list: () => [...registry.values()],
       resolveByPath: async path => [...registry.values()].find(entry => entry.path === path),
-      create: async (path) => { const entry = { id: 'w-new', path, title: 'DS Bot' }; registry.set(entry.id, entry); return entry },
+      create: async (path) => { const entry = { id: 'w-new', path, title: 'Cue' }; registry.set(entry.id, entry); return entry },
       archiveSession: async (id, options) => { archived.push([id, options]) },
     },
     sessionController: {
@@ -173,15 +174,15 @@ async function start(t, { saved = team() } = {}) {
   const rt = createRuntime(ctx, { home })
   t.after(async () => {
     await ctx.dispose()
-    if (previousHome === undefined) delete process.env.DSH_HOME
-    else process.env.DSH_HOME = previousHome
+    if (previousDataDir === undefined) delete process.env.CUE_DATA_DIR
+    else process.env.CUE_DATA_DIR = previousDataDir
     rmSync(root, { recursive: true, force: true, maxRetries: 5 })
   })
   const call = async (endpoint, payload) => (await route.fetch(new Request('http://localhost/api/bot', {
     method: 'POST', body: JSON.stringify({ endpoint, payload }),
   }))).json()
   const tool = (name, args, sessionId) => rt.teamTools.find(def => def.name === name).execute(args, { agent: agentOf(sessionId), name, callId: 'c1' })
-  // `modelSelection`: where the step is about to go, as DSH captured it for the step.
+  // `modelSelection`: where the step is about to go, as Cue captured it for the step.
   const preStep = (sessionId, messages = [], step = 1, modelSelection) => ctx.listeners.get('agent/pre-step').at(-1)(
     { agent: agentOf(sessionId), messages, step, signal: AbortSignal.timeout(60_000), ...(modelSelection === undefined ? {} : { modelSelection }) }, async () => 'next')
   const state = () => JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'))
@@ -240,7 +241,7 @@ test('a Bot without a model of its own still moves to a CLI only by the user, co
   }
   assert.equal(env.state().bots.c.model, undefined)
   assert.equal(env.state().bots.d.model, undefined)
-  // A model of DS Bot's own is an ordinary pick.
+  // A model of Cue's own is an ordinary pick.
   assert.equal((await env.call('update-bot', { id: 'd', model: 'ds/pro' })).ok, true)
   assert.equal(env.state().bots.d.model, 'ds/pro')
 })
@@ -500,7 +501,7 @@ const send = async (adapter, sessionId, messages, extra = {}) => {
   return { text, finish }
 }
 
-test('listing a route lists what DS Bot knows and starts nothing', async (t) => {
+test('listing a route lists what Cue knows and starts nothing', async (t) => {
   const { adapter, engines } = adapterFor(t)
   const models = await adapter.listModels('local-acp-fake')
   assert.deepEqual(models.map(model => model.id), ['default', 'used-one'])
@@ -698,7 +699,7 @@ test('the confirmation says what the change does to this Bot', () => {
   assert.equal(toModel.length, 2)
 })
 
-// The page reads the run mode from the route's prefix, so a model of DSH's own
+// The page reads the run mode from the route's prefix, so a model of Cue's own
 // OpenCode provider is not shown as a local agent (#1059).
 test('only prefixed routes count as local agents on the page', () => {
   assert.equal(isLocalRoute('opencode/glm-5'), false)

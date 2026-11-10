@@ -106,7 +106,7 @@ if (phase === 'all' || phase === 'chat') {
       if (!view.bots.some(bot => bot.name === name)) await api('create-bot', { name, role, model: MODEL })
     }
   })
-  await step('D1', 'Designer: a settings panel', () => send('Designer', '帮我设计一个 DS Bot 的设置面板。用文字描述布局和配色就行，不用写代码，简短点。'))
+  await step('D1', 'Designer: a settings panel', () => send('Designer', '帮我设计一个 Cue 的设置面板。用文字描述布局和配色就行，不用写代码，简短点。'))
   await step('D2', 'Designer: the user dislikes it and says what they like', () => send('Designer', '太丑了，颜色太多太花了。我喜欢简约的风格，黑白灰为主，少点装饰。重新来一版。'))
   await step('D3', 'Designer: a one-off tweak', () => send('Designer', '这版按钮圆角改成 12px，这次先这样。'))
   await step('W1', 'Writer: a self-introduction with facts about the user', () => send('Writer', '帮我写一段 100 字左右的自我介绍，下周技术分享用。我在一家跨境电商公司做后端，主要写 Go，带一个 4 人的小组。'))

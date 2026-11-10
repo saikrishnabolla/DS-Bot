@@ -1,17 +1,14 @@
-// Search provider `auto` for dsh's web seam (`ctx.web`). Each query first tries native search
-// behind the asking Session's own model route, with that route's own key, on that route's own
+// Cue's automatic search provider. Each query first tries native search behind the
+// asking conversation's model route, with that route's own key, on that route's own
 // origin. Native search is found by protocol, not by vendor: the route's wire protocol defines a
 // standard search tool (Anthropic Messages, OpenAI Responses, Gemini), and a host may also serve
 // a separate search API, declared as data (SEARCH_APIS, or `searchApis` in config). Whether an
 // endpoint supports either is only knowable by trying, so every outcome is remembered. It never
 // borrows another route's key: every key bills its own account. When native search is
-// unavailable, a keyless fallback parses a public results page fetched through ctx.web.fetch.
+// unavailable, a keyless fallback parses a public results page.
 // Every result says which path answered it; when both fail, the error tells the model not to
 // guess. Independent of the Bot team code in index.js.
 import { WebError } from './src/engine/messages.js'
-
-export const name = 'web-search-auto'
-export const inject = ['web']
 
 export const AUTO_PROVIDER_ID = 'auto'
 export const DEFAULTS = Object.freeze({
@@ -23,7 +20,7 @@ export const DEFAULTS = Object.freeze({
   fallbackTimeoutMs: 15_000,
 })
 
-const USER_AGENT = 'deepseek-harness/0.0.1'
+const USER_AGENT = 'cue/0.3.2'
 const SNIPPET_CHARS = 500
 const PROMPT = query => `Perform a web search for the query: ${query}`
 
@@ -39,47 +36,6 @@ const SKIP_FOR = {
   ignored: 6 * 60 * MINUTE,
 }
 const STATUS_OUTCOMES = { 404: 'absent', 405: 'absent', 501: 'absent', 400: 'rejected', 415: 'rejected', 422: 'rejected', 401: 'denied', 402: 'denied', 403: 'denied' }
-
-// Routes whose profile leaves protocol, endpoint, or key name to the adapter: dsh's DeepSeek
-// adapters, and the pi-ai 0.87.1 catalog routes that sign in with an API key
-// (models.generated.js, env-api-keys.js). The protocol is undefined where it differs per model.
-const CATALOG = {
-  'deepseek-official': ['anthropic-messages', 'https://api.deepseek.com/anthropic', 'DEEPSEEK_API_KEY'],
-  'deepseek-account': ['anthropic-messages', 'https://api.deepseek.com/anthropic', undefined],
-  'ant-ling': ['openai-completions', 'https://api.ant-ling.com/v1', 'ANT_LING_API_KEY'],
-  anthropic: ['anthropic-messages', 'https://api.anthropic.com', 'ANTHROPIC_API_KEY'],
-  baseten: ['openai-completions', 'https://inference.baseten.co/v1', 'BASETEN_API_KEY'],
-  cerebras: ['openai-completions', 'https://api.cerebras.ai/v1', 'CEREBRAS_API_KEY'],
-  deepseek: ['openai-completions', 'https://api.deepseek.com', 'DEEPSEEK_API_KEY'],
-  fireworks: [undefined, 'https://api.fireworks.ai/inference/v1', 'FIREWORKS_API_KEY'],
-  google: ['google-generative-ai', 'https://generativelanguage.googleapis.com/v1beta', 'GEMINI_API_KEY'],
-  groq: ['openai-completions', 'https://api.groq.com/openai/v1', 'GROQ_API_KEY'],
-  huggingface: ['openai-completions', 'https://router.huggingface.co/v1', 'HF_TOKEN'],
-  'kimi-coding': ['anthropic-messages', 'https://api.kimi.com/coding', 'KIMI_API_KEY'],
-  meta: ['openai-responses', 'https://api.meta.ai/v1', 'META_API_KEY'],
-  minimax: ['anthropic-messages', 'https://api.minimax.io/anthropic', 'MINIMAX_API_KEY'],
-  'minimax-cn': ['anthropic-messages', 'https://api.minimaxi.com/anthropic', 'MINIMAX_CN_API_KEY'],
-  moonshotai: ['openai-completions', 'https://api.moonshot.ai/v1', 'MOONSHOT_API_KEY'],
-  'moonshotai-cn': ['openai-completions', 'https://api.moonshot.cn/v1', 'MOONSHOT_API_KEY'],
-  nvidia: ['openai-completions', 'https://integrate.api.nvidia.com/v1', 'NVIDIA_API_KEY'],
-  openai: ['openai-responses', 'https://api.openai.com/v1', 'OPENAI_API_KEY'],
-  opencode: [undefined, 'https://opencode.ai/zen/v1', 'OPENCODE_API_KEY'],
-  'opencode-go': [undefined, 'https://opencode.ai/zen/go/v1', 'OPENCODE_API_KEY'],
-  openrouter: [undefined, 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY'],
-  'qwen-token-plan': ['openai-completions', 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1', 'QWEN_TOKEN_PLAN_API_KEY'],
-  'qwen-token-plan-cn': ['openai-completions', 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', 'QWEN_TOKEN_PLAN_CN_API_KEY'],
-  'qwen-token-plan-individual': ['openai-completions', 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1', 'QWEN_TOKEN_PLAN_API_KEY'],
-  together: ['openai-completions', 'https://api.together.ai/v1', 'TOGETHER_API_KEY'],
-  'vercel-ai-gateway': ['anthropic-messages', 'https://ai-gateway.vercel.sh', 'AI_GATEWAY_API_KEY'],
-  xai: ['openai-responses', 'https://api.x.ai/v1', 'XAI_API_KEY'],
-  xiaomi: ['openai-completions', 'https://api.xiaomimimo.com/v1', 'XIAOMI_API_KEY'],
-  'xiaomi-token-plan-ams': ['openai-completions', 'https://token-plan-ams.xiaomimimo.com/v1', 'XIAOMI_TOKEN_PLAN_AMS_API_KEY'],
-  'xiaomi-token-plan-cn': ['openai-completions', 'https://token-plan-cn.xiaomimimo.com/v1', 'XIAOMI_TOKEN_PLAN_CN_API_KEY'],
-  'xiaomi-token-plan-sgp': ['openai-completions', 'https://token-plan-sgp.xiaomimimo.com/v1', 'XIAOMI_TOKEN_PLAN_SGP_API_KEY'],
-  zai: ['openai-completions', 'https://api.z.ai/api/coding/paas/v4', 'ZAI_API_KEY'],
-  'zai-coding-cn': ['openai-completions', 'https://open.bigmodel.cn/api/coding/paas/v4', 'ZAI_CODING_CN_API_KEY'],
-}
-const DSH_DEEPSEEK_ROUTES = new Set(['deepseek-official', 'deepseek-account'])
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -261,11 +217,11 @@ export function readDeclared(body) {
 
 const bearer = key => ({ authorization: `Bearer ${key}` })
 export const AUTH_STYLES = { bearer, 'x-api-key': key => ({ 'x-api-key': key }), 'api-key': key => ({ 'api-key': key }) }
-// One trailing /v1 belongs to the root, as in dsh's DeepSeek adapter and pi-ai's model listing.
+// One trailing /v1 belongs to the provider root.
 const messagesRoot = base => (new URL(base).pathname.replace(/\/+$/, '').endsWith('/v1') ? trimSlash(base) : `${trimSlash(base)}/v1`)
 
 // Bounds what an endpoint that ignores the search tool can cost, while leaving a thinking model
-// room to reach the search: dsh's own DeepSeek search uses the same cap.
+// room to reach the search.
 const OUTPUT_CAP = 4096
 
 /** The standard search tool of each wire protocol. */
@@ -500,7 +456,7 @@ function checkSearchApi(api, index) {
 }
 
 /**
- * Normalize plugin config. Invalid entries fail loud at load rather than silently searching less.
+ * Normalize search config. Invalid entries fail loud at load rather than silently searching less.
  * Declared `searchApis` come before the built-in SEARCH_APIS, so a user entry wins on its host.
  */
 export function resolveConfig(config = {}) {
@@ -530,11 +486,10 @@ const errorDetail = (text) => {
 
 /**
  * Build the `auto` search provider over injected effects, so tests run it without a host.
- * @param deps.route - the asking Session's route: `{ provider, model, api, baseURL, apiKeyEnv, account, headers }`.
+ * @param deps.route - the asking conversation's route: `{ provider, model, api, baseURL, apiKeyEnv, headers }`.
  * @param deps.resolveKey - credential reference → key, or undefined.
- * @param deps.resolveAccountToken - endpoint → DeepSeek account token, or undefined.
  * @param deps.fetch - the HTTP client for native searches.
- * @param deps.webFetch - `ctx.web.fetch`.
+ * @param deps.webFetch - the HTTP client for fallback result pages.
  */
 export function createAutoSearchProvider(deps, config = {}) {
   const options = resolveConfig(config)
@@ -542,14 +497,7 @@ export function createAutoSearchProvider(deps, config = {}) {
   // route + endpoint + model → `{ works: true }` or `{ until, reason }`, for this process.
   const memory = new Map()
 
-  async function credentialFor(route, endpoint) {
-    if (route.account) {
-      let token
-      try { token = str(await deps.resolveAccountToken?.(endpoint)) } catch (error) { return { reason: `the DeepSeek account token could not be read: ${reasonOf(error)}` } }
-      return token === undefined
-        ? { reason: 'it is not signed in to a DeepSeek account' }
-        : { headers: () => ({ 'x-dsh-auth-token': token }), via: 'the DeepSeek account sign-in' }
-    }
+  async function credentialFor(route) {
     if (route.apiKeyEnv === undefined) return { reason: 'it names no API key' }
     let key
     try { key = str(await deps.resolveKey(route.apiKeyEnv)) } catch (error) { return { reason: `the key ${route.apiKeyEnv} could not be read: ${reasonOf(error)}` } }
@@ -566,7 +514,7 @@ export function createAutoSearchProvider(deps, config = {}) {
     try {
       response = await deps.fetch(candidate.url, {
         method: 'POST',
-        // Credential-bearing requests never follow redirects (deepseek-harness/packages/web/AGENTS.md).
+        // Credential-bearing requests never follow redirects.
         redirect: 'error',
         headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': USER_AGENT, ...route.headers, ...call.headers, ...credential.headers(candidate) },
         body: JSON.stringify(call.body),
@@ -614,7 +562,7 @@ export function createAutoSearchProvider(deps, config = {}) {
         notes.push(`${where}: ${memo.reason}; not retried for ${Math.ceil((memo.until - now()) / MINUTE)} min`)
         continue
       }
-      credential ??= await credentialFor(route, candidate.url)
+      credential ??= await credentialFor(route)
       if (signal?.aborted) throw aborted(signal)
       if (credential.reason !== undefined) return { reason: `route "${route.provider}" could not search natively: ${credential.reason}` }
       const remaining = deadline - now()
@@ -713,63 +661,4 @@ export function createAutoSearchProvider(deps, config = {}) {
       ].join('\n'), 'WEB_SEARCH_UNAVAILABLE')
     },
   }
-}
-
-// ---------------------------------------------------------------------------
-// Host wiring: read the asking Session's route through public dsh services only.
-
-const stringRecord = value => (isRecord(value) ? Object.fromEntries(Object.entries(value).filter(([, item]) => typeof item === 'string')) : {})
-
-// OpenCode's gateways turn away a request that does not name its conversation. DSH's
-// adapter names it by the Session id, so a search for that Session does the same,
-// unless the provider settings name one.
-const OPENCODE_SESSION = 'x-opencode-session'
-const OPENCODE_ROUTES = new Set(['opencode', 'opencode-go'])
-const withConversation = (provider, headers, sessionId) => (!OPENCODE_ROUTES.has(provider) || sessionId === undefined
-  || Object.keys(headers).some(name => name.toLowerCase() === OPENCODE_SESSION)
-  ? headers
-  : { ...headers, [OPENCODE_SESSION]: sessionId })
-
-/** The route of the Session that started the current tool call: protocol, endpoint, key name, and headers. */
-export function routeOf(ctx) {
-  const session = ctx.get('agents')?.currentInitiator()?.session
-  const request = session?.requestContext()
-  const provider = str(request?.provider)
-  if (provider === undefined) return undefined
-  let section
-  try {
-    const entry = ctx.get('llm')?.listConfigurableProviders().find(item => item.provider === provider)
-    if (entry !== undefined) {
-      const descriptor = ctx.get('settings')?.describe().find(item => item.ns === entry.settingsNs)
-      section = entry.settingsPath.reduce((value, key) => value?.[key], descriptor?.value)
-    }
-  } catch { section = undefined }
-  const [catalogApi, catalogBase, catalogKey] = CATALOG[provider] ?? []
-  const account = provider === 'deepseek-account'
-  return {
-    provider,
-    model: str(request.model),
-    api: str(section?.api) ?? catalogApi,
-    baseURL: str(section?.baseURL) ?? (DSH_DEEPSEEK_ROUTES.has(provider) ? str(envOf(ctx)('DEEPSEEK_BASE_URL')) : undefined) ?? catalogBase,
-    apiKeyEnv: account ? undefined : str(section?.apiKeyEnv) ?? catalogKey,
-    account,
-    headers: withConversation(provider, stringRecord(section?.headers), str(session.id)),
-  }
-}
-
-const envOf = ctx => name => ctx.get('launchEnvironment')?.get(name)?.value ?? process.env[name]
-
-export function apply(ctx, config = {}) {
-  const env = envOf(ctx)
-  ctx.web.registerSearchProvider(createAutoSearchProvider({
-    route: () => routeOf(ctx),
-    resolveKey: async (ref) => {
-      const credentials = ctx.get('credentials')
-      // Without the seam the environment is the whole credential plane, as in dsh's own adapters.
-      return credentials === undefined ? env(ref) : (await credentials.resolve(ref))?.value
-    },
-    resolveAccountToken: endpoint => ctx.get('deepseekAccount')?.resolveToken(endpoint),
-    fetch: (url, init) => fetch(url, init),
-    webFetch: (request, signal) => ctx.web.fetch(request, signal),
-  }, config))
 }

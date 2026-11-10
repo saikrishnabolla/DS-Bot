@@ -83,9 +83,9 @@ const MODELS = [
   { ref: 'local-codex-cli/default', provider: 'local-codex-cli', id: 'default', name: 'CLI default', providerName: 'Codex CLI' },
 ]
 
-test('the form opens on DS Bot models and can create at once', () => {
+test('the form opens on Cue models and can create at once', () => {
   render({ models: MODELS })
-  assert.equal(button('DS Bot model').props['aria-pressed'], true)
+  assert.equal(button('Cue model').props['aria-pressed'], true)
   assert.equal(button('Local agent').props['aria-pressed'], false)
   assert.equal(button('Create').props.disabled, false)
 })
@@ -105,6 +105,6 @@ test('on Local agent, Create waits for a CLI', () => {
   assert.equal(button('Local agent').props['aria-pressed'], true)
   assert.match(flatten(concrete).join(' '), /Looking for agent CLIs/)
   assert.equal(button('Create').props.disabled, true)
-  button('DS Bot model').props.onClick()
+  button('Cue model').props.onClick()
   assert.equal(button('Create').props.disabled, false)
 })

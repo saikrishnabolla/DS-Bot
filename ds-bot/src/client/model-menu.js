@@ -1,4 +1,4 @@
-import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentPart } from './text.js'
 import { CheckIcon, SlidersIcon } from './icons.js'
@@ -12,7 +12,7 @@ const MENU_EXIT_MS = 120
 
 // -------------------------------------------------------------------------
 // A Bot's model: the picker in its details panel and settings, and the message its
-// chat opens on while it has none. Models come from DeepSeek Harness, grouped by provider.
+// chat opens on while it has none. Models come from Cue, grouped by provider.
 
 export function groupModels(models) {
   const groups = new Map()
@@ -344,7 +344,7 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
   const [opening, setOpening] = useState(0)
   const toggle = () => {
     if (isOpen) { close(); return }
-    // DSH settings can change the list at any time, so opening asks again.
+    // Provider settings can change the list at any time, so opening asks again.
     if (local) readModels(routeOf(current))
     else void actions?.refreshModels?.()
     setOpening(count => count + 1)
@@ -464,7 +464,7 @@ export function ModelKeyCard({ model, actions, onSaved }) {
       .then(() => { setValue(''); onSaved?.() }, failure => setError(hostText(failure?.message ?? String(failure))))
       .finally(() => setBusy(false))
   }
-  const official = model.provider === 'deepseek-official'
+  const official = model.provider === 'deepseek'
   return h('div', { className: 'bt-q bt-model-key', role: 'group', 'aria-label': label },
     h('div', { className: 'bt-model-key-title' }, h(KeyIcon), label),
     h('label', { className: 'bt-q-field bt-secret-field' }, h(MaskedInput, { value, onChange: setValue, onEnter: save, label, autoFocus: true })),
@@ -480,38 +480,10 @@ export function ModelKeyCard({ model, actions, onSaved }) {
 // Where the providers are set up: the Models page of Settings.
 export const manageModels = actions => actions.openModels ?? (actions.openSettings ? () => actions.openSettings('models') : undefined)
 
-// Ways to get a first model. The DeepSeek sign-in exists only where the shell carries
-// its account plugin; the API key uses the shell's own editor.
+// Ways to get a first model through Cue's provider settings.
 function setupChoices(actions) {
   const custom = manageModels(actions)
-  return [
-    actions.canSignIn?.() ? [t('Sign in to DeepSeek'), () => actions.signIn()] : null,
-    actions.openHarnessOnboarding ? [t('Enter a DeepSeek API key'), () => actions.openHarnessOnboarding('deepseek-official')] : null,
-    custom ? [t('Open settings to set up a custom model'), () => custom()] : null,
-  ].filter(Boolean)
-}
-
-// The shell's own DeepSeek sign-in dialog, borrowed from its account plugin: the
-// plugin's model sign-in entry renders here with the plugin's own operations.
-export function DeepSeekSignIn({ useUi, actions }) {
-  const open = useUi(state => state.signIn)
-  const entry = open ? actions.signInEntry?.() : null
-  if (!entry) return null
-  return h(SignInHost, { key: open, entry, actions })
-}
-
-function SignInHost({ entry, actions }) {
-  const [ops] = useState(() => entry.inject?.() ?? {})
-  const close = () => actions.closeSignIn()
-  const useHook = source => selector => useSyncExternalStore(source.subscribe, () => selector(source.getSnapshot()))
-  const [hooks] = useState(() => ({ useAccount: useHook(ops.hooks.account), useTheme: useHook(ops.hooks.theme) }))
-  return h(entry.component, {
-    ...ops,
-    ...hooks,
-    t: actions.accountT(),
-    complete: close,
-    useApiKey: () => { close(); actions.openHarnessOnboarding('deepseek-official') },
-  })
+  return custom ? [[t('Open settings to set up a custom model'), () => custom()]] : []
 }
 
 export const MODEL_CSS = `
@@ -565,8 +537,8 @@ menus use, with the menu item's hover, focus ring and a caret that points at the
 .bt-model-tick{flex:none;width:16px;height:16px;display:inline-flex;color:var(--bt-ink-2)}
 .bt-model-tick svg{animation:bt-check-pop ${SPRING_POP.duration}ms ${SPRING_POP.easing} 60ms backwards}
 .bt-model-none{padding:8px;font-size:13px;line-height:18px;color:var(--bt-ink-2)}
-/* DSH centers the message column inside its scroll padding, which can sit a few px off this dock's center; the side shadows keep the band over the column's edges. */
-.bt-model-dock{width:100%;max-width:var(--dsh-chat-content-width,748px);margin:0 auto;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:0 0 10px;box-sizing:border-box;background:var(--bt-main);box-shadow:-12px 0 0 var(--bt-main),12px 0 0 var(--bt-main);animation:bt-model-in ${SPRING_POP.duration}ms ${SPRING_POP.easing} backwards}
+/* Cue centers the message column inside its scroll padding, which can sit a few px off this dock's center; the side shadows keep the band over the column's edges. */
+.bt-model-dock{width:100%;max-width:var(--cue-chat-content-width,748px);margin:0 auto;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:0 0 10px;box-sizing:border-box;background:var(--bt-main);box-shadow:-12px 0 0 var(--bt-main),12px 0 0 var(--bt-main);animation:bt-model-in ${SPRING_POP.duration}ms ${SPRING_POP.easing} backwards}
 /* The scroll box clips at its padding edge, so 3px of padding keeps the chips' focus rings visible; the negative margins cancel it so the chips stay in place. */
 .bt-model-chips{display:flex;flex-wrap:wrap;gap:6px;box-sizing:border-box;padding:3px;margin:-3px 0 -3px 27px;max-width:min(566px,calc(100% - 27px));max-height:min(246px,calc(36vh + 6px));max-height:min(246px,calc(36dvh + 6px));overflow-y:auto;scrollbar-width:thin}
 .bt-model-choice-group{display:flex;flex-direction:column;gap:6px;width:100%;min-width:0}

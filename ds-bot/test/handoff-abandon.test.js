@@ -98,7 +98,7 @@ async function startHost(home, team, options = {}) {
     }
   }
   // Scoped Cordis events (subagent lifecycle, tool results) reach the plugin
-  // through a dispatch carrier DSH keys by the agent the event is for — that
+  // through a dispatch carrier Cue keys by the agent the event is for — that
   // carrier is what `this` is in a real listener call.
   const emitScoped = (parentId, name, ...args) => {
     const carrier = scopeTarget({}, agentOf(parentId))
@@ -332,7 +332,7 @@ test('a restart gives up a wait whose target no longer exists, and only those', 
   assert.match(textOf(callsOf(host.agents, 'b').at(-1)[1].content), /^\[Waiting given up · the other Bot did not hand back this work/)
 })
 
-// A subagent run's Session cannot be told gone for certain: DSH says nothing both
+// A subagent run's Session cannot be told gone for certain: Cue says nothing both
 // when the Session is gone and when it cannot be read (resume.js relies on the same
 // reading). The sweep leaves such a wait to the user's menu, whether the read is
 // missing, refuses, times out, says nothing, or returns a live log.

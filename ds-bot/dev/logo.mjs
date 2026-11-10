@@ -41,7 +41,7 @@ function logo(mode) {
   })
   const orbit = `<circle cx="${CENTER}" cy="${CENTER}" r="${RING_RADIUS}" fill="none" stroke="${ORBIT[mode]}" stroke-opacity=".22" stroke-width="2" stroke-dasharray="2 10" stroke-linecap="round"/>`
   const marks = [...seats, { ...WHALE, x: CENTER, y: CENTER }].map((seat, index) => character(seat, mode, `m${index}`))
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BOX} ${BOX}" width="${BOX}" height="${BOX}" role="img" aria-label="DS Bot">${orbit}${marks.join('')}</svg>\n`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BOX} ${BOX}" width="${BOX}" height="${BOX}" role="img" aria-label="Cue">${orbit}${marks.join('')}</svg>\n`
 }
 
 // One character in a `size` box centered on (x, y). The eyes are cut out of the body,

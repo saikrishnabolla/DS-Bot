@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { ACCENT_INKS, INKS, luminance } from '../src/client/inks.js'
+import { CONVERSATION_CSS, SHELL_CSS } from '../src/client/styles.js'
 import { allThemes, shellTokens, themeCss } from '../src/client/themes.js'
+import { USER_MESSAGE_CSS } from '../src/client/user-message.js'
 
-// The browser bundle holds every style sheet ds-bot installs; the bundle test
-// keeps it in step with src/client.
-const bundle = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+const bundle = `${SHELL_CSS}\n${CONVERSATION_CSS}\n${USER_MESSAGE_CSS}`
 
 // CSS declaration blocks hold no braces, so a declaration's rule runs from the
 // nearest `{` before it to the nearest `}` after it.
@@ -38,12 +37,12 @@ test('every rule that writes in the user ink paints the user surface under it', 
 
 test('no ds-bot text color sits on a surface that a skin owns', () => {
   for (const { selector, body } of rulesWith(/(?<=[{;])color:var\(--bt-/g)) {
-    assert.doesNotMatch(surface(body) ?? '', /--dsw-/, selector)
+    assert.doesNotMatch(surface(body) ?? '', /--cue-ui-/, selector)
   }
 })
 
 test('ds-bot leaves the host bubble variables to the host and its skins', () => {
-  assert.doesNotMatch(bundle, /--dsw-specific-bubble/)
+  assert.doesNotMatch(bundle, /--cue-ui-specific-bubble/)
   assert.doesNotMatch(bundle, /conversationTokens|installBubbleTokens/)
   for (const [id, theme] of Object.entries(allThemes())) {
     assert.deepEqual(Object.keys(shellTokens(theme)).filter(name => name.includes('bubble')), [], id)
@@ -51,9 +50,22 @@ test('ds-bot leaves the host bubble variables to the host and its skins', () => 
 })
 
 const themeVars = (theme, dark) => {
-  const block = themeCss(theme).split('\n').find(line => line.startsWith(dark ? 'html body[data-ds-dark-theme]{' : 'html body{'))
+  const block = themeCss(theme).split('\n').find(line => line.startsWith(dark ? 'html body[data-cue-dark-theme]{' : 'html body{'))
   return Object.fromEntries(block.slice(block.indexOf('{') + 1, -1).split(';').map(item => item.split(':')))
 }
+
+test('theme CSS installs every standalone shell token in both modes', () => {
+  for (const [id, theme] of Object.entries(allThemes())) {
+    const tokens = shellTokens(theme)
+    for (const dark of [false, true]) {
+      const vars = themeVars(theme, dark)
+      for (const [name, values] of Object.entries(tokens)) {
+        assert.equal(vars[name], values[dark ? 'dark' : 'light'], `${id} ${dark ? 'dark' : 'light'} ${name}`)
+      }
+    }
+  }
+})
+
 const parse = color => {
   if (/^#[0-9a-f]{6}$/i.test(color)) return { hex: color.toLowerCase(), alpha: 1 }
   const parts = color.match(/^rgba?\(([^)]+)\)$/)[1].split(',').map(Number)
@@ -84,7 +96,7 @@ test('the user ink reads on the user surface in every built-in theme and mode', 
 // of the two inks reads better: white on Tangerine was 2.89:1, near-black is 6.38:1.
 // The variables themeCss sets for one mode.
 const varsOf = (theme, accent, dark) => {
-  const block = themeCss(theme, accent).split('\n').find(line => line.startsWith(dark ? 'html body[data-ds-dark-theme]{' : 'html body{'))
+  const block = themeCss(theme, accent).split('\n').find(line => line.startsWith(dark ? 'html body[data-cue-dark-theme]{' : 'html body{'))
   return Object.fromEntries(block.slice(block.indexOf('{') + 1, -1).split(';').map(item => item.split(':')))
 }
 
@@ -128,6 +140,7 @@ test('a preset accent takes its dark value in dark mode; a custom accent stays t
 test('every danger color reads --bt-danger, which the base sheet sets once', () => {
   assert.equal([...bundle.matchAll(/--bt-danger:#e02135/g)].length, 1)
   const allowed = before => before.endsWith('--bt-danger:') // the one value
+    || before.endsWith('--bt-ink-red:') // the red Bot color, not a danger color
     || before.endsWith('var(--bt-danger,') // feedback.js: its toast shows without the base sheet too
     || before.endsWith('.bt-voice-end:hover{background:') // recording reds: not decided yet
     || /FF3E51['"],\s*['"]$/i.test(before) // the red Bot color, not a danger color
@@ -137,9 +150,8 @@ test('every danger color reads --bt-danger, which the base sheet sets once', () 
   assert.deepEqual(loose, [])
 })
 
-// A dark skin repaints the host bubble surface (dsh-dream-skin's underwater theme
-// sets this value) and leaves ds-bot's colors alone.
-const DARK_SKIN = { '--dsw-specific-bubble': 'rgba(31,33,38,.92)', '--dsw-alias-label-primary': '#ffffff' }
+// A dark theme can repaint shared surfaces without changing the user-message pair.
+const DARK_SKIN = { '--cue-ui-specific-bubble': 'rgba(31,33,38,.92)', '--cue-ui-alias-label-primary': '#ffffff' }
 const resolve = (value, vars) => {
   const plain = value.replace(/!important$/, '')
   const match = plain.match(/^var\((--[\w-]+)(?:,(.+))?\)$/)
@@ -153,7 +165,7 @@ test('a user message stays readable when a dark skin repaints the host bubble', 
   for (const id of ['deepseek', 'mono', 'paper', 'moonlight']) {
     const vars = { ...themeVars(allThemes()[id], true), ...DARK_SKIN }
     const page = vars['--bt-main']
-    for (const selector of ['.bt-ubody', '[class*="_userRow"] [class*="_bubble"]']) {
+    for (const selector of ['.bt-ubody', '.bt-ububble']) {
       const { body } = ruleFor(selector)
       const paper = over(resolve(surface(body), vars), page)
       const ink = over(resolve(declared(body, 'color'), vars), paper)
@@ -162,8 +174,8 @@ test('a user message stays readable when a dark skin repaints the host bubble', 
   }
 })
 
-test('the surface wins over the host bubble rule that reads the skin variable', () => {
-  const { body } = ruleFor('[class*="_userRow"] [class*="_bubble"]')
-  assert.equal(surface(body), 'var(--bt-user)!important')
-  assert.equal(declared(body, 'color'), 'var(--bt-user-ink)!important')
+test('Cue owns the user message surface and ink', () => {
+  const { body } = ruleFor('.bt-ububble')
+  assert.equal(surface(body), 'var(--bt-user)')
+  assert.equal(declared(body, 'color'), 'var(--bt-user-ink)')
 })

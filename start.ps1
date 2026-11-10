@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath($PSScriptRoot)
-$plugin = Join-Path $repo 'ds-bot'
+$core = Join-Path $repo 'ds-bot'
 $appDir = Join-Path $repo 'app'
 if (-not [IO.Path]::IsPathRooted($DataRoot)) { $DataRoot = Join-Path $repo $DataRoot }
 $DataRoot = [IO.Path]::GetFullPath($DataRoot)
@@ -55,18 +55,18 @@ foreach ($name in $envNames) { $savedEnv[$name] = [Environment]::GetEnvironmentV
 try {
     & $node --version
     if ($LASTEXITCODE -ne 0) { throw 'Node.js could not start.' }
-    $pluginHash = Get-SourceHash @((Join-Path $plugin 'package.json'), (Join-Path $plugin 'package-lock.json'), (Join-Path $plugin '.npmrc'))
-    Install-IfChanged $plugin $pluginHash (Join-Path $plugin 'node_modules/esbuild/package.json')
-    Write-Host 'Building the plugin from this checkout...'
-    Invoke-Npm $plugin @('run', 'build')
+    $coreHash = Get-SourceHash @((Join-Path $core 'package.json'), (Join-Path $core 'package-lock.json'))
+    Install-IfChanged $core $coreHash (Join-Path $core 'node_modules/esbuild/package.json')
+    Write-Host 'Building Cue from this checkout...'
+    Invoke-Npm $core @('run', 'build')
 
-    # The desktop app installs a copy of the plugin. Hash npm's package file list so new
+    # The desktop app installs a copy of the core package. Hash npm's package file list so new
     # or removed source files also refresh that copy, even when its version is unchanged.
-    $packJson = Invoke-Npm $plugin @('pack', '--dry-run', '--json', '--ignore-scripts')
+    $packJson = Invoke-Npm $core @('pack', '--dry-run', '--json', '--ignore-scripts')
     $package = @((($packJson -join "`n") | ConvertFrom-Json))[0]
-    if (-not $package.files) { throw 'npm did not return the plugin package file list.' }
+    if (-not $package.files) { throw 'npm did not return the core package file list.' }
     $appFiles = @((Join-Path $appDir 'package.json'), (Join-Path $appDir 'package-lock.json'), (Join-Path $appDir '.npmrc'))
-    $appFiles += @($package.files | ForEach-Object { Join-Path $plugin $_.path })
+    $appFiles += @($package.files | ForEach-Object { Join-Path $core $_.path })
     $appHash = Get-SourceHash $appFiles
     Install-IfChanged $appDir $appHash (Join-Path $appDir 'node_modules/electron/package.json')
 
@@ -86,8 +86,8 @@ try {
         [void][IO.Directory]::CreateDirectory($path)
     }
     Write-Host "Persistent data: $DataRoot"
-    if ($PrepareOnly) { Write-Host 'Ready. Run start.ps1 to open DS Bot.'; return }
-    Write-Host 'Starting DS Bot. Configure model providers in Settings; close the window to stop.'
+    if ($PrepareOnly) { Write-Host 'Ready. Run start.ps1 to open Cue.'; return }
+    Write-Host 'Starting Cue. Configure model providers in Settings; close the window to stop.'
     Invoke-Npm $appDir @('start')
 } finally {
     foreach ($name in $envNames) {

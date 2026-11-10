@@ -17,7 +17,7 @@ const { outputFiles } = await build({
     resolveDir: PLUGIN,
   },
   bundle: true, format: 'cjs', platform: 'browser', write: false, logLevel: 'silent',
-  external: ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'],
+  external: ['react', 'react-dom'],
 })
 const slots = []
 let idx = 0
@@ -61,7 +61,10 @@ runInNewContext(outputFiles[0].text, {
   module, exports: module.exports,
   document: dom.window.document,
   navigator: { clipboard },
-  window: { matchMedia: () => ({ matches: false }), dshDesktop: {}, open: (url) => { opened.push(url); return null } },
+  window: {
+    matchMedia: () => ({ matches: false }),
+    open: () => ({ opener: null, close() {}, location: { set href(url) { opened.push(url) } } }),
+  },
   require: name => (name === 'react' ? react : name === 'react-dom' ? { createPortal: node => node } : {}),
 })
 const { MailCatalogRow, MailToolCell, ConnectorsPage } = module.exports

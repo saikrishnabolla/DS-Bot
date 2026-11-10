@@ -23,7 +23,7 @@ async function fixture(t) {
   const uiDir = join(root, 'ui')
   const workspacePath = join(root, 'workspace')
   await Promise.all([mkdir(dataDir), mkdir(uiDir), mkdir(workspacePath)])
-  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
   let host
   let call
   let faux

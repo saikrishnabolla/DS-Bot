@@ -1,10 +1,10 @@
-import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FishLogo } from './dsh-primitives.js'
+import { FishLogo } from './ui-primitives.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, DotsIcon, FolderIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, CloudDownloadIcon, SlidersIcon, ChevronRightIcon, DotsIcon, FolderIcon } from './icons.js'
 import { lookOf, MAIN_LOOK } from './characters.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
@@ -14,8 +14,6 @@ import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, stepMenuFocus, useL
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { quietly } from './diagnostics.js'
-import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
-import { chatRoom, dshCollapsed } from './frame-watch.js'
 
 // -------------------------------------------------------------------------
 // Sidebar
@@ -447,30 +445,6 @@ function useListGlide(listRef, layout, key) {
   }, [layout, key])
 }
 
-// In the Bot view the left column is ours, drawn on <body> over the shell's
-// collapsed sidebar: the open column or the avatar rail push the conversation
-// over, the drawer floats above it. Its right edge drags the open width, and
-// down to the rail.
-function LeftColumn({ mode, width, onGrip, leaving, children }) {
-  return createPortal(h('div', { className: 'bt-leftcol', 'data-left': mode, 'data-leaving': leaving || undefined, 'aria-hidden': leaving || undefined, style: { width: `${width}px` } },
-    children,
-    h('div', { className: 'bt-leftcol-grip', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': t('Resize sidebar'), title: t('Resize sidebar'), onPointerDown: onGrip })), document.body)
-}
-
-// The top-left switch hides the whole column and brings it back. Under a
-// Windows title bar it takes the shell's own place in the title band; elsewhere
-// it shows only while the column is hidden, since the column's own top row
-// carries it otherwise.
-function TitleToggle({ hidden, onToggle }) {
-  if (typeof document === 'undefined') return null
-  const titlebar = document.documentElement.hasAttribute('data-windows-titlebar')
-  if (!titlebar && !hidden) return null
-  const label = t(hidden ? 'Expand sidebar' : 'Collapse sidebar')
-  return createPortal(h('button', {
-    type: 'button', className: titlebar ? 'bt-title-toggle' : 'bt-round bt-title-toggle', 'aria-label': label, title: label, onClick: onToggle,
-  }, h(SidebarIcon)), document.body)
-}
-
 // The Bot-API-down hint cannot send the user to Settings → Feedback: its
 // diagnostics request needs the same API. What still works in this state is
 // the last error this window recorded, and the engine's own startup output —
@@ -487,27 +461,10 @@ export function TeamSidebar(props) {
   const listRef = useRef(null)
   const roster = useRoster(value => value)
   const markedUnread = useUi(value => value.unread)
-  const leftDrawer = useUi(value => value.leftDrawer === true)
-  const details = useUi(value => value.details ?? null)
-  const view = useUi(value => value.view ?? 'details')
-  const panelYield = useUi(value => value.panelYield === true)
   const bootFailed = useUi(value => value.bootFailed === true)
   const renameSection = useUi(value => value.renameSection)
   props.useRegistry(value => value)
-  const frameSnap = props.useFrame ? props.useFrame(value => value) : { viewport: typeof window === 'undefined' ? 0 : window.innerWidth, sidebarWidth: FALLBACK_SIDEBAR_WIDTH, collapsedWidth: 0 }
-  const pref = props.useSidebarPref ? props.useSidebarPref(value => value) : 'open'
-  const layout = frameLayout({
-    viewport: frameSnap.viewport, sidebarWidth: frameSnap.sidebarWidth,
-    pref, drawer: leftDrawer,
-    panel: details ? { view, yielded: panelYield } : null,
-  })
-  // A drag of the column's edge shows where it would land, live.
-  const [drag, setDrag] = useState(null)
-  const mode = drag?.left ?? layout.left
-  // A hidden column stays mounted for its slide out; `shown` is the mode it last had.
-  const [held, leaving] = useLinger(mode === 'hidden' ? null : mode, SPRING_SHAPE.duration)
-  const shown = held ?? mode
-  const wideContent = shown !== 'rail'
+  const wideContent = wide
   const updated = useSessions(list => {
     const stamps = {}
     for (const id of list.ids) stamps[id] = list.byId[id]?.updatedAt ?? 0
@@ -566,197 +523,7 @@ export function TeamSidebar(props) {
       .catch(error => actions.reportError(error, 'section'))
   }
 
-  // Our column pushes the conversation over by what it takes beyond the shell's
-  // collapsed track; a drawer floats over the rail's place, so it pushes as much
-  // as the rail and the chat stays put when it opens or closes.
-  const openWidth = drag?.width ?? frameSnap.sidebarWidth
-  const ourWidth = shown === 'rail' ? RAIL_WIDTH : openWidth
-  const pushed = mode === 'open' ? openWidth : mode === 'hidden' ? 0 : RAIL_WIDTH
-  useLayoutEffect(() => {
-    if (typeof document === 'undefined') return
-    chatRoom.setLeft(Math.max(0, pushed - (frameSnap.collapsedWidth ?? 0)))
-  }, [pushed, frameSnap.collapsedWidth])
-  useEffect(() => () => { if (typeof document !== 'undefined') chatRoom.setLeft(null) }, [])
-
-  // The edge drag: live while the pointer moves, the column's new state on release.
-  // Per frame the drag writes the column's own inline style and each conversation
-  // column's inline margin — the same path the panel's resize takes — so nothing
-  // re-renders or restyles the chat while the pointer moves. A render only happens
-  // when the drag crosses the rail's snap line, and the spring (`data-folding`)
-  // rides that switch alone: it comes off when the switch settles, so a drag that
-  // keeps going afterwards follows the cursor frame by frame again.
-  const settleTimer = useRef(0)
-  const springTimer = useRef(0)
-  const startDrag = (event) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    clearTimeout(settleTimer.current)
-    clearTimeout(springTimer.current)
-    const grip = event.currentTarget
-    const column = grip.parentElement
-    // A re-grab can land while a previous spring still stands: the new drag owns
-    // the column from here, so its fold state starts clean.
-    delete column.dataset.folding
-    grip.setPointerCapture?.(event.pointerId)
-    chatRoom.hold(true)
-    const columns = chatRoom.columns()
-    for (const col of columns) col.style.setProperty('transition', 'none', 'important')
-    const panes = [...document.querySelectorAll('.bt-pane')]
-    const offLeft = frameSnap.collapsedWidth ?? 0
-    let last = null
-    let liveLeft = mode
-    let done = false
-    const write = (at) => {
-      const width = at.left === 'rail' ? RAIL_WIDTH : at.width
-      column.style.width = `${width}px`
-      column.style.setProperty('--bt-lc-w', `${width}px`)
-      const occupied = at.left === 'open' ? width : RAIL_WIDTH
-      const push = Math.max(0, occupied - offLeft)
-      for (const col of columns) col.style.setProperty('margin-left', `${push}px`, 'important')
-      for (const pane of panes) pane.style.left = `${occupied}px`
-    }
-    // A snap crossing arms the spring for the switch's glide; the timer takes it
-    // back off once the switch has had its duration.
-    let springUntil = 0
-    const springOff = () => {
-      springUntil = 0
-      delete column.dataset.folding
-      for (const col of columns) col.style.setProperty('transition', 'none', 'important')
-    }
-    const springOn = () => {
-      column.dataset.folding = ''
-      for (const col of columns) col.style.setProperty('transition', `margin-left ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}`, 'important')
-      springUntil = performance.now() + SPRING_SHAPE.duration
-      clearTimeout(springTimer.current)
-      springTimer.current = setTimeout(springOff, SPRING_SHAPE.duration)
-    }
-    const track = (x) => {
-      last = dragColumn(x, window.innerWidth)
-      if (last.left !== liveLeft) {
-        liveLeft = last.left
-        if (!reducedMotion()) springOn()
-        setDrag(last)
-      }
-      write(last)
-    }
-    const onMove = (move) => track(move.clientX)
-    // The rules and props take the landed geometry back over; while the fold's
-    // spring still runs this waits it out so the landing does not snap. The
-    // inline `width` stays: it is the landed geometry, and React writes its width
-    // prop only when the value changes, so removing it would leave the edge at
-    // its CSS fallback (57px on the rail).
-    const finish = () => {
-      clearTimeout(springTimer.current)
-      if (column.isConnected && last !== null) chatRoom.setLeft(Math.max(0, (last.left === 'open' ? last.width : RAIL_WIDTH) - offLeft))
-      for (const col of columns) { col.style.removeProperty('margin-left'); col.style.removeProperty('transition') }
-      column.style.removeProperty('--bt-lc-w')
-      delete column.dataset.folding
-      chatRoom.hold(false)
-    }
-    const ends = ['pointerup', 'pointercancel', 'lostpointercapture']
-    const onEnd = (end) => {
-      if (done) return
-      done = true
-      if (end.type === 'pointerup') track(end.clientX)
-      grip.removeEventListener('pointermove', onMove)
-      for (const name of ends) grip.removeEventListener(name, onEnd)
-      setDrag(null)
-      if (last === null) { finish(); return }
-      // The drag is the latest explicit gesture: it takes back a yielded panel's room.
-      actions.setPanelYield?.(false)
-      if (last.left === 'rail') { actions.setLeftDrawer?.(false); actions.setSidebarPref?.('rail') }
-      else {
-        actions.setSidebarWidth?.(last.width)
-        actions.setSidebarPref?.('open')
-        actions.setLeftDrawer?.(last.left === 'drawer')
-      }
-      if (springUntil === 0) finish()
-      else settleTimer.current = setTimeout(finish, Math.max(0, springUntil - performance.now()) + 60)
-    }
-    grip.addEventListener('pointermove', onMove)
-    for (const name of ends) grip.addEventListener(name, onEnd)
-  }
-
-  // In the Bot view the shell's own sidebar stays collapsed under our column. A
-  // flip we did not ask for is the user's own switch gesture (the shell's button
-  // or shortcut where it still reaches), unless the width just crossed the
-  // shell's auto-collapse line, which re-applies the shell's own rule.
-  const dsh = useRef(null)
-  const requested = useRef(false)
-  // The request mark always lapses on its own: a re-render before the shell's
-  // flip must not leave it set, or the user's next switch would read as ours.
-  // A lapse checks the shell again, since our flip and another one landing in
-  // the same frame cancel out and no flip arrives to settle it.
-  const requestLapse = useRef(0)
-  const [lapsed, setLapsed] = useState(0)
-  useEffect(() => () => clearTimeout(requestLapse.current), [])
-  // The window's own resize event lands before the shell's next-frame measure,
-  // so it dates a width change even while our frame source still holds the old one.
-  const resizedAt = useRef(0)
-  useEffect(() => {
-    const onResize = () => { resizedAt.current = performance.now() }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  const quiet = (on) => {
-    // Our own collapse of the shell's sidebar lands at once: its slide would drag
-    // the conversation across under our column.
-    if (on) document.documentElement.setAttribute('data-bt-collapsing', '')
-    else document.documentElement.removeAttribute('data-bt-collapsing')
-  }
-  useEffect(() => () => quiet(false), [])
-  useLayoutEffect(() => {
-    if (typeof document === 'undefined' || typeof actions.toggleSidebar !== 'function') return undefined
-    const collapsed = dshCollapsed() ?? !wide
-    const prev = dsh.current
-    const viewport = window.innerWidth
-    dsh.current = { collapsed, viewport }
-    if (prev !== null && collapsed !== prev.collapsed) {
-      if (requested.current) requested.current = false
-      else if (!collapsed && userSidebarToggle({ before: prev, after: { collapsed, viewport }, sinceResize: performance.now() - resizedAt.current })) {
-        toggleRef.current()
-      }
-    }
-    if (collapsed) { requested.current = false; quiet(false); return undefined }
-    if (requested.current) return undefined
-    requested.current = true
-    quiet(true)
-    actions.toggleSidebar()
-    clearTimeout(requestLapse.current)
-    requestLapse.current = setTimeout(() => { requested.current = false; quiet(false); setLapsed(value => value + 1) }, 300)
-    return undefined
-  }, [wide, frameSnap.viewport, lapsed])
-
-  // The drawer closes on a row pick, on Escape and on a press outside it.
-  useEffect(() => {
-    if (mode !== 'drawer') return undefined
-    const onDown = (event) => {
-      if (event.target instanceof Element && event.target.closest('.bt-leftcol')) return
-      actions.setLeftDrawer?.(false)
-    }
-    const onKey = (event) => {
-      if (event.key !== 'Escape') return
-      event.stopPropagation()
-      actions.setLeftDrawer?.(false)
-    }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey, true)
-    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true) }
-  }, [mode])
-
-  const navigate = (open, id) => {
-    const result = open(id)
-    if (leftDrawer) actions.setLeftDrawer?.(false)
-    return result
-  }
-  const rowActions = {
-    ...actions,
-    openSession: id => navigate(actions.openSession, id),
-    openAgent: id => navigate(actions.openAgent, id),
-    openAgentSession: id => navigate(actions.openAgentSession, id),
-    newAgentSession: id => navigate(actions.newAgentSession, id),
-  }
-  const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide: wideContent }
+  const rowProps = { roster, actions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide: wideContent }
   // Typing while the sidebar has focus starts a search.
   const typeToSearch = (event) => {
     if (event.defaultPrevented || event.key.length !== 1 || event.key === ' ' || event.metaKey || event.ctrlKey || event.altKey || event.nativeEvent.isComposing) return
@@ -764,26 +531,8 @@ export function TeamSidebar(props) {
     event.preventDefault()
     actions.openPalette(event.key)
   }
-  // The switch (top-left button, the shortcut) hides the whole column or brings
-  // back the one it hid.
-  const onToggle = () => actions.toggleLeftHidden?.()
-  // The shell's sidebar shortcut is caught on its way down, before the shell's
-  // own listener on window sees it: left to the shell, it would expand the shell's
-  // sidebar first and our sync would pull it back, a visible flash.
-  const toggleRef = useRef(onToggle)
-  toggleRef.current = onToggle
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.defaultPrevented || event.isComposing || !pressesShellShortcut(event, 'sidebar.left.toggle')) return
-      if (event.target instanceof Element && event.target.closest('.xterm')) return
-      if (document.querySelector('[aria-modal="true"]')) return
-      event.preventDefault()
-      event.stopPropagation()
-      toggleRef.current()
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [])
+  // The switch changes the sidebar between its full and rail layouts.
+  const onToggle = () => actions.toggleSidebar()
   const top = wideContent
     ? h('div', { className: 'bt-side-top' },
         h('span', { className: 'bt-brand' }, h(BrandName)),
@@ -794,16 +543,14 @@ export function TeamSidebar(props) {
         h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)))
     : h('div', { className: 'bt-rail-top' },
         h(UpdateButton, { useUpdate: props.useUpdate, actions }),
-        h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)),
         main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : h('div', { className: 'bt-hint' }, bootFailed ? bootHint() : t('Setting up your Main Bot…')),
         h('span', { className: 'bt-rail-sep', 'aria-hidden': true }))
-  // The foot stands in for the shell's hidden footer: the account avatar, and on
-  // the rail the new-chat button above it.
+  // The footer holds Cue settings and, on the rail, the new-chat button.
   const foot = wideContent
-    ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions }))
-    : h('div', { className: 'bt-leftcol-foot bt-leftcol-foot-rail' },
+    ? h('div', { className: 'bt-side-foot' }, h(AccountLauncher, { actions }))
+    : h('div', { className: 'bt-side-foot bt-side-foot-rail' },
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
-        h(AccountLauncher, { seat: false, actions }))
+        h(AccountLauncher, { actions }))
   const content = h('div', { className: wideContent ? 'bt-side' : 'bt-side bt-rail', onKeyDown: typeToSearch },
     top,
     wideContent && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
@@ -835,12 +582,10 @@ export function TeamSidebar(props) {
         onDropSec,
       }))),
     foot)
-  return h(Fragment, null,
-    h(TitleToggle, { hidden: mode === 'hidden', onToggle }),
-    shown === 'hidden' ? null : h(LeftColumn, { mode: shown, width: ourWidth, onGrip: startDrag, leaving }, content))
+  return content
 }
 
-// The update button at the sidebar's top right: a cloud while a newer DS Bot
+// The update button at the sidebar's top right: a cloud while a newer Cue
 // is available, then the install's progress and result.
 function UpdateButton({ useUpdate, actions }) {
   const update = useUpdate(value => value)
@@ -876,23 +621,23 @@ function UpdateButton({ useUpdate, actions }) {
     setError('')
     void actions.installUpdate().catch(failure => setError(hostText(failure?.message ?? String(failure))))
   }
-  const label = phase === 'installing' ? t('Updating DS Bot…')
-    : phase === 'installed' ? t('DS Bot {version} is installed. Restart DS Bot to use it.', { version: update.installed ?? update.latest })
-      : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
-        : update?.available ? t('DS Bot {version} is available', { version: update.latest })
-          : t('DS Bot update')
+  const label = phase === 'installing' ? t('Updating Cue…')
+    : phase === 'installed' ? t('Cue {version} is installed. Restart Cue to use it.', { version: update.installed ?? update.latest })
+      : phase === 'updated' ? t('Cue {version} is installed.', { version: update.installed ?? update.latest })
+        : update?.available ? t('Cue {version} is available', { version: update.latest })
+          : t('Cue update')
   const message = error || (phase === 'failed' ? update.error : '')
   return h(Fragment, null,
     h('button', {
       ref: button, type: 'button', className: 'bt-round bt-update', 'data-phase': cloudPhase, 'aria-label': label, title: label,
       'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: toggle,
     }, h(CloudDownloadIcon, { done: phase === 'installed' || phase === 'updated' }), phase === 'failed' ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null),
-    shown && box ? createPortal(h('div', { className: 'bt-update-pop', role: 'dialog', 'aria-label': t('DS Bot update'), style: box, 'data-leaving': leaving || undefined },
+    shown && box ? createPortal(h('div', { className: 'bt-update-pop', role: 'dialog', 'aria-label': t('Cue update'), style: box, 'data-leaving': leaving || undefined },
       update?.available || phase !== 'idle' ? h(Fragment, null,
-        h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('DS Bot {version}', { version: update.latest })),
+        h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('Cue {version}', { version: update.latest })),
         h('div', { className: 'bt-update-text' }, phase === 'installed'
-          ? t('Restart DS Bot to start using version {version}.', { version: update.installed ?? update.latest })
-          : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
+          ? t('Restart Cue to start using version {version}.', { version: update.installed ?? update.latest })
+          : phase === 'updated' ? t('Cue {version} is installed.', { version: update.installed ?? update.latest })
             : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
         h('div', { className: 'bt-update-actions' },
@@ -909,41 +654,12 @@ export function YouAvatar() {
     h('span', { style: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' } }, t('Settings')))
 }
 
-let shellShortcuts = null
-
-export function holdShellShortcuts(shortcuts) {
-  shellShortcuts = shortcuts
-  return () => { if (shellShortcuts === shortcuts) shellShortcuts = null }
-}
-
-// Whether a key press is the shell's current binding for one of its shortcuts.
-function pressesShellShortcut(event, id) {
-  const binding = shellShortcuts?.catalog.getSnapshot().find(row => row.id === id)?.binding
-  if (!binding) return false
-  const held = new Set(binding.modifiers)
-  return event.code === binding.code && event.ctrlKey === held.has('control') && event.altKey === held.has('alt')
-    && event.shiftKey === held.has('shift') && event.metaKey === held.has('meta')
-}
-
-const NO_SUBSCRIBE = () => () => {}
-const NO_SNAPSHOT = () => null
-
-// The footer avatar opens an account menu above itself, with Bot settings as one
-// entry. Shell panels hidden from the Bot sidebar (plugins, automation) live here too.
-// `seat` is the shell's settings.launcher seat: at priority -10 the whale wins it
-// over a shell account plugin's own launcher (the Desktop's "··· More"), which comes
-// back in Agent mode; FooterAccount stands in while no seat exists at all.
-export function AccountLauncher({ seat = true, settingsOpen, actions }) {
+// The footer avatar opens the Cue menu above itself.
+export function AccountLauncher({ actions }) {
   const [open, setOpen] = useState(false)
-  useLayoutEffect(() => {
-    if (!seat) return undefined
-    actions.seatAccount(true)
-    return () => actions.seatAccount(false)
-  }, [seat])
   const [box, setBox] = useState(null)
   const button = useRef(null)
   const menuRef = useRef(null)
-  useEffect(() => { if (settingsOpen) setOpen(false) }, [settingsOpen])
   useEffect(() => {
     if (!open) return undefined
     const onDown = (event) => {
@@ -958,41 +674,6 @@ export function AccountLauncher({ seat = true, settingsOpen, actions }) {
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true) }
   }, [open])
-  // The shell's account plugin lends its sign-out operation; the item shows only
-  // when the plugin's entry is there and its account snapshot says signed in. The
-  // entry can arrive after this mounts, so its operations follow the entry.
-  const signIn = actions.signInEntry?.() ?? null
-  const ops = useMemo(() => signIn?.inject?.() ?? {}, [signIn])
-  const accountSource = ops.hooks?.account
-  const account = useSyncExternalStore(accountSource?.subscribe ?? NO_SUBSCRIBE, accountSource ? () => accountSource.getSnapshot() : NO_SNAPSHOT)
-  const signedIn = signIn !== null && typeof ops.signOut === 'function' && account?.view?.status === 'credential-stored'
-  const signedOut = signIn !== null && typeof actions.signIn === 'function' && account?.view?.status === 'signed-out'
-  const accountT = actions.accountT?.() ?? (key => key)
-  const [confirm, setConfirm] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [signOutError, setSignOutError] = useState('')
-  const askSignOut = async () => {
-    setSignOutError('')
-    let state = 'none'
-    try {
-      if (await ops.hasRunningAccountTasks?.()) state = 'running'
-    } catch { state = 'unknown' }
-    setConfirm(state)
-  }
-  const cancelSignOut = () => { setConfirm(null); setSignOutError('') }
-  const runSignOut = async () => {
-    setBusy(true)
-    setSignOutError('')
-    try {
-      await ops.signOut()
-      setConfirm(null)
-      setOpen(false)
-    } catch (error) {
-      setSignOutError(String(error?.message ?? error))
-    } finally {
-      setBusy(false)
-    }
-  }
   const tick = useViewport()
   const anchor = () => {
     const rect = button.current?.getBoundingClientRect()
@@ -1000,13 +681,6 @@ export function AccountLauncher({ seat = true, settingsOpen, actions }) {
   }
   useLayoutEffect(() => { if (open) anchor() }, [open, tick])
   const toggle = () => { if (!open) anchor(); setOpen(value => !value) }
-  // Closing the menu drops a half-finished sign-out confirm with it.
-  useEffect(() => {
-    if (open) return
-    setConfirm(null)
-    setSignOutError('')
-    setBusy(false)
-  }, [open])
   const openModels = actions.openModels
   const groups = [
     [
@@ -1017,19 +691,11 @@ export function AccountLauncher({ seat = true, settingsOpen, actions }) {
       [t('Settings'), GearIcon, () => actions.openSettings('general')],
     ].filter(Boolean),
   ]
-  if (signedIn) groups.push([[accountT('signOut'), SignOutIcon, askSignOut, undefined, true]])
-  else if (signedOut) groups.push([[t('Sign in to DeepSeek'), SignInIcon, () => actions.signIn()]])
   return h(Fragment, null,
     h('button', { ref: button, type: 'button', className: 'bt-account', 'aria-label': t('Account'), 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: toggle },
       h('span', { className: 'bt-you', 'aria-hidden': true }, h(GearIcon))),
     open && box ? createPortal(h('div', { ref: menuRef, className: 'bt-menu bt-menu-up bt-account-menu', role: 'menu', 'aria-label': t('Account'), style: box },
-      confirm !== null ? h('div', { className: 'bt-confirm', role: 'alertdialog', 'aria-label': accountT('signOut') },
-        h('p', { className: 'bt-confirm-text' }, accountT(confirm === 'running' ? 'signOutRunningDescription' : confirm === 'unknown' ? 'signOutUnknownDescription' : 'signOutDescription')),
-        signOutError !== '' ? h('p', { className: 'bt-confirm-error', role: 'alert' }, signOutError) : null,
-        h('div', { className: 'bt-confirm-row' },
-          h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: cancelSignOut }, t('Cancel')),
-          h('button', { type: 'button', className: 'bt-confirm-go', disabled: busy, onClick: () => { void runSignOut() } }, accountT('signOut'))))
-        : groups.map((group, index) => h(Fragment, { key: index },
+      groups.map((group, index) => h(Fragment, { key: index },
           index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
           group.map(([label, Icon, run, hint, stay]) => h('button', {
             key: label, type: 'button', role: 'menuitem',
@@ -1082,19 +748,7 @@ function mainAvatarPlace(roster) {
   return { x: box.left, y: box.top, width: box.width, height: box.height, viewportWidth: globalThis.innerWidth ?? view.clientWidth, viewportHeight: globalThis.innerHeight ?? view.clientHeight }
 }
 
-// The avatar's box where the team column comes to rest. The column also slides in as it first
-// draws (bt-leftcol-in, from off the left edge), and measured mid-slide the avatar would be
-// outside the page and the whale would have nowhere to land; offsetLeft and offsetTop leave the
-// slide's transform out.
-function restingBox(mark) {
-  const box = mark.getBoundingClientRect()
-  const column = mark.closest?.('.bt-leftcol')
-  if (!column) return box
-  const now = column.getBoundingClientRect()
-  const dx = column.offsetLeft - now.left
-  const dy = column.offsetTop - now.top
-  return { left: box.left + dx, top: box.top + dy, width: box.width, height: box.height }
-}
+const restingBox = mark => mark.getBoundingClientRect()
 
 // The whale the start window hands over (app/src/start-window.mjs): `from` is where it is on
 // this page at the top of its jump. A copy of the avatar waits there for `hold` ms, while the two
@@ -1139,8 +793,7 @@ function glideOnto(mark, from) {
 
 // Opens the Main Bot whenever the main view holds no Bot conversation, the way
 // The view always lands on a Bot rather than an empty New Session page.
-// When a Bot's chat moves on to a fresh part, the shell clears the view of the part
-// it archived; the chat then goes on in the Bot's current part instead.
+// When a Bot's chat moves on to a fresh part, the view follows the current part.
 function useLandOnMainBot(roster, useSessions, actions) {
   const mainView = useSessions((list) => {
     const row = Object.values(list.byId).find(session => (session?.retainedBy?.mainView ?? 0) > 0)
@@ -1175,56 +828,14 @@ function useLandOnMainBot(roster, useSessions, actions) {
   }, [mainView, roster])
 }
 
-export function FooterAccount(props) {
-  const seated = props.useUi(value => value.accountSeated === true)
-  if (seated) return null
-  return h('span', { className: 'bt-foot-account' }, h(AccountLauncher, { ...props, seat: false }))
-}
-
-// The only entry registered in every mode: in Agent mode the whole Bot surface is
-// withdrawn, and this button in the shell's own footer is the way back.
-export function BotReturn({ wide, useSurface, useRoster, actions }) {
-  const mode = useSurface(value => value.mode)
-  const ready = useRoster(value => value.ready)
-  // Agent mode draws no team sidebar; there this button is the team interface.
-  useReportReady(mode === 'agent' && ready)
-  if (mode !== 'agent') return null
-  return h('button', { type: 'button', className: 'bt-return', 'aria-label': t('DS Bot'), title: t('DS Bot'), onClick: () => actions.setSurface('bot') },
-    h(BotMark, { look: MAIN_LOOK, size: 20 }),
-    wide ? h('span', { className: 'bt-return-name' }, t('DS Bot')) : null)
-}
-
-// Agent mode has none of the shell-group styles, so the return button carries its own.
-export const RETURN_CSS = `
-.bt-return{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 14px;border:0;border-radius:999px;background:none;color:inherit;font:inherit;font-size:14px;line-height:20px;cursor:pointer;transition:background-color .12s ease}
-.bt-return:hover{background:rgba(127,127,127,.14)}
-.bt-return:active{transform:scale(.96)}
-.bt-return .bt-mark{display:inline-flex;flex:none;line-height:0}
-.bt-return .bt-mark svg{width:100%;height:100%;overflow:visible}
-/* Shell styles carry --bt-ink-deepseek and Agent mode withdraws them; pin it here. */
-.bt-return .bt-mark{--bt-ink-deepseek:#4D6BFE}
-.bt-return-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-`
-
 export function BrandMark({ size = 24 }) {
   return h('span', { className: 'bt-brand-whale' }, h(BotMark, { look: MAIN_LOOK, size }))
 }
 export function BrandName() {
-  return h('span', { style: { fontWeight: 600, fontSize: 14 } }, 'DS Bot')
+  return h('span', { style: { fontWeight: 600, fontSize: 14 } }, 'Cue')
 }
 
-// With the whale holding the settings seat, the Bot row is just the account menu;
-// FooterAccount only shows when the seat went to no one. The shell's footer classes
-// are CSS-module names, so they match on their stems.
 export const SIDEBAR_CSS = `
-.bt-confirm{width:260px;max-width:72vw;padding:10px 12px 12px;display:flex;flex-direction:column;gap:10px}
-.bt-confirm-text{margin:0;font-size:13px;line-height:19px;color:var(--bt-ink-2)}
-.bt-confirm-error{margin:0;font-size:12px;line-height:17px;color:var(--bt-danger);overflow-wrap:anywhere}
-.bt-confirm-row{display:flex;justify-content:flex-end;gap:8px}
-.bt-menu .bt-confirm button{width:auto;min-height:0}
-.bt-confirm-go{height:28px;padding:0 14px;border:0;border-radius:999px;background:var(--bt-accent);color:var(--bt-accent-ink);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .12s ease}
-.bt-confirm-go:hover:not(:disabled){opacity:.9}
-.bt-confirm-go:disabled{opacity:.6;cursor:default}
 .bt-side-top .bt-brand{cursor:default;padding-left:6px}
 .bt-side-top .bt-brand:hover{background:none}
 .bt-brand .bt-mark{flex:none}
@@ -1232,12 +843,7 @@ export const SIDEBAR_CSS = `
 .bt-rail .bt-row{position:relative}
 .bt-rail .bt-pin{position:absolute;top:1px;left:calc(50% + 14px)}
 .bt-side .bt-read-only{margin:4px 8px 6px;padding:8px 10px;border-radius:10px;background:var(--bt-hover);font-size:12px;line-height:1.45;text-align:left}
-[class*="_footArea"]:has(.bt-foot-account){grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px}
-[class*="_footArea"]>[class*="_footerActions"]>div>.bt-foot-account{grid-column:1;order:1;display:inline-flex}
-[class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"]{grid-column:3}
-[class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
-
-/* The update cloud springs in when a newer DS Bot shows up; its arrow drops in a
+/* The update cloud springs in when a newer Cue shows up; its arrow drops in a
    loop while the install runs. */
 .bt-round.bt-update{position:relative;color:var(--bt-accent,#4D6BFE);animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-round.bt-update svg{width:17px;height:17px}
@@ -1259,11 +865,9 @@ export const SIDEBAR_CSS = `
 .bt-update-go:hover:not(:disabled){opacity:.9}
 .bt-update-go:active:not(:disabled){transform:scale(.96)}
 .bt-update-go:disabled{opacity:.6;cursor:default}
-.bt-update-dsh:not(:first-child){margin-top:12px;padding-top:12px;border-top:.5px solid var(--bt-line-2)}
 @media (prefers-reduced-motion:reduce){.bt-round.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
 
-/* The Agent row and its expanding Session list. The black whale is the
-   harness's own mark, so the row reads as "plain dsh" next to the Bot marks. */
+/* The Agent row and its expanding Session list. */
 .bt-agent-ava{flex:none;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--bt-hover);color:var(--bt-ink)}
 .bt-agent-ava.bt-run{animation:bt-agent-pulse 1.4s ease-in-out infinite}
 @keyframes bt-agent-pulse{0%,100%{opacity:1}50%{opacity:.55}}

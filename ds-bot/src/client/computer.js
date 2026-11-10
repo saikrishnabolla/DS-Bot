@@ -5,7 +5,6 @@ import { heldCardKey } from './sources.js'
 import { CellEmpty } from './cell-empty.js'
 import { lookOf } from './characters.js'
 import { t } from './i18n.js'
-import { toolArgs } from './text.js'
 
 // -------------------------------------------------------------------------
 // Computer use: the switch page, a Bot's Control card, its Computer drawer page,
@@ -33,17 +32,7 @@ const PROVIDER_TEXT = {
   permissions: ['Computer permissions are needed', 'error'],
   ready: ['Ready', 'ready'],
   error: ['Could not load the provider', 'error'],
-  missing: ['The provider package is not installed', 'error'],
-  occupied: ['Another computer-use provider is running', 'error'],
   unsupported: ['Computer use is not available in this build', 'error'],
-}
-
-// A missing provider package: what to install, and the command to copy.
-function InstallRow({ install, Row }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => { void navigator.clipboard?.writeText(install.command).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600) }, () => {}) }
-  return h(Row, { label: t('Install it in this DSH'), hint: t('Run {command}, then restart DSH.', { command: install.command }) },
-    h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: copy }, copied ? t('Copied') : t('Copy command')))
 }
 
 const providerWorks = provider => provider.state === 'ready' || provider.state === 'loading'
@@ -74,9 +63,8 @@ export function ComputerPage({ roster, actions, run, Section, Row, Switch }) {
         Switch === undefined ? null : h(Switch, { label: t('Let Bots use the computer'), on: computer.enabled === true, onChange: on => run(actions.computerSetEnabled(on)) }))),
     computer.enabled ? h(Section, { key: 'provider', title: t('Computer provider') },
       h(Row, { label: t(PROVIDER_TEXT[provider.state]?.[0] ?? PROVIDER_TEXT.error[0]), hint: provider.message },
-        ['error', 'missing', 'occupied'].includes(provider.state) && actions.computerProviderRetry
+        provider.state === 'error' && actions.computerProviderRetry
           ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.computerProviderRetry()) }, t('Retry')) : null),
-      provider.state === 'missing' && provider.install?.command ? h(InstallRow, { install: provider.install, Row }) : null,
       computer.macos === true && ['ready', 'permissions'].includes(provider.state) ? [permRow('accessibility', 'Accessibility'), permRow('screenRecording', 'Screen Recording')] : null) : null,
     h(Section, { key: 'bots', title: t('Bots') },
       computer.enabled && !providerWorks(provider) ? h('p', { className: 'bt-set-hint' }, t('Bots get no computer tools until the provider is ready.')) : null,
@@ -166,7 +154,7 @@ export function PendingAppAccess({ ask, actions, inline }) {
 
 // One line per computer call: the app and the action. A screenshot result adds a
 // thumbnail that opens larger on click.
-const ACTION_NAMES = { click: 'Click', doubleClick: 'Double click', rightClick: 'Right click', drag: 'Drag', typeText: 'Type', pressKey: 'Key', hotkey: 'Hotkey', scroll: 'Scroll', screenshot: 'Screenshot', getScreenSize: 'Screen size', getCapabilities: 'Capabilities', listApps: 'List apps', listWindows: 'List windows', getState: 'State', getAccessibilityTree: 'Accessibility tree', launchApp: 'Launch', killApp: 'Kill', bringToFront: 'Bring to front', invokeMenu: 'Menu', setValue: 'Set value', getWindowState: 'Window state', verifyState: 'Verify state' }
+const ACTION_NAMES = { click: 'Click', double_click: 'Double click', right_click: 'Right click', drag: 'Drag', type_text: 'Type', press_key: 'Key', hotkey: 'Hotkey', scroll: 'Scroll', screenshot: 'Screenshot', get_screen_size: 'Screen size', list_apps: 'List apps', list_windows: 'List windows', get_accessibility_tree: 'Accessibility tree', launch_app: 'Launch', kill_app: 'Kill', bring_to_front: 'Bring to front', invoke_menu: 'Menu', set_value: 'Set value', get_window_state: 'Window state', verify_state: 'Verify state' }
 const actionName = (method) => {
   const known = ACTION_NAMES[method]
   if (known !== undefined) return known
@@ -174,12 +162,9 @@ const actionName = (method) => {
   return words === '' ? 'Computer' : words[0].toUpperCase() + words.slice(1)
 }
 export function ComputerCallRow({ sessionId, call, roster, actions, hooks }) {
-  const { value: argValue } = toolArgs(call)
-  const method = argValue('method') ?? String(call?.name ?? '').replace(/^cua_driver_native__/, '')
+  const method = String(call?.name ?? '').replace(/^cua_driver_native__/, '')
   const stepApp = hooks?.useComputer?.(map => (map.bots?.[roster.byId[sessionId]?.id]?.steps ?? []).find(step => step.callId === call?.callId)?.app)
-  const selector = argValue('params')?.selector
-  // getApp names its target in the selector; a step record names the app later calls act on.
-  const app = stepApp ?? (method === 'getApp' && typeof selector === 'string' && selector !== '' ? selector : undefined)
+  const app = stepApp
   const shot = (call?.content ?? []).find(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)?.attachment
   const [url, setUrl] = useState(null)
   const [open, setOpen] = useState(false)

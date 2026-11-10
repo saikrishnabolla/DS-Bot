@@ -13,8 +13,8 @@ const fresh = () => `t-${randomBytes(12).toString('hex')}`
 
 test('names are normalized, then checked', () => {
   assert.equal(normalizeName(' github-token '), 'GITHUB_TOKEN')
-  assert.equal(normalizeName('$DSH_SECRET_demo_token'), 'DEMO_TOKEN')
-  assert.equal(normalizeName('$env:DSH_SECRET_X1'), 'X1')
+  assert.equal(normalizeName('$CUE_SECRET_demo_token'), 'DEMO_TOKEN')
+  assert.equal(normalizeName('$env:CUE_SECRET_X1'), 'X1')
   assert.ok(SECRET_NAME.test('GITHUB_TOKEN'))
   for (const bad of ['', '1ABC', '_X', 'A'.repeat(65), 'A B', 'Ä']) assert.ok(!SECRET_NAME.test(bad), bad)
 })
@@ -172,24 +172,24 @@ test('a card saves a key the Bot never sees, and the shell gets it', async (t) =
   const note = bench.delivered.at(-1)
   assert.equal(note.sessionId, 'b2')
   assert.equal(note.source.role, 'secret')
-  assert.match(note.text, /^\[Secret card\]\nThe user saved DEMO_TOKEN for every Bot\. Use it as \$DSH_SECRET_DEMO_TOKEN in bash, or \$env:DSH_SECRET_DEMO_TOKEN in PowerShell\./)
+  assert.match(note.text, /^\[Secret card\]\nThe user saved DEMO_TOKEN for every Bot\. Use it as \$CUE_SECRET_DEMO_TOKEN in bash, or \$env:CUE_SECRET_DEMO_TOKEN in PowerShell\./)
   assert.ok(!note.text.includes(value))
 
   // Every Bot (own chat or group Session) gets the variable; other Sessions do not.
-  assert.deepEqual(bench.env('b2', 'echo $DSH_SECRET_DEMO_TOKEN'), { DSH_SECRET_DEMO_TOKEN: value })
-  assert.deepEqual(bench.env('g-b2'), { DSH_SECRET_DEMO_TOKEN: value })
+  assert.deepEqual(bench.env('b2', 'echo $CUE_SECRET_DEMO_TOKEN'), { CUE_SECRET_DEMO_TOKEN: value })
+  assert.deepEqual(bench.env('g-b2'), { CUE_SECRET_DEMO_TOKEN: value })
   assert.deepEqual(bench.env('not-a-bot'), {})
   const live = bench.contributors.filter(entry => entry.live)
   assert.equal(live.length, 1)
-  assert.deepEqual(Object.keys(live[0].variables), ['DSH_SECRET_DEMO_TOKEN'])
-  assert.equal(live[0].variables.DSH_SECRET_DEMO_TOKEN.description, 'DS Bot secret DEMO_TOKEN: 测试')
+  assert.deepEqual(Object.keys(live[0].variables), ['CUE_SECRET_DEMO_TOKEN'])
+  assert.equal(live[0].variables.CUE_SECRET_DEMO_TOKEN.description, 'Cue secret DEMO_TOKEN: 测试')
 
   // Asking again only names the variable.
   const again = await bench.tool('request_secret', { name: 'DEMO_TOKEN', purpose: 'x' }, 'b2')
   assert.equal(again.concluded, false)
-  assert.match(again.text, /already saved and you may use it: \$DSH_SECRET_DEMO_TOKEN/)
+  assert.match(again.text, /already saved and you may use it: \$CUE_SECRET_DEMO_TOKEN/)
   const listed = await bench.tool('list_secrets', {}, 'c3')
-  assert.match(listed.text, /- DEMO_TOKEN — 测试 — for every Bot — you may use it as \$DSH_SECRET_DEMO_TOKEN/)
+  assert.match(listed.text, /- DEMO_TOKEN — 测试 — for every Bot — you may use it as \$CUE_SECRET_DEMO_TOKEN/)
   assert.ok(!listed.text.includes(value))
 })
 
@@ -213,7 +213,7 @@ test('a Bot outside the scope gets an allow card, and allowing resolves it', asy
   const allowed = await bench.call('secret-allow', { requestId: request.id })
   assert.deepEqual(allowed.value.scope, ['b2', 'c3'])
   assert.equal((await bench.view()).secretRequests.c3[0].status, 'allowed')
-  assert.deepEqual(bench.env('c3'), { DSH_SECRET_DEMO_TOKEN: value })
+  assert.deepEqual(bench.env('c3'), { CUE_SECRET_DEMO_TOKEN: value })
   assert.match(bench.delivered.at(-1).text, /^\[Secret card\]\nThe user let you use DEMO_TOKEN\./)
 
   // Settings: narrow the scope, which turns a new card back into an allow card.
@@ -230,7 +230,7 @@ test('a Bot outside the scope gets an allow card, and allowing resolves it', asy
   // Replacing the value keeps the scope; the old value is no longer injected.
   const next = fresh()
   await bench.call('secret-set', { name: 'demo_token', value: next })
-  assert.deepEqual(bench.env('c3'), { DSH_SECRET_DEMO_TOKEN: next })
+  assert.deepEqual(bench.env('c3'), { CUE_SECRET_DEMO_TOKEN: next })
   assert.equal((await bench.view()).secrets[0].scope, 'all')
 
   // Deleting turns a waiting allow card into a fill card and drops the variable.
@@ -364,8 +364,8 @@ test('a restarted host resolves its team Sessions and their keys before the firs
   t.after(bench.stop)
   // apply() has just returned: no endpoint or tool has run yet, but a restored
   // Session's first shell call already resolves its Bot and its variables.
-  assert.deepEqual(bench.env('b2'), { DSH_SECRET_DEMO_TOKEN: value })
-  assert.deepEqual(bench.env('g-b2'), { DSH_SECRET_DEMO_TOKEN: value })
+  assert.deepEqual(bench.env('b2'), { CUE_SECRET_DEMO_TOKEN: value })
+  assert.deepEqual(bench.env('g-b2'), { CUE_SECRET_DEMO_TOKEN: value })
   assert.deepEqual(bench.env('elsewhere'), {})
 })
 
@@ -379,7 +379,7 @@ test('a secrets file that cannot be read blocks every write instead of being ove
   const file = join(home, 'secrets.json')
   const denied = await bench.call('secret-set', { name: 'TEST_TOKEN', value: '12345678' })
   assert.equal(denied.ok, false)
-  assert.match(denied.error.message, /secrets\.json could not be read \(EISDIR\)\. DS Bot does not change it/)
+  assert.match(denied.error.message, /secrets\.json could not be read \(EISDIR\)\. Cue does not change it/)
   assert.ok(statSync(file).isDirectory())
   // While it stays unreadable, nothing is written; once it is gone, saving works.
   rmSync(file, { recursive: true })

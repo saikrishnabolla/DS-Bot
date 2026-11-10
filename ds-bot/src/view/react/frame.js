@@ -79,7 +79,7 @@ export function HtmlFrame({ node }) {
     window.addEventListener('message', onMessage)
     const retheme = () => frame.current?.contentWindow?.postMessage({ type: THEME, vars: themeVars() }, '*')
     const observer = typeof MutationObserver === 'function' ? new MutationObserver(retheme) : null
-    observer?.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'style', 'class'] })
+    observer?.observe(document.body, { attributes: true, attributeFilter: ['data-cue-dark-theme', 'style', 'class'] })
     return () => { window.removeEventListener('message', onMessage); observer?.disconnect() }
   }, [])
   if (stopped) return h('p', { className: 'dv-view-frame-stopped' }, ui.t('This view tried to open a page and was stopped.'))

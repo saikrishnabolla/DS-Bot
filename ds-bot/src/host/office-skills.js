@@ -1,8 +1,7 @@
-// The ds-bot Office skills: `office` (the routing skill, preferred over the
-// platform's own bundled router) and `office-tools` (the CLI that inspects,
-// checks and edits Office packages). Registered when a `skills` service exists;
-// the sub-fiber stays inactive where it does not, so the plugin runs the same
-// in DSH Web, DSH Desktop and the desktop app.
+// The Cue Office skills: `office` (the routing skill, preferred over the
+// platform's bundled router) and `office-tools` (the CLI that inspects,
+// checks and edits Office packages). They are registered when a `skills`
+// service exists.
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { isSea } from 'node:sea'
@@ -29,7 +28,7 @@ export function cliPath(manifest = CLI) {
 }
 
 // Where the commands run: the app's Office payload when it shipped, plain Node
-// hosts (DSH Web, a developer Node), or the workspace-dependencies tool's node.
+// hosts (web client, a developer Node), or the workspace-dependencies tool's node.
 export function officeNode(env = process.env) {
   const bundled = env.DS_BOT_OFFICE_NODE
   if (bundled !== undefined && existsSync(bundled)) return { node: bundled }

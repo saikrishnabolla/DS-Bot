@@ -57,20 +57,20 @@ export function createComputerIndicator({ BrowserWindow, screen, html, ipcMain, 
       webPreferences: { sandbox: true, preload },
     })
     // The bar must never appear inside a screenshot the provider hands a Bot.
-    try { win.setContentProtection(true) } catch (error) { log.warn(`DS Bot: the indicator could not hide from screenshots: ${error instanceof Error ? error.message : String(error)}`) }
-    try { win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }) } catch (error) { log.warn(`DS Bot: the indicator could not join every workspace: ${error instanceof Error ? error.message : String(error)}`) }
+    try { win.setContentProtection(true) } catch (error) { log.warn(`Cue: the indicator could not hide from screenshots: ${error instanceof Error ? error.message : String(error)}`) }
+    try { win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }) } catch (error) { log.warn(`Cue: the indicator could not join every workspace: ${error instanceof Error ? error.message : String(error)}`) }
     win.once('ready-to-show', () => { win?.showInactive() })
     win.on('closed', () => { win = null })
     const page = html(entries, labels)
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`).then(fit).catch((error) => {
-      log.warn(`DS Bot: the indicator did not load: ${error instanceof Error ? error.message : String(error)}`)
+      log.warn(`Cue: the indicator did not load: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
   const close = () => {
     if (win === null) return
     const closing = win
     win = null
-    try { closing.close() } catch (error) { log.warn(`DS Bot: the indicator did not close: ${error instanceof Error ? error.message : String(error)}`) }
+    try { closing.close() } catch (error) { log.warn(`Cue: the indicator did not close: ${error instanceof Error ? error.message : String(error)}`) }
   }
   return {
     /** Re-render the bar; empty entries hide the window, entries show it. */
@@ -79,7 +79,7 @@ export function createComputerIndicator({ BrowserWindow, screen, html, ipcMain, 
       labels = next?.labels ?? {}
       if (entries.length === 0) { close(); return }
       if (win === null) { open(); return }
-      try { win.webContents?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html(entries, labels))}`).then(fit) } catch (error) { log.warn(`DS Bot: the indicator did not update: ${error instanceof Error ? error.message : String(error)}`) }
+      try { win.webContents?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html(entries, labels))}`).then(fit) } catch (error) { log.warn(`Cue: the indicator did not update: ${error instanceof Error ? error.message : String(error)}`) }
     },
     dispose() {
       entries = []

@@ -54,7 +54,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // Opening the conversation would move focus to its composer and blur the name field.
     renameBot: (id) => { ui.set(state => ({ ...state, details: id, view: 'details', renaming: true, tab: null, panelYield: yieldTo(state, 'details') })) },
     openSettings,
-    // DS Bot's own Models page: the providers DSH serves, their keys and models.
+    // Cue's own Models page: the providers Cue serves, their keys and models.
     openModels: () => openSettings('models'),
     closeSettings: () => { ui.set(state => (state.settings ? { ...state, settings: null } : state)) },
     openMemory: (id) => { ui.set(state => ({ ...state, memory: id, menu: null, palette: null })) },
@@ -107,7 +107,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     // One local agent's models: the first look starts its CLI, later ones read what it said.
     agentModels: route => after(call('local-agent-models', { route })).catch(() => {}),
     efforts: ref => call('efforts', { ref }),
-    // Model providers and their API keys; DSH keeps them, and a key only travels to the host.
+    // Model providers and their API keys; Cue keeps them, and a key only travels to the host.
     providers: () => call('providers'),
     setProviderKey: (provider, value) => after(call('provider-key', { provider, value })),
     addProvider: body => after(call('provider-add', body)),
@@ -125,14 +125,14 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     setPrefs: prefs => after(call('set-prefs', prefs)),
     setMain: (id, main = true, options = {}) => after(call('set-main', { id, main, ...options })),
     updateRoom: (id, patch) => after(call('update-room', { id, ...patch })),
-    send: (sessionId, text, attachments = [], references = []) => after(call('send', {
+    send: (sessionId, text, attachments = [], references = []) => call('send', {
       sessionId: partFor(sessionId),
       content: [
         ...(String(text ?? '').trim() === '' ? [] : [{ type: 'text', text: String(text).trim() }]),
         ...attachments.map(item => ({ type: item.type, attachment: item.attachment })),
       ],
       ...(references.length > 0 ? { references } : {}),
-    })),
+    }),
     answerQuestion: (sessionId, questionId, answer) => after(call('answer-question', { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: sessionId => after(call('dismiss-question', { sessionId })),
     answerView: (sessionId, viewId, action, values) => after(call('view-reply', { sessionId: partFor(sessionId), viewId, action, values })),

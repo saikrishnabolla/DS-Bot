@@ -4,7 +4,7 @@ import { runStatsOf } from '../src/client/text.js'
 
 const texts = values => runStatsOf(values).map(entry => entry.text)
 
-test('the figures read as DSH counts them', () => {
+test('the figures read as Cue counts them', () => {
   const values = {
     sessionStats: { turns: 12, decodeMs: 4000, decodeTokens: 150 },
     tokenUsage: { uncachedInputTokens: 50, cacheReadTokens: 900, cacheWriteTokens: 50, outputTokens: 400 },

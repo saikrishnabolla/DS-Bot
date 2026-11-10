@@ -1,6 +1,6 @@
-// The team as the window keeps it: the Bot views' own sources and actions, fed by the
-// engine's `state` endpoint and live feed. The views also read a few Session facts that
-// DSH keeps for them in the plugin; here the window keeps those as well.
+// The team as the window keeps it: the Bot views' sources and actions, fed by the
+// engine's `state` endpoint and live feed. The window also keeps the Session facts
+// those views read.
 import { useRef, useSyncExternalStore } from 'react'
 import { call } from '../../../ds-bot/src/client/api.js'
 import { chatRows } from '../../../ds-bot/src/client/at-menu.js'
@@ -51,6 +51,15 @@ function createBus() {
 
 const setChanged = (source, value) => { if (JSON.stringify(source.getSnapshot()) !== JSON.stringify(value)) source.set(value) }
 
+const singleFlight = (running, key, start) => {
+  const present = running.get(key)
+  if (present !== undefined) return present
+  const call = Promise.resolve().then(start)
+  const tracked = call.finally(() => { if (running.get(key) === tracked) running.delete(key) })
+  running.set(key, tracked)
+  return tracked
+}
+
 export function createTeam() {
   migrateStorage()
   const unreadStore = sharedMap(STORAGE.unread)
@@ -59,7 +68,7 @@ export function createTeam() {
   const seenStore = sharedMap(STORAGE.seen)
   let seenAt = seenStore.read()
   const roster = createSource(EMPTY_ROSTER)
-  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} })
+  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, settings: null, memory: null, toast: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {} })
   const activity = createSource({})
   const work = createSource(NO_WORK)
   const memoryNews = createSource({})
@@ -83,6 +92,8 @@ export function createTeam() {
   const status = createSource(new Map())
   const sent = createSource({})
   const shown = createSource(null)
+  const pendingAgentSession = new Map()
+  const agentNewInFlight = new Map()
   const chat = createBus()
   const conversations = createConversationState()
   const voice = createVoiceAdapter(globalThis.dsBotApp?.speech)
@@ -123,6 +134,28 @@ export function createTeam() {
     ui.set(state => (JSON.stringify(state.unread) === JSON.stringify(unread) ? state : { ...state, unread }))
   }
 
+  let agentSessionIds = new Set()
+  const syncAgentSessions = async () => {
+    const nextIds = new Set((roster.getSnapshot().agents ?? []).flatMap(agent => agent.sessions ?? []))
+    if (nextIds.size === 0 && agentSessionIds.size === 0) return
+    const listed = nextIds.size === 0 ? { ids: [], byId: {} } : await call('agent-sessions')
+    if (!Array.isArray(listed?.ids) || listed?.byId === null || typeof listed?.byId !== 'object') return
+    sessions.set(current => {
+      const byId = { ...current.byId }
+      for (const id of agentSessionIds) if (!nextIds.has(id)) delete byId[id]
+      for (const id of listed.ids) byId[id] = { ...(byId[id] ?? { id }), ...listed.byId[id] }
+      const ids = [...current.ids.filter(id => !agentSessionIds.has(id) || nextIds.has(id)), ...listed.ids.filter(id => !current.ids.includes(id))]
+      return { ids, byId }
+    })
+    for (const id of listed.ids) setStatus(id, { running: listed.byId[id]?.running === true })
+    status.set(current => {
+      const next = new Map(current)
+      for (const id of agentSessionIds) if (!nextIds.has(id)) next.delete(id)
+      return next
+    })
+    agentSessionIds = nextIds
+  }
+
   // Reads can overlap (the feed and a finished action); an older answer never wins.
   let pulls = 0
   let applied = 0
@@ -141,15 +174,38 @@ export function createTeam() {
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) changed.connectors = value.connectors
     if (value.capabilityStatuses !== undefined && JSON.stringify(value.capabilityStatuses) !== JSON.stringify(current.capabilityStatuses ?? {})) changed.capabilityStatuses = value.capabilityStatuses
     if (Object.keys(changed).length > 0 && current.ready) roster.set({ ...current, ...changed })
-    if (value.unchanged || (value.revision === current.revision && value.modelsKey === current.modelsKey)) return
+    if (value.unchanged || (value.revision === current.revision && value.modelsKey === current.modelsKey)) {
+      await syncAgentSessions()
+      return
+    }
     // In a window with no visit record yet, everything already there counts as seen.
     if (Object.keys(seenAt).length === 0) leaveVisits([...value.bots, ...value.rooms].map(entry => entry.id))
     roster.set(indexRoster(value))
+    await syncAgentSessions()
   }
   const after = promise => promise.then(async (value) => { await pull().catch(() => {}); return value })
   const partFor = (id) => {
     const bot = roster.getSnapshot().byId[id]
     return bot ? currentPart(bot) : id
+  }
+  const agentSessions = agentId => [...(roster.getSnapshot().agentsById[agentId]?.sessions ?? [])]
+  const latestAgentSession = agentId => agentSessions(agentId)
+    .sort((a, b) => (sessions.getSnapshot().byId[b]?.updatedAt ?? 0) - (sessions.getSnapshot().byId[a]?.updatedAt ?? 0))[0]
+  const openAgentSession = (sessionId) => {
+    ui.set(state => ({
+      ...state,
+      newChat: null,
+      exchange: null,
+      menu: null,
+      palette: null,
+      settings: null,
+      details: null,
+      view: 'details',
+      renaming: false,
+      tab: null,
+    }))
+    show(sessionId)
+    return sessionId
   }
 
   const actions = {
@@ -159,8 +215,53 @@ export function createTeam() {
       ui.set(state => (state.newChat || state.exchange || state.menu || state.palette ? { ...state, newChat: null, exchange: null, menu: null, palette: null } : state))
       show(partFor(id))
     },
+    isAgentSession: id => roster.getSnapshot().agentOf[id] !== undefined,
+    openAgentSession,
+    addAgent: async () => {
+      const agent = await after(call('add-agent'))
+      if (agent?.sessions?.[0] !== undefined) openAgentSession(agent.sessions[0])
+      return agent
+    },
+    openAgent: (agentId) => {
+      const agent = roster.getSnapshot().agentsById[agentId]
+      if (agent === undefined) return undefined
+      const latest = latestAgentSession(agentId)
+      return latest === undefined ? actions.newAgentSession(agentId) : openAgentSession(latest)
+    },
+    newAgentSession: agentId => singleFlight(agentNewInFlight, agentId, async () => {
+      if (roster.getSnapshot().agentsById[agentId] === undefined) return undefined
+      const list = sessions.getSnapshot()
+      const latest = latestAgentSession(agentId)
+      const pending = pendingAgentSession.get(agentId)
+      if (pending !== undefined && list.byId[pending] !== undefined) pendingAgentSession.delete(agentId)
+      const reuse = pending !== undefined && list.byId[pending] === undefined
+        ? pending
+        : latest !== undefined && list.byId[latest]?.blank === true ? latest : undefined
+      if (reuse !== undefined) return openAgentSession(reuse)
+      const { sessionId } = await after(call('agent-session', { agentId }))
+      if (sessions.getSnapshot().byId[sessionId] === undefined) pendingAgentSession.set(agentId, sessionId)
+      editRow(sessionId, row => ({ ...row, blank: true }))
+      return openAgentSession(sessionId)
+    }),
+    archiveAgentSession: async (agentId, sessionId) => {
+      await after(call('agent-archive', { agentId, sessionId }))
+      if (shown.getSnapshot() !== sessionId) return
+      const rest = agentSessions(agentId)
+      if (rest.length > 0) actions.openAgent(agentId)
+      else if (roster.getSnapshot().mainBotId) actions.openSession(roster.getSnapshot().mainBotId)
+    },
+    renameAgentSession: (agentId, sessionId, title) => after(call('agent-rename', { agentId, sessionId, title })),
+    beginAgentRename: sessionId => ui.set(state => ({ ...state, renameAgent: sessionId })),
+    endAgentRename: () => ui.set(state => (state.renameAgent ? { ...state, renameAgent: null } : state)),
+    removeAgent: async (agentId) => {
+      const owned = agentSessions(agentId)
+      const result = await after(call('remove-agent', { agentId }))
+      if (owned.includes(shown.getSnapshot()) && roster.getSnapshot().mainBotId) actions.openSession(roster.getSnapshot().mainBotId)
+      return result
+    },
     landOn: id => show(partFor(id)),
     toggleSidebar: () => layout.set(state => ({ ...state, wide: !state.wide })),
+    selectPanel: id => actions.openSettings(id),
     markUnread: id => writeUnread(id, true),
     clearUnread: id => writeUnread(id, false),
     beginVisit: (id) => {
@@ -182,16 +283,23 @@ export function createTeam() {
       const reactions = reactionStore.update(saved => toggleReaction(saved, key, index, emoji), ui.getSnapshot().reactions)
       ui.set(state => ({ ...state, reactions }))
     },
-    // The window has no DSH status bar, so the Bot's details show its figures.
+    // The Bot's details show the run figures.
     runStats: botId => call('run-stats', { botId }),
-    // Nor DSH's settings: model providers and their keys have a Models page here, and a
-    // first model choice takes a missing API key itself.
+    // Model providers and their keys use Cue's Models page.
     providers: () => call('providers'),
+    pluginInventory: () => call('plugin-inventory'),
+    agentPresets: () => call('agent-presets'),
+    setAgentPresetDefault: id => after(call('agent-preset-default', { id })),
+    startAgentPresetCreator: async () => {
+      const { sessionId } = await after(call('agent-preset-start', { id: 'creator' }))
+      return openAgentSession(sessionId)
+    },
     setProviderKey: (provider, value) => after(call('provider-key', { provider, value })),
     addProvider: body => after(call('provider-add', body)),
     providerModels: body => call('provider-models', body),
     removeProvider: provider => after(call('provider-remove', { provider })),
     stopBotWork: botId => after(call('stop-bot-work', { botId })),
+    stopAgentWork: sessionId => after(call('stop-agent-work', { sessionId })),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
     turnFacts: sessionId => conversations.turnFacts(sessionId),
     watchTurns: (sessionId, listener) => conversations.watchTurns(sessionId, listener),
@@ -278,8 +386,7 @@ export function createTeam() {
     })
   }
 
-  // Running and the tool at work come with the team's state; the plugin reads them from
-  // DSH's Session status and its own tool cells.
+  // Running and the tool at work come with the team's state.
   const followWork = () => {
     const bots = work.getSnapshot().bots ?? {}
     const turns = work.getSnapshot().turns ?? {}
@@ -301,6 +408,7 @@ export function createTeam() {
       const text = item.kind === 'bot' || item.kind === 'user' ? item.text : ''
       editRow(sessionId, row => ({
         ...row,
+        blank: false,
         updatedAt: Math.max(row.updatedAt ?? 0, item.time ?? 0),
         // The sidebar's preview line; turn -1 is never a hidden exchange turn.
         projectionValues: text ? { turnOutline: [{ turn: -1, [item.kind === 'bot' ? 'response' : 'prompt']: text }] } : row.projectionValues,
@@ -308,8 +416,17 @@ export function createTeam() {
       if (item.kind === 'bot' && shown.getSnapshot() !== sessionId) setStatus(sessionId, { completionUnread: true })
       if (item.kind === 'user') sent.set(state => (state[sessionId]?.length ? { ...state, [sessionId]: state[sessionId].slice(1) } : state))
     }
+    if (event === 'status' && data?.sessionId && (data.status === 'running' || data.status === 'idle')) {
+      setStatus(data.sessionId, { running: data.status === 'running' })
+    }
     // While a reply streams in, it stands in for the activity row.
-    if (event === 'stream' && data?.sessionId) actions.noteLive(data.sessionId, 'reply', data.phase === undefined && data.text ? { text: true } : null)
+    if (event === 'stream' && data?.sessionId) {
+      actions.noteLive(data.sessionId, 'reply', data.phase === undefined && data.text ? { text: true } : null)
+      if (roster.getSnapshot().agentOf[data.sessionId] !== undefined) {
+        if (data.phase === 'start') setStatus(data.sessionId, { running: true })
+        else if (data.phase === 'end') setStatus(data.sessionId, { running: false })
+      }
+    }
     chat.emit(event, data)
   }
 
@@ -445,7 +562,11 @@ export function createTeam() {
     useLayout: use(layout),
     useShown: use(shown),
   }
-  // The Session one view shows, as DSH hands it to a view: what was just sent there.
-  const sessionHook = sessionId => selector => useSelect(sent, state => selector({ pendingSubmissions: state[sessionId] ?? [] }))
+  // The Session view shows what was just sent there.
+  const sessionHook = sessionId => selector => {
+    const pendingSubmissions = useSelect(sent, state => state[sessionId] ?? [])
+    const running = useSelect(status, state => state.get(sessionId)?.running === true)
+    return selector({ pendingSubmissions, running, subagent: null })
+  }
   return { actions, hooks, sessionHook, chat, start }
 }

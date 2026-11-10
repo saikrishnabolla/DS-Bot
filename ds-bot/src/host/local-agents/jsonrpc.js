@@ -77,7 +77,7 @@ export class JsonRpcPeer {
 // Feeds stdout into a peer line by line; resolves when the process ends.
 export function wireProcess(child, peer) {
   // A write that meets a process on its way out fails with EPIPE. Its exit already
-  // ends what waits on it; an unheard stream error would take DS Bot down.
+  // ends what waits on it; an unheard stream error would take Cue down.
   child.stdin.on('error', () => {})
   let rest = ''
   child.stdout.setEncoding('utf8')

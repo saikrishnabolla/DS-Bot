@@ -15,12 +15,12 @@ export class ClaudeEngine {
   }
 
   // A live process holds its own event queue; the adapter drains it.
-  open(dshSessionId, { cwd, resumeId, system, mode, mcp, model }) {
-    let session = this.sessions.get(dshSessionId)
+  open(cueSessionId, { cwd, resumeId, system, mode, mcp, model }) {
+    let session = this.sessions.get(cueSessionId)
     if (session !== undefined && session.dead) session = undefined
     if (session === undefined) {
-      session = new ClaudeSession(this, dshSessionId)
-      this.sessions.set(dshSessionId, session)
+      session = new ClaudeSession(this, cueSessionId)
+      this.sessions.set(cueSessionId, session)
     }
     return session.start({ cwd, resumeId, system, mode, mcp, model })
   }
@@ -35,9 +35,9 @@ export class ClaudeEngine {
 
   // The adapter stopped reading this session. A process takes its model and tool
   // server when it starts, so it leaves too; a later open resumes the CLI session.
-  forget(dshSessionId) {
-    this.sessions.get(dshSessionId)?.kill()
-    this.sessions.delete(dshSessionId)
+  forget(cueSessionId) {
+    this.sessions.get(cueSessionId)?.kill()
+    this.sessions.delete(cueSessionId)
   }
 
   async listModels() {
@@ -50,9 +50,9 @@ export class ClaudeEngine {
 }
 
 class ClaudeSession {
-  constructor(engine, dshSessionId) {
+  constructor(engine, cueSessionId) {
     this.engine = engine
-    this.dshSessionId = dshSessionId
+    this.cueSessionId = cueSessionId
     this.events = []
     this.waiters = []
     this.dead = false
@@ -93,7 +93,7 @@ class ClaudeSession {
       args.push('--mcp-config', JSON.stringify({
         mcpServers: { dsbot: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } },
       }))
-      // DS Bot's own team tools need no approval, as for a model-backed Bot:
+      // Cue's own team tools need no approval, as for a model-backed Bot:
       // toolsFor() already narrowed what this Bot may call.
       args.push('--allowedTools', 'mcp__dsbot')
     }

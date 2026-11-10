@@ -1,6 +1,6 @@
 // The main process of the app: the window hides instead of closing, the tray is the way
 // back to it, and a window that is gone for good is built anew and talks to the Host that
-// runs. The Electron parts are test doubles: no display, no DSH, no data of the user.
+// runs. The Electron parts are test doubles: no display, no Cue, no data of the user.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -18,7 +18,7 @@ before(async () => { ({ home } = await startApp()) })
 test('the app starts with a window and a tray', async () => {
   await waitFor(() => window() !== undefined, 'open the window')
   await waitFor(() => state.tray !== undefined, 'build the tray')
-  assert.equal(state.tray.tooltip, 'DS Bot')
+  assert.equal(state.tray.tooltip, 'Cue')
   assert.equal(hostState.cwds[0], home, 'the Host works from the real data folder')
   assert.equal(state.quits, 0, 'the app goes on')
 })
@@ -66,6 +66,14 @@ test('the tray opens the window again', async () => {
   trayMenu()[0].click()
   await waitFor(() => win.visible === true, 'show the window')
   assert.equal(win.focused > 0, true, 'the window has the focus')
+})
+
+test('Settings opens Cue\'s owned team file', async () => {
+  const win = window()
+  win.webContents.mainFrame.url = win.url
+  const event = { sender: win.webContents, senderFrame: win.webContents.mainFrame }
+  assert.deepEqual(await state.ipc.get('ds-bot:open-settings-file')(event), { ok: true })
+  assert.equal(state.openedPaths.at(-1), join(home, 'bot', 'state.json'))
 })
 
 test('the tray quit ends the app and stops the Host', async () => {

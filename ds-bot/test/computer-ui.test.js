@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
-
 const { outputFiles } = await build({
   stdin: {
     contents: [
@@ -75,7 +74,7 @@ test('the app-access card orders its buttons Deny, This time, Always', () => {
 
 test('the settings page draws the switch, the provider line and one level picker per Bot', () => {
   const roster = { bots: [{ id: 'w1', name: 'Writer' }], computer: { enabled: false } }
-  const hooks = { useComputer: pick => pick({ provider: { state: 'missing' } }) }
+  const hooks = { useComputer: pick => pick({ provider: { state: 'unsupported' } }) }
   const Switch = ({ label }) => ({ type: 'switch', props: { label } })
   const tree = render('ComputerPage', {
     roster, actions: { computerSetEnabled: async () => {} }, run: p => p, hooks,
@@ -84,30 +83,6 @@ test('the settings page draws the switch, the provider line and one level picker
   function h2(children) { return { type: 'row', props: { children } } }
   // The page title names the page; the first section carries no title of its own.
   assert.ok(texts(tree).some(text => text.includes('Let Bots use the computer')))
-})
-
-test('a missing provider package shows the install command and says the levels wait (#1050)', () => {
-  const install = { packages: ['@deepseek-ai/dsh-computer-use@0.2.2-rc.1'], command: 'pnpm --dir "/p" add @deepseek-ai/dsh-computer-use@0.2.2-rc.1' }
-  const roster = { bots: [{ id: 'w1', name: 'Writer' }], computer: { enabled: true, provider: { state: 'missing', message: 'x is not installed in this DSH.', install } } }
-  const Row = props => ({ type: 'row', props })
-  const tree = render('ComputerPage', {
-    roster, actions: { computerSetEnabled: async () => {}, computerProviderRetry: async () => {}, computerSetLevel: async () => {} }, run: p => p,
-    Section: ({ children }) => ({ type: 'section', props: { children } }), Row, Switch: () => null,
-  })
-  const find = (node, test) => {
-    if (Array.isArray(node)) return node.map(item => find(item, test)).find(Boolean)
-    if (node && typeof node === 'object') {
-      if (test(node)) return node
-      return find(node.props?.children, test)
-    }
-    return undefined
-  }
-  const installRow = find(tree, node => node.props?.install !== undefined)
-  assert.ok(installRow, 'the install row is drawn')
-  const drawn = installRow.type(installRow.props)
-  assert.ok(drawn.props.hint.includes(install.command))
-  assert.deepEqual(buttons(drawn), ['Copy command'])
-  assert.ok(texts(tree).includes('Bots get no computer tools until the provider is ready.'))
 })
 
 test('the control card shows the level picker and the Always apps with Revoke', () => {
@@ -145,8 +120,7 @@ test('the indicator lists entries with a localized Stop and Stop all', () => {
 })
 
 
-// A computer step row reads "app · action": the app from the step record or the
-// getApp selector, the action from the method; with no app just the action.
+// A computer step row reads "app · action" from the recorded step and tool name.
 test('a computer call row names the app and the action', () => {
   const live = { bots: { w1: { steps: [{ callId: 'c1', app: 'Notes' }] } } }
   const props = (call, botsLive = live) => ({
@@ -156,18 +130,11 @@ test('a computer call row names the app and the action', () => {
     actions: {},
     hooks: { useComputer: map => map(botsLive) },
   })
-  // arguments may arrive as a JSON string; the app comes from the step record
-  const row = render('ComputerCallRow', props({ name: 'cua', callId: 'c1', argsRaw: '{"method":"click","params":{"appHandle":"h1"}}', content: [] }))
+  const row = render('ComputerCallRow', props({ name: 'cua_driver_native__click', callId: 'c1', argsRaw: '{"pid":42}', content: [] }))
   assert.deepEqual(texts(row), ['Notes · Click'])
-  // getApp names its target by the selector, before any step record exists
-  const getApp = render('ComputerCallRow', props({ name: 'cua', callId: 'c2', argsRaw: '{"method":"getApp","params":{"selector":"TextEdit"}}', content: [] }, { bots: {} }))
-  assert.deepEqual(texts(getApp), ['TextEdit · Get App'])
   // no app yet: just the action
-  const caps = render('ComputerCallRow', props({ name: 'cua', callId: 'c3', argsRaw: '{"method":"getCapabilities","params":{}}', content: [] }, { bots: {} }))
-  assert.deepEqual(texts(caps), ['Capabilities'])
-  // cua-driver: the tool suffix is the action
-  const driver = render('ComputerCallRow', props({ name: 'cua_driver_native__screenshot', callId: 'c1', argsRaw: '{}', content: [] }))
-  assert.deepEqual(texts(driver), ['Notes · Screenshot'])
+  const list = render('ComputerCallRow', props({ name: 'cua_driver_native__list_windows', callId: 'c3', argsRaw: '{}', content: [] }, { bots: {} }))
+  assert.deepEqual(texts(list), ['List windows'])
 })
 
 // The settings scroll container wraps the computer page like every other page.
@@ -177,11 +144,4 @@ test('the computer settings page sits inside the scroll container', () => {
   const scroll = code.indexOf('bt-settings-scroll')
   assert.ok(scroll > 0)
   assert.ok(code.indexOf('h(ComputerPage') > scroll)
-})
-
-// The computer styles register in their own effect, like the other style packs.
-test('the computer styles register in their own effect call', () => {
-  const src = new URL('../src/client/index.js', import.meta.url)
-  const code = String((process.getBuiltinModule('node:fs')).readFileSync(src))
-  assert.match(code, /ctx\.effect\(\(\) => installCompiledStyles\(COMPUTER_CSS, 'computer'\)/)
 })

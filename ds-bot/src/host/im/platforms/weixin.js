@@ -7,7 +7,7 @@
 // that user's context_token, ~1800-char text chunks. Typing uses the
 // getconfig ticket. Voice items arrive with a transcript; images download
 // from the CDN and decrypt with their AES key. A refused send is permanent
-// with the platform's reason. Protocol ported from dsh-im (MIT, see NOTICE).
+// with the platform's reason. Protocol ported from Cue-im (MIT, see NOTICE).
 import { createDecipheriv, randomBytes } from 'node:crypto'
 
 const QR_BASE = 'https://ilinkai.weixin.qq.com/'
@@ -16,7 +16,7 @@ const TEXT_LIMIT = 1800
 const POLL_TIMEOUT_MS = 35_000
 const ILINK_APP_ID = 'bot'
 // The iLink client version, packed as 0x00MMNNPP: 2.4.6 is what the reference
-// client (dsh-im 5.10.0, the source of this port) identifies itself as.
+// client (Cue-im 5.10.0, the source of this port) identifies itself as.
 const ILINK_CLIENT_VERSION = (2 << 16) | (4 << 8) | 6
 // The server answers this on getupdates when the bot session is not open; the
 // account has to scan a new QR code.
