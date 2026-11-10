@@ -13,6 +13,12 @@ const TIP = { x: 7, y: 3 }           // where the arrow's tip sits inside the pa
 const FADE_MS = 2500                 // gone this long after the last event
 const FADE_AT = FADE_MS - 450        // the CSS fade starts here
 const CHECK_MS = 300                 // a slow visibility answer means "don't draw"
+const START_MS = 10_000              // native helpers get a separate cold-start budget
+
+function warn(log, message) {
+  if (typeof log?.warn === 'function') log.warn(message)
+  else if (typeof log?.write === 'function') log.write('main', `${message}\n`)
+}
 
 /**
  * @param {{
@@ -26,7 +32,7 @@ const CHECK_MS = 300                 // a slow visibility answer means "don't dr
  */
 export function createComputerCursor({ BrowserWindow, screen, platform, ownPid = process.pid, spawn = realSpawn, log = console }) {
   const windows = new Map()
-  const checker = createPointChecker({ platform, ownPid, spawn, log })
+  const checker = createPointChecker({ platform, ownPid, spawn, log, screen })
   const destroy = (botId) => {
     const held = windows.get(botId)
     if (held === undefined) return
@@ -68,7 +74,7 @@ export function createComputerCursor({ BrowserWindow, screen, platform, ownPid =
       if (!seen) { destroy(botId); return }
       const held = overlay(botId)
       const page = cursorHtml({ color: event.color, avatar: event.avatar, ripple: event.ripple === true })
-      try { held.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`) } catch (error) { log.warn(`DS Bot: the cursor did not load: ${error instanceof Error ? error.message : String(error)}`) }
+      try { held.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`) } catch (error) { warn(log, `DS Bot: the cursor did not load: ${error instanceof Error ? error.message : String(error)}`) }
       try { held.win.setBounds({ x: Math.round(event.x - TIP.x), y: Math.round(event.y - TIP.y), width: SIZE, height: SIZE }) } catch {}
       try { if (!held.win.isVisible?.()) held.win.showInactive?.() } catch {}
       clearTimeout(held.fadeAt)
@@ -109,14 +115,17 @@ ${ripple ? '<span class="ring"></span>' : ''}
 }
 
 // The "is this point really on the target window" check. A long-lived helper
-// reads `x y pid` lines and answers y/n; anything over CHECK_MS counts as no.
-export function createPointChecker({ platform, ownPid = process.pid, spawn = realSpawn, log = console }) {
+// announces readiness, then reads `id x y pid` and answers `id y|n` so a late
+// reply cannot settle a newer request. Anything over CHECK_MS counts as no.
+export function createPointChecker({ platform, ownPid = process.pid, spawn = realSpawn, log = console, screen, startMs = START_MS, checkMs = CHECK_MS }) {
   if (platform !== 'darwin' && platform !== 'win32') return { check: async () => false, dispose() {} } // Linux: no on-screen cursor
   let child = null
+  let startup = null
   let pending = null
+  let nextId = 1
   let queue = Promise.resolve()
   const ensure = () => {
-    if (child !== null) return child
+    if (child !== null) return { child, ready: startup.promise }
     const script = platform === 'darwin' ? JXA_CHECKER : PS_CHECKER
     // The script travels on the command line so stdin stays free for the `x y pid`
     // line protocol: osascript takes -e, PowerShell a base64 -EncodedCommand.
@@ -126,6 +135,14 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
       : ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]
     try {
       child = spawn(file, args, { env: { ...process.env, DSBOT_OWN_PID: String(ownPid) }, stdio: ['pipe', 'pipe', 'ignore'] })
+      const startedChild = child
+      let settleStartup
+      const ready = new Promise(resolve => { settleStartup = resolve })
+      const startupTimer = setTimeout(() => settleStartup(false), startMs)
+      startup = {
+        promise: ready,
+        resolve(value) { clearTimeout(startupTimer); settleStartup(value) },
+      }
       let buffer = ''
       child.stdout.on('data', (chunk) => {
         buffer += chunk
@@ -133,26 +150,37 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
         while ((nl = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, nl).trim()
           buffer = buffer.slice(nl + 1)
-          if (line === 'y' || line === 'n') { pending?.resolve(line === 'y'); pending = null }
+          if (line === 'r') startup?.resolve(true)
+          else {
+            const [id, answer] = line.split(/\s+/u)
+            if (pending?.id === id && (answer === 'y' || answer === 'n')) { pending.resolve(answer === 'y'); pending = null }
+          }
         }
       })
-      child.on('error', (error) => { log.warn(`DS Bot: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); pending?.resolve(false); pending = null })
-      child.on('exit', () => { child = null; pending?.resolve(false); pending = null })
-    } catch (error) { log.warn(`DS Bot: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
-    return child
+      child.on('error', (error) => { warn(log, `DS Bot: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); startup?.resolve(false); pending?.resolve(false); pending = null })
+      child.on('exit', () => { if (child === startedChild) { child = null; startup?.resolve(false); startup = null }; pending?.resolve(false); pending = null })
+    } catch (error) { warn(log, `DS Bot: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
+    return child === null ? null : { child, ready: startup.promise }
   }
   const check = (x, y, pid) => {
     const running = ensure()
     // One check in flight at a time keeps the line protocol in order.
-    queue = queue.then(() => new Promise((resolve) => {
-      if (running === null || !Number.isInteger(pid)) { resolve(false); return }
-      const timer = setTimeout(() => { pending = null; resolve(false) }, CHECK_MS)
-      pending = { resolve: (value) => { clearTimeout(timer); resolve(value) } }
-      try { running.stdin.write(`${Math.round(x)} ${Math.round(y)} ${pid}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
-    }))
+    queue = queue.then(async () => {
+      if (running === null || !Number.isInteger(pid) || !await running.ready || child !== running.child) return false
+      const point = platform === 'win32' && typeof screen?.dipToScreenPoint === 'function'
+        ? screen.dipToScreenPoint({ x: Math.round(x), y: Math.round(y) })
+        : { x: Math.round(x), y: Math.round(y) }
+      const id = String(nextId++)
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => { if (pending?.id === id) pending = null; resolve(false) }, checkMs)
+        pending = { id, resolve: (value) => { clearTimeout(timer); resolve(value) } }
+        try { running.child.stdin.write(`${id} ${Math.round(point.x)} ${Math.round(point.y)} ${pid}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
+      })
+    })
     return queue
   }
-  return { check, dispose() { try { child?.kill() } catch {} child = null } }
+  ensure()
+  return { check, dispose() { try { child?.kill() } catch {}; startup?.resolve(false); pending?.resolve(false); pending = null; child = null; startup = null } }
 }
 
 // macOS: walk the on-screen window list front-to-back; the point is visible
@@ -168,6 +196,7 @@ function answer(s) {
   var d = $.NSString.alloc.initWithUTF8String(s).dataUsingEncoding($.NSUTF8StringEncoding)
   output.writeData(d)
 }
+answer('r\n')
 while (true) {
   var data = input.availableData
   if (!data || data.length === 0) break
@@ -176,7 +205,7 @@ while (true) {
   while ((nl = buf.indexOf('\n')) >= 0) {
     var line = buf.slice(0, nl); buf = buf.slice(nl + 1)
     var parts = line.trim().split(/\s+/)
-    var x = Number(parts[0]), y = Number(parts[1]), pid = Number(parts[2])
+    var id = parts[0], x = Number(parts[1]), y = Number(parts[2]), pid = Number(parts[3])
     var yes = false
     try {
       var ref = $.CGWindowListCopyWindowInfo(1, 0)
@@ -194,7 +223,7 @@ while (true) {
         if (x >= bx && x < bx + bw && y >= by && y < by + bh) { yes = (Number(owner) === pid); break }
       }
     } catch (e) {}
-    answer(yes ? 'y\n' : 'n\n')
+    answer(id + (yes ? ' y\n' : ' n\n'))
   }
 }
 `
@@ -214,16 +243,17 @@ public class PointCheck {
 }
 "@
 [void][PointCheck]::SetProcessDPIAware()
+[Console]::Out.WriteLine('r')
 # WindowFromPoint already skips our click-through (WS_EX_TRANSPARENT) overlays.
 while (($line = [Console]::In.ReadLine()) -ne $null) {
   $parts = $line.Trim() -split '\s+'
-  if ($parts.Count -lt 3) { continue }
+  if ($parts.Count -lt 4) { continue }
   $p = New-Object PointCheck+POINT
-  $p.X = [int]$parts[0]; $p.Y = [int]$parts[1]
+  $p.X = [int]$parts[1]; $p.Y = [int]$parts[2]
   $h = [PointCheck]::WindowFromPoint($p)
   $root = [PointCheck]::GetAncestor($h, 2)
   [uint32]$pid2 = 0
   [void][PointCheck]::GetWindowThreadProcessId($root, [ref]$pid2)
-  if ($pid2 -eq [uint32]$parts[2]) { [Console]::Out.WriteLine('y') } else { [Console]::Out.WriteLine('n') }
+  if ($pid2 -eq [uint32]$parts[3]) { [Console]::Out.WriteLine($parts[0] + ' y') } else { [Console]::Out.WriteLine($parts[0] + ' n') }
 }
 `

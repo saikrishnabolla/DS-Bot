@@ -364,5 +364,9 @@ try {
 }
 stopChildren()
 await sleep(500)
-rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+try {
+  rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
+} catch (error) {
+  console.error(`check-packed: cleanup warning: could not remove ${work}: ${error instanceof Error ? error.message : String(error)}`)
+}
 process.exit(failed ? 1 : 0)

@@ -35,13 +35,14 @@ function fakeElectron() {
 function fakeSpawn(answers = ['y']) {
   return () => {
     const child = new EventEmitter()
-    child.stdin = { write: (line) => { const a = answers.length > 1 ? answers.shift() : answers[0]; queueMicrotask(() => child.stdout.emit('data', a + '\n')) } }
+    child.stdin = { write: (line) => { const a = answers.length > 1 ? answers.shift() : answers[0]; const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} ${a}\n`)) } }
     child.stdout = new EventEmitter()
     child.kill = () => { child.killed = true; child.emit('exit') }
+    queueMicrotask(() => child.stdout.emit('data', 'r\n'))
     return child
   }
 }
-const screen = { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 }, workArea: { x: 0, y: 0 } }) }
+const screen = { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 }, workArea: { x: 0, y: 0 } }), dipToScreenPoint: point => point }
 const update = (cursor, ev) => cursor.update({ botId: 'w1', x: 100, y: 200, mode: 'point', ripple: true, pid: 9, color: '#22c55e', ...ev })
 
 test('the cursor window is transparent, click-through and floats above apps', async () => {
@@ -101,7 +102,7 @@ test('linux has no on-screen cursor', async () => {
 
 test('a slow checker answer means do not draw', async () => {
   const { windows, BrowserWindow } = fakeElectron()
-  const slow = () => { const child = new EventEmitter(); child.stdin = { write: () => {} }; child.stdout = new EventEmitter(); child.kill = () => {}; return child }
+  const slow = () => { const child = new EventEmitter(); child.stdin = { write: () => {} }; child.stdout = new EventEmitter(); child.kill = () => {}; queueMicrotask(() => child.stdout.emit('data', 'r\n')); return child }
   const cursor = createComputerCursor({ BrowserWindow, screen, platform: 'darwin', spawn: slow, log: { warn: () => {} } })
   await update(cursor)
   assert.equal(windows.length, 0)
@@ -110,11 +111,74 @@ test('a slow checker answer means do not draw', async () => {
 
 test('the checker kills its helper on dispose', () => {
   let killed = false
-  const spawn = () => { const child = new EventEmitter(); child.stdin = { write: () => {} }; child.stdout = new EventEmitter(); child.kill = () => { killed = true }; return child }
+  const spawn = () => { const child = new EventEmitter(); child.stdin = { write: () => {} }; child.stdout = new EventEmitter(); child.kill = () => { killed = true }; queueMicrotask(() => child.stdout.emit('data', 'r\n')); return child }
   const checker = createPointChecker({ platform: 'darwin', spawn, log: { warn: () => {} } })
   void checker.check(1, 2, 3)
   checker.dispose()
   assert.equal(killed, true)
+})
+
+test('the first point waits for a cold native helper before using the query timeout', async () => {
+  const { windows, BrowserWindow } = fakeElectron()
+  const delayed = () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stdin = { write: line => { const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} y\n`)) } }
+    child.kill = () => {}
+    setTimeout(() => child.stdout.emit('data', 'r\n'), 350)
+    return child
+  }
+  const cursor = createComputerCursor({ BrowserWindow, screen, platform: 'win32', spawn: delayed, log: { warn: () => {} } })
+  await update(cursor)
+  assert.equal(windows.length, 1)
+  cursor.dispose()
+})
+
+test('late point answers cannot resolve a newer request', async () => {
+  let checks = 0
+  const spawn = () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => {}
+    child.stdin = { write: line => {
+      const id = line.split(' ')[0]
+      checks++
+      if (checks === 1) setTimeout(() => child.stdout.emit('data', `${id} y\n`), 350)
+      else setTimeout(() => child.stdout.emit('data', `${id} n\n`), 100)
+    } }
+    queueMicrotask(() => child.stdout.emit('data', 'r\n'))
+    return child
+  }
+  const checker = createPointChecker({ platform: 'darwin', spawn, log: { warn: () => {} } })
+  assert.equal(await checker.check(10, 20, 9), false)
+  assert.equal(await checker.check(10, 20, 9), false)
+  checker.dispose()
+})
+
+test('win32 checks the physical point while the cursor remains in display-independent coordinates', async () => {
+  let written
+  const spawn = () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => {}
+    child.stdin = { write: line => { written = line; const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} y\n`)) } }
+    queueMicrotask(() => child.stdout.emit('data', 'r\n'))
+    return child
+  }
+  const checker = createPointChecker({ platform: 'win32', spawn, screen: { dipToScreenPoint: ({ x, y }) => ({ x: x * 2, y: y * 2 }) }, log: { warn: () => {} } })
+  assert.equal(await checker.check(10, 20, 9), true)
+  assert.equal(written, '1 20 40 9\n')
+  checker.dispose()
+})
+
+test('native point helpers warm on supported systems only', () => {
+  let starts = 0
+  const spawn = () => { starts++; const child = new EventEmitter(); child.stdin = { write: () => {} }; child.stdout = new EventEmitter(); child.kill = () => {}; return child }
+  const mac = createPointChecker({ platform: 'darwin', spawn, startMs: 1, log: { warn: () => {} } })
+  const windows = createPointChecker({ platform: 'win32', spawn, startMs: 1, log: { warn: () => {} } })
+  const linux = createPointChecker({ platform: 'linux', spawn, log: { warn: () => {} } })
+  assert.equal(starts, 2)
+  mac.dispose(); windows.dispose(); linux.dispose()
 })
 
 test('cursorHtml paints the arrow in the Bot color with the avatar and a ripple', () => {
