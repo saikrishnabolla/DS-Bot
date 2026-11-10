@@ -192,8 +192,11 @@ test('owned context accepts the complete DS Bot host tool catalog', async t => {
   assert.equal(ctx.tools.schemas().some(schema => schema.name === 'list_bots'), true)
   assert.equal(ctx.tools.schemas().some(schema => schema.name === 'message_bot'), true)
   const { sessionId } = await ctx.sessionController.create()
-  await ctx.sessionController.resolveAgent(sessionId)
-  assert.equal((await ctx.harness.agent(sessionId)).extensions.some(extension => extension.name === 'ds-bot-system-prompt'), true)
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  const plain = await ctx.harness.agent(sessionId)
+  assert.equal(plain.extensions.some(extension => extension.name === 'ds-bot-system-prompt'), true)
+  assert.equal(ctx.tools.schemas(agent).some(schema => schema.name === 'list_bots' || schema.name === 'message_bot'), false)
+  assert.equal(plain.callable.some(tool => tool.name === 'list_bots' || tool.name === 'message_bot'), false)
   await ctx.close()
 })
 
