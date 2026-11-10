@@ -43,6 +43,8 @@ MIT License, Copyright (c) 2026 DeepSeek
     in DeepSeek Harness (.agents/skills/record-browser-gif/): SKILL.md is
     adapted and translated for this repository; scripts/encode_gif.py and
     scripts/test_encode_gif.py are copied unchanged.
+  - ds-bot/src/engine/owned-proxy.js adapts the environment proxy resolution,
+    loopback bypass and undici dispatcher from packages/util/http-proxy.
 
   Full license text:
 

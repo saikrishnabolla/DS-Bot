@@ -53,6 +53,8 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'effect ds-bot: identity section',
     'prompt bot-identity 640',
     'on agent/pre-step (prepend)',
+    'effect ds-bot: plan review questions',
+    'on user-questions/request',
     'on tools/execute',
     'effect ds-bot: scoped team tools',
     'on tools/change',

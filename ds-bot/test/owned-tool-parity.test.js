@@ -244,6 +244,48 @@ test('owned background shell registers, streams, consumes, lists, and fences job
   await assert.rejects(toolOf(host, 'job_output').execute({ job_id: jobId }, { ...exec, agent: { ...agent, id: 'other' } }), /Unknown job/)
 })
 
+test('owned foreground and background shells cannot inherit proxy credentials', async t => {
+  const names = [
+    'http_proxy', 'HTTP_PROXY', 'https_proxy', 'HTTPS_PROXY',
+    'no_proxy', 'NO_PROXY', 'all_proxy', 'ALL_PROXY', 'NODE_USE_ENV_PROXY',
+  ]
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]))
+  for (const name of names) process.env[name] = name.includes('PROXY') || name.includes('proxy')
+    ? 'http://proxy-user:proxy-secret@127.0.0.1:9'
+    : '1'
+  const { host } = await fixture(t)
+  try {
+    const state = await host.runtime.handle('state', { locale: 'en' })
+    const bot = state.value.bots[0]
+    const shell = toolOf(host, 'bash')
+    const script = `console.log(JSON.stringify(${JSON.stringify(names)}.map(name => [name, process.env[name] ?? null])))`
+    const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`
+    const foreground = await shell.execute({ command }, {
+      conversationId: bot.id,
+      callId: 'proxy-env-foreground',
+    }, { abortSignal: new AbortController().signal })
+    assert.deepEqual(JSON.parse(foreground.structuredOutput.output), names.map(name => [name, null]))
+
+    const background = await shell.execute({ command, run_in_background: true }, {
+      conversationId: bot.id,
+      callId: 'proxy-env-background',
+    }, { abortSignal: new AbortController().signal })
+    const agent = { id: bot.id, session: { id: bot.id, header: {} } }
+    const output = await toolOf(host, 'job_output').execute({
+      job_id: background.structuredOutput.jobId,
+      wait: true,
+      timeout_ms: 5_000,
+    }, { agent, callId: 'proxy-env-output', signal: new AbortController().signal })
+    assert.deepEqual(JSON.parse(outputText(output).trim().split('\n')[0]), names.map(name => [name, null]))
+  } finally {
+    await host.close()
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+})
+
 test('owned background jobs bound memory, retain complete output, and stop process groups on close', async t => {
   const { host, workspacePath } = await fixture(t)
   const state = await host.runtime.handle('state', { locale: 'en' })

@@ -9,6 +9,7 @@ import { migrateLegacyTeam } from './legacy-import.js'
 import { prepareLegacyModels } from './legacy-model-import.js'
 import { installOwnedDesktopTools } from './owned-desktop-tools.js'
 import { OwnedModels } from './owned-models.js'
+import { clearedModelProxyEnvironment, installProxyFromEnvironment } from './owned-proxy.js'
 import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
@@ -52,33 +53,38 @@ function installCodingApprovals(context, runtime) {
 export class OwnedHost {
   #context
   #server
+  #stopProxy
   #closing
 
-  constructor(context, runtime, models, server) {
+  constructor(context, runtime, models, server, stopProxy) {
     this.#context = context
     this.runtime = runtime
     this.models = models
     this.#server = server
+    this.#stopProxy = stopProxy
   }
 
   static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse, platform = process.platform, web } = {}) {
     if (typeof dataDir !== 'string' || dataDir === '') throw new TypeError('dataDir must be a directory')
     if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
-    await prepareLegacyModels({ dataDir, platform })
-    const modelRuntime = suppliedModels ?? await ModelRuntime.create({
-      authPath: join(dataDir, 'auth.json'),
-      modelsPath: join(dataDir, 'models.json'),
-      refreshOnCreate: true,
-    })
-    const models = await OwnedModels.open(modelRuntime, { configPath: join(dataDir, 'providers.json') })
-    const context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
+    const stopProxy = await installProxyFromEnvironment(process.env, message => console.warn(`DS Bot proxy: ${message}`))
+    let context
     let server
     try {
+      await prepareLegacyModels({ dataDir, platform })
+      const modelRuntime = suppliedModels ?? await ModelRuntime.create({
+        authPath: join(dataDir, 'auth.json'),
+        modelsPath: join(dataDir, 'models.json'),
+        refreshOnCreate: true,
+      })
+      const models = await OwnedModels.open(modelRuntime, { configPath: join(dataDir, 'providers.json') })
+      context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
       await migrateLegacyTeam({ dataDir, harness: context.harness })
       installOwnedApprovals(context, { dataDir })
       await installOwnedStorage(context, { dataDir })
       installOwnedComputerUse(context, computerUse)
       await installOwnedSchedules(context)
+      context.get('shellEnv').register({ resolve: clearedModelProxyEnvironment })
       const ownedWorkspace = context.workspaceRegistry.get('default').path
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot'), workspace: ownedWorkspace })
       installModelBoundary(runtime, models)
@@ -111,10 +117,11 @@ export class OwnedHost {
         ...(host === undefined ? {} : { host }),
         ...(port === undefined ? {} : { port }),
       })
-      return new OwnedHost(context, runtime, models, server)
+      return new OwnedHost(context, runtime, models, server, stopProxy)
     } catch (error) {
       await server?.close().catch(() => undefined)
-      await context.close().catch(() => undefined)
+      await context?.close().catch(() => undefined)
+      await stopProxy().catch(() => undefined)
       throw error
     }
   }
@@ -125,8 +132,11 @@ export class OwnedHost {
 
   close() {
     return this.#closing ??= (async () => {
-      await this.#server.close()
-      await this.#context.close()
+      try {
+        await this.#server.close()
+      } finally {
+        try { await this.#context.close() } finally { await this.#stopProxy() }
+      }
     })()
   }
 }
