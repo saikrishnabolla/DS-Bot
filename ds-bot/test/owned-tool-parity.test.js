@@ -6,7 +6,7 @@ import test from 'node:test'
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { OwnedHost } from '../src/engine/owned-host.js'
-import { safeWebFetch } from '../src/engine/owned-desktop-tools.js'
+import { htmlToGfm, pinnedLookup, safeWebFetch } from '../src/engine/owned-desktop-tools.js'
 
 const waitFor = async (check, timeout = 5_000) => {
   const started = Date.now()
@@ -79,7 +79,19 @@ test('owned desktop tools search files, replace todos, present files, and use th
         searches.push(request)
         return { content: `answer for ${request.query}`, sources: [{ url: `https://example.com/${request.query}`, title: request.query }], truncated: false }
       },
-      fetch: async request => ({ url: request.url, statusCode: 200, body: { kind: 'html', content: '<main><h1>Useful page</h1><script>ignore me</script></main>' }, truncated: false }),
+      fetch: async request => ({
+        url: request.url,
+        statusCode: 200,
+        body: { kind: 'html', content: request.url.endsWith('/large') ? `<p>${'x'.repeat(1_100_000)}</p>` : [
+          '<main><h1>Useful page</h1><p>See <a href="/docs">the docs</a>.</p>',
+          '<ul><li>First</li><li>Second</li></ul>',
+          '<pre><code class="language-js">const answer = 42\nconsole.log(answer)</code></pre>',
+          '<table><tr><th>Name</th><th>Value</th></tr><tr><td>answer</td><td>42</td></tr></table>',
+          '<script>ignore me</script><div hidden>hidden one</div><div aria-hidden="true">hidden two</div>',
+          '<div style="display: none !important">hidden three</div></main>',
+        ].join('') },
+        truncated: false,
+      }),
     },
   })
   await mkdir(join(workspacePath, 'notes'))
@@ -111,8 +123,16 @@ test('owned desktop tools search files, replace todos, present files, and use th
   assert.match(outputText(searched), /External web content follows/)
   assert.match(outputText(searched), /https:\/\/example\.com\/alpha/)
   const fetched = await toolOf(host, 'web_fetch').execute({ url: 'https://example.com/page' }, exec)
-  assert.match(outputText(fetched), /Useful page/)
-  assert.doesNotMatch(outputText(fetched), /ignore me/)
+  const fetchedText = outputText(fetched)
+  assert.match(fetchedText, /# Useful page/)
+  assert.match(fetchedText, /\[the docs\]\(\/docs\)/)
+  assert.match(fetchedText, /-\s+First/)
+  assert.match(fetchedText, /```js\nconst answer = 42/)
+  assert.match(fetchedText, /\| Name\s+\| Value\s+\|/)
+  assert.doesNotMatch(fetchedText, /ignore me|hidden one|hidden two|hidden three/)
+  const large = outputText(await toolOf(host, 'web_fetch').execute({ url: 'https://example.com/large' }, exec))
+  assert.ok(large.length < 201_000)
+  assert.match(large, /Content truncated/)
 })
 
 test('owned background shell registers, streams, consumes, lists, and fences jobs', async t => {
@@ -176,5 +196,72 @@ test('owned background jobs bound memory, retain complete output, and stop proce
 test('owned web fetch blocks local network destinations before connecting', async () => {
   await assert.rejects(safeWebFetch({ url: 'http://127.0.0.1/private' }), /blocked private address/)
   await assert.rejects(safeWebFetch({ url: 'http://[::1]/private' }), /blocked private address/)
+  await assert.rejects(safeWebFetch({ url: 'http://[::ffff:127.0.0.1]/private' }), /blocked private address/)
+  await assert.rejects(safeWebFetch({ url: 'http://169.254.169.254/latest/meta-data' }), /blocked private address/)
+  await assert.rejects(safeWebFetch({ url: 'http://100.64.0.1/private' }), /blocked private address/)
   await assert.rejects(safeWebFetch({ url: 'file:///etc/passwd' }), /HTTP\(S\)/)
+})
+
+test('owned web fetch keeps DNS pinning under single-address and all-address clients', async () => {
+  const pinned = { address: '203.0.113.9', family: 4 }
+  const lookup = pinnedLookup(pinned)
+  assert.deepEqual(await new Promise((resolve, reject) => lookup('ignored.example', {}, (error, address, family) => error ? reject(error) : resolve({ address, family }))), pinned)
+  assert.deepEqual(await new Promise((resolve, reject) => lookup('ignored.example', { all: true }, (error, addresses) => error ? reject(error) : resolve(addresses))), [pinned])
+})
+
+test('owned web fetch preserves GFM structure and rejects pathological HTML depth', () => {
+  const markdown = htmlToGfm('<article><h2>Details</h2><ol><li>One</li><li>Two</li></ol><blockquote>Note</blockquote><table><tr><th>A</th></tr><tr><td>B</td></tr></table></article>')
+  assert.match(markdown, /^## Details/m)
+  assert.match(markdown, /1\.\s+One/)
+  assert.match(markdown, /> Note/)
+  assert.match(markdown, /\| A\s+\|/)
+  const deep = `${'<div>'.repeat(257)}value${'</div>'.repeat(257)}`
+  assert.throws(() => htmlToGfm(deep), /nesting exceeds 256/)
+})
+
+test('owned web fetch enforces redirect, media type, charset, and decoding contracts', async () => {
+  const page = (statusCode, headers, bytes = Buffer.alloc(0), truncated = false) => ({
+    response: { statusCode, headers }, bytes, truncated,
+  })
+  const seen = []
+  const redirected = await safeWebFetch({ url: 'https://example.com/start' }, undefined, {
+    request: async url => {
+      seen.push(url.href)
+      if (url.pathname === '/start') return page(302, { location: '/final' })
+      return page(200, { 'content-type': 'text/plain; charset=utf-16le' }, Buffer.from('decoded', 'utf16le'))
+    },
+  })
+  assert.deepEqual(seen, ['https://example.com/start', 'https://example.com/final'])
+  assert.equal(redirected.url, 'https://example.com/final')
+  assert.deepEqual(redirected.body, { kind: 'text', content: 'decoded' })
+
+  let calls = 0
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/start' }, undefined, {
+    request: async () => { calls += 1; return page(302, { location: 'https://other.example/final' }) },
+  }), /blocked a cross-origin redirect/)
+  assert.equal(calls, 1)
+
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'application/octet-stream' }, Buffer.from([0, 1, 2])),
+  }), /does not support Content-Type application\/octet-stream/)
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, {}, Buffer.from('plain')),
+  }), /missing or invalid Content-Type/)
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'text/plain; charset=not-a-real-charset' }, Buffer.from('plain')),
+  }), /does not support charset/)
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'text/plain; charset=' }, Buffer.from('plain')),
+  }), /invalid charset/)
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'text/plain; charset=utf-8; charset=utf-16le' }, Buffer.from('plain')),
+  }), /conflicting charset/)
+  await assert.rejects(safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'text/plain; charset=utf-8' }, Buffer.from([0xc3, 0x28])),
+  }), /could not decode utf-8 content/)
+  const clipped = await safeWebFetch({ url: 'https://example.com/file' }, undefined, {
+    request: async () => page(200, { 'content-type': 'text/plain; charset=utf-8' }, Buffer.from('text €').subarray(0, -1), true),
+  })
+  assert.equal(clipped.body.content, 'text ')
+  assert.equal(clipped.truncated, true)
 })

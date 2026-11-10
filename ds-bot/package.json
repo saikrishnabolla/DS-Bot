@@ -88,13 +88,17 @@
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@earendil-works/pi-durable": "1.5.0",
     "@earendil-works/pi-mcp": "1.5.0",
+    "@joplin/turndown-plugin-gfm": "1.0.67",
     "@modelcontextprotocol/client": "2.4.0",
     "@trycua/cua-driver": "0.46.0",
+    "htmlparser2": "10.1.0",
     "imapflow": "2.9.1",
+    "ipaddr.js": "2.2.0",
     "mailparser": "3.12.4",
     "nodemailer": "10.2.1",
     "playwright-core": "1.64.1",
     "rrule": "2.8.1",
+    "turndown": "7.2.1",
     "ws": "8.21.0"
   }
 }
