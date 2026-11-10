@@ -5,6 +5,7 @@ import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createRuntime } from '../../index.js'
 import { OwnedContext } from './owned-context.js'
 import { OwnedModels } from './owned-models.js'
+import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
 
 const GUARDED_CODING_TOOLS = new Set(['bash', 'powershell', 'write', 'edit'])
@@ -61,6 +62,7 @@ export class OwnedHost {
     const context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
     let server
     try {
+      await installOwnedStorage(context, { dataDir })
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
       installModelBoundary(runtime, models)
       runtime.teamTools.push(...CodingTools.tools.map(tool => ({ ...tool, ownedNative: true })))
