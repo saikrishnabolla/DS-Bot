@@ -2,13 +2,17 @@ import { createElement as h, useCallback, useEffect, useLayoutEffect, useMemo, u
 import { call } from '../../../ds-bot/src/client/api.js'
 import { Bubbles, ChatRows, Shimmer } from '../../../ds-bot/src/client/cells.js'
 import { ComposerPlus, ComposerVoice } from '../../../ds-bot/src/client/composer.js'
+import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.js'
 import { sendsOnEnter } from '../../../ds-bot/src/client/enter-key.js'
 import { t } from '../../../ds-bot/src/client/i18n.js'
 import { ArrowUpIcon } from '../../../ds-bot/src/client/icons.js'
+import { LearningDock } from '../../../ds-bot/src/client/learning-card.js'
 import { ModelChoiceDock } from '../../../ds-bot/src/client/model-menu.js'
 import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
+import { SecretDock } from '../../../ds-bot/src/client/secret-card.js'
 import { MarkdownText } from '../../../ds-bot/src/client/dsh-primitives.js'
 import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
+import { WidgetDock } from '../../../ds-bot/src/client/widget-cell.js'
 import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
 
@@ -270,6 +274,11 @@ export function Chat({ sessionId, team }) {
         actions,
       }))) : null,
       h(ModelChoiceDock, { sessionId, useRoster: hooks.useRoster, actions }),
+      h(WidgetDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(SecretDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(ConnectorDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(MailDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(LearningDock, { sessionId, useRoster: hooks.useRoster, actions }),
       h(Composer, {
         sessionId,
         disabled: waiting,
