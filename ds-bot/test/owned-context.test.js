@@ -378,6 +378,30 @@ test('owned context adapts legacy tools per conversation and keeps exec.agent co
   await ctx.sessions.flush(agent.session)
 })
 
+test('owned sessions rebuild durable tool history after restart', async t => {
+  const { ctx, dataDir, models, provider } = await contextFixture(t)
+  const definition = legacyTool('durable_read')
+  provider.setResponses([fauxAssistantMessage('done')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  agent.ctx.tools.register(definition)
+  await ctx.sessions.flush(agent.session)
+  ctx.resume()
+
+  agent.followup({ content: 'remember the available tools', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const before = agent.session.toolHistory()
+  assert.equal(before.some(tool => tool.name === 'durable_read'), true)
+  await ctx.close()
+
+  const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir })
+  t.after(() => restarted.close())
+  const resolved = await restarted.sessionController.resolveAgent(sessionId)
+  assert.deepEqual(resolved.agent.session.toolHistory(), before)
+})
+
 test('owned context configures models, routes dispatch, publishes feed, aborts, and closes cleanly', async t => {
   const { ctx } = await contextFixture(t, { providerOptions: { tokensPerSecond: 1 } })
   const { sessionId } = await ctx.sessionController.create()

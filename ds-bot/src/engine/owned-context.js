@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
+import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
 import { CompactionTask, defineExtension, defineTool, hook } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
@@ -607,7 +608,7 @@ export class OwnedContext {
       eventAt: seq => state.events[seq]?.event,
       snapshotEvents: () => state.events.map(record => record.event),
       deriveMessages: () => allMessages(state.entries),
-      toolHistory: () => [],
+      toolHistory: () => getDeclaredTools(allMessages(state.entries)),
       requestHeader: () => ({ id, config: state.config }),
       setConfig: config => { state.config = config },
     }
