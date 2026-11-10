@@ -1,6 +1,8 @@
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
+const require = createRequire(import.meta.url)
 const primitives = fileURLToPath(new URL('./ui/src/primitives.js', import.meta.url))
 
 // The plugin's Bot views take DSH's interface primitives from one module; the window does
@@ -20,7 +22,10 @@ export default defineConfig({
   plugins: [ownPrimitives],
   // The Bot views come from the plugin's interface code in ../ds-bot, which has no React
   // of its own.
-  resolve: { dedupe: ['react', 'react-dom'] },
+  resolve: {
+    alias: { 'qrcode-generator': require.resolve('qrcode-generator') },
+    dedupe: ['react', 'react-dom'],
+  },
   // One bundle: the window loads it from disk, not over a network.
   build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 2048 },
 })

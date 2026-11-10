@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { parse } from 'yaml'
+import viteConfig from '../vite.config.js'
 
 // electron-builder packs only the dependencies it finds through `dependencies` and
 // `optionalDependencies`. A package installed only as a peer would be left out of the installer.
@@ -28,10 +29,13 @@ test('the app has the version of ds-bot', () => {
 })
 
 test('every app entry point builds the UI and sandboxed preload first', () => {
-  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const { scripts } = manifest
   assert.match(scripts.build, /vite build/u)
   assert.match(scripts.build, /build-preload/u)
   for (const name of ['start', 'pack', 'dist']) assert.match(scripts[name], /^npm run build && /u)
+  assert.equal(manifest.dependencies['qrcode-generator'], '2.0.4')
+  assert.equal(typeof viteConfig.resolve.alias['qrcode-generator'], 'string')
 })
 
 // Tool processes (bash, scripts a Bot runs) connect to devices on the local network;
