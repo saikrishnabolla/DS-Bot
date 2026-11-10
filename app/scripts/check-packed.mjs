@@ -108,7 +108,7 @@ function checkFiles(app) {
   console.log(result.stdout.trim())
 }
 
-function packagedWindowPid(app, bounds, expectedPid) {
+function packagedWindow(app, bounds, expectedPid) {
   const resources = process.platform === 'darwin' ? resolve(app, '..', '..', 'Resources') : join(dirname(app), 'resources')
   const unpackedRoot = process.platform === 'linux' ? join(resources, 'app') : join(resources, 'app.asar.unpacked')
   const script = `
@@ -127,18 +127,16 @@ function packagedWindowPid(app, bounds, expectedPid) {
   if (result.error || result.status !== 0) throw new Error(`packaged native window lookup failed: ${result.error?.message ?? result.stderr}`)
   const windows = JSON.parse(result.stdout.trim()).windows
   const candidates = windows.filter(window => Number.isInteger(window.pid) && window.bounds)
-  const current = candidates.find(window => window.pid === expectedPid)
-  if (current !== undefined) return current.pid
+  const distance = window => Math.abs(window.bounds.x - bounds.x) + Math.abs(window.bounds.y - bounds.y)
+    + Math.abs(window.bounds.width - bounds.width) + Math.abs(window.bounds.height - bounds.height)
   candidates.sort((left, right) => {
-    const score = window => Math.abs(window.bounds.x - bounds.x) + Math.abs(window.bounds.y - bounds.y)
-      + Math.abs(window.bounds.width - bounds.width) + Math.abs(window.bounds.height - bounds.height)
-    return score(left) - score(right)
+    const byGeometry = distance(left) - distance(right)
+    if (byGeometry !== 0) return byGeometry
+    return Number(right.pid === expectedPid) - Number(left.pid === expectedPid)
   })
   const target = candidates[0]
-  const distance = target === undefined ? Infinity : Math.abs(target.bounds.x - bounds.x) + Math.abs(target.bounds.y - bounds.y)
-    + Math.abs(target.bounds.width - bounds.width) + Math.abs(target.bounds.height - bounds.height)
-  if (target === undefined || distance > 8) throw new Error('the packaged computer driver could not identify the team window')
-  return target.pid
+  if (target === undefined || distance(target) > 8) throw new Error('the packaged computer driver could not identify the team window')
+  return target
 }
 
 async function freePort() {
@@ -329,20 +327,27 @@ try {
   }
   if (action?.kind !== 'stop' || action?.botId !== 'packed-bot') throw new Error('the packaged computer indicator action did not reach the team window')
   await rendererValue(cdp, 'window.dsBotApp.computer({ rows: [], labels: {} }); true')
-  await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
-  await sleep(300)
-  if (process.platform !== 'linux') {
-    const cursorTarget = await windowState('({ bounds: win.getBounds() })')
-    const cursorPid = packagedWindowPid(packedApp, cursorTarget.bounds, app.pid)
-    await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(cursorPid)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
-    const cursorDeadline = Date.now() + 10_000
-    let cursorVisible = false
-    while (Date.now() < cursorDeadline) {
-      cursorVisible = await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html') && decodeURIComponent(item.webContents.getURL()).includes('<svg'))")
-      if (cursorVisible) break
-      await sleep(100)
+  if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(true); true')
+  try {
+    await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
+    await sleep(300)
+    if (process.platform !== 'linux') {
+      const cursorTarget = await windowState('({ bounds: win.getBounds() })')
+      const nativeWindow = packagedWindow(packedApp, cursorTarget.bounds, app.pid)
+      const nativeWindowId = nativeWindow.window_id ?? nativeWindow.windowId
+      if (!Number.isSafeInteger(nativeWindowId) || nativeWindowId <= 0) throw new Error('the packaged computer driver returned no native window ID')
+      await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(nativeWindow.pid)}, windowId: ${String(nativeWindowId)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
+      const cursorDeadline = Date.now() + 10_000
+      let cursorVisible = false
+      while (Date.now() < cursorDeadline) {
+        cursorVisible = await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html') && decodeURIComponent(item.webContents.getURL()).includes('<svg'))")
+        if (cursorVisible) break
+        await sleep(100)
+      }
+      if (!cursorVisible) throw new Error('the packaged computer cursor did not appear')
     }
-    if (!cursorVisible) throw new Error('the packaged computer cursor did not appear')
+  } finally {
+    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); true')
   }
   console.log('check-packed: packaged computer indicator, action and cursor flow passed')
   await windowState('win.close()')

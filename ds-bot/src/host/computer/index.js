@@ -446,7 +446,10 @@ export function install(rt) {
     }
     const distinct = [...new Map(found.map(app => [app.key, app])).values()]
     if (distinct.length > 1) return { key: 'ambiguous', name: 'multiple apps', unknown: true, reason: 'A computer call may target only one approved app at a time.' }
-    if (distinct.length === 1) return distinct[0]
+    if (distinct.length === 1) {
+      const windowAlias = aliases.find(alias => alias.startsWith('window:'))
+      return (windowAlias === undefined ? undefined : apps.get(windowAlias)) ?? distinct[0]
+    }
     return { key: aliases[0], name: 'the requested app or window', unknown: true }
   }
   const runStepsApp = (sessionId, args) => {
@@ -568,11 +571,12 @@ export function install(rt) {
       const app = recordPid(item, known) ?? recordTitle(item)
       if (app === undefined) return
       const windowId = [item?.window_id, item?.windowId, item?.wid].find(value => value !== undefined && value !== null)
-      if (windowId !== undefined) apps.set(`window:${windowId}`, app)
+      const target = windowId === undefined ? app : { ...app, windowId }
+      if (windowId !== undefined) apps.set(`window:${windowId}`, target)
       if (typeof app.name === 'string') rememberAlias(`app:${normName(app.name)}`, app)
       if (typeof app.id === 'string') rememberAlias(`app:${normName(app.id)}`, app)
       const title = textOf(item?.title) ?? textOf(item?.window_title)
-      if (title !== undefined) rememberAlias(`title:${normName(title)}`, app)
+      if (title !== undefined) rememberAlias(`title:${normName(title)}`, target)
     }
     const lists = [body.apps, body.windows, body.items, Array.isArray(body) ? body : undefined]
     for (const list of lists) {
@@ -597,10 +601,13 @@ export function install(rt) {
     // record both so a later call on either resolves to the window's app.
     const stateWindow = [body.window_id, body.windowId, body.wid, body.window?.window_id, body.window?.id].find(value => value !== undefined && value !== null)
     const statePid = [body.pid, body.appPid, body.app_pid, body.window?.pid, body.window?.app_pid].find(value => Number.isInteger(value) && value > 0)
-    let stateApp = statePid !== undefined ? apps.get(`pid:${statePid}`) ?? recordPid(body) : undefined
-    if (stateApp === undefined && stateWindow !== undefined) stateApp = apps.get(`window:${stateWindow}`)
+    let stateApp = stateWindow !== undefined ? apps.get(`window:${stateWindow}`) : undefined
+    if (stateApp === undefined && statePid !== undefined) stateApp = apps.get(`pid:${statePid}`) ?? recordPid(body)
     if (stateApp === undefined && body.window !== null && typeof body.window === 'object') stateApp = recordPid(body.window)
-    if (stateWindow !== undefined && stateApp !== undefined) apps.set(`window:${stateWindow}`, stateApp)
+    if (stateWindow !== undefined && stateApp !== undefined) {
+      stateApp = { ...stateApp, windowId: stateWindow, ...(statePid !== undefined ? { pid: statePid } : {}) }
+      apps.set(`window:${stateWindow}`, stateApp)
+    }
     if (stateApp !== undefined) {
       const elements = [body.elements, body.interactive_elements, body.targets, body.items].find(list => Array.isArray(list)) ?? []
       for (const element of elements) {
@@ -736,8 +743,15 @@ export function install(rt) {
     // The driver's own cursor already moved inside the Bot's session; read where
     // it ended up after the action, without holding the call's result.
     if (call.provider === 'cua-driver') {
+      const target = targetAppOf(exec, call)
+      const identity = target?.unknown === true ? {} : {
+        ...(Number.isInteger(target?.pid) ? { pid: target.pid } : {}),
+        ...(Number.isSafeInteger(target?.windowId) ? { windowId: target.windowId } : {}),
+      }
       void driverCursorPoint(exec, botId).then(point => {
-        if (point !== undefined) publishCursor(botId, { ...point, mode: 'point', ripple: RIPPLE_METHODS.has(call.method) })
+        if (point !== undefined && (identity.pid !== undefined || identity.windowId !== undefined)) {
+          publishCursor(botId, { ...identity, ...point, mode: 'point', ripple: RIPPLE_METHODS.has(call.method) })
+        }
       })
     }
   }

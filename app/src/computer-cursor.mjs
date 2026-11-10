@@ -72,7 +72,7 @@ export function createComputerCursor({ BrowserWindow, screen, platform, ownPid =
       if (event === null || typeof event !== 'object' || !Number.isFinite(event.x) || !Number.isFinite(event.y)) return
       const botId = String(event.botId ?? '')
       if (botId === '') return
-      const seen = await checker.check(event.x, event.y, event.pid)
+      const seen = await checker.check(event.x, event.y, event.pid, event.windowId)
       if (!seen) { destroy(botId); return }
       const held = overlay(botId)
       const page = cursorHtml({ color: event.color, avatar: event.avatar, ripple: event.ripple === true })
@@ -117,7 +117,8 @@ ${ripple ? '<span class="ring"></span>' : ''}
 }
 
 // The "is this point really on the target window" check. A long-lived helper
-// announces readiness, then reads `id x y pid` and answers `id y|n` so a late
+// announces readiness, then reads `id x y pid windowId` and answers
+// `id y|n actualPid actualWindowId` so a late
 // reply cannot settle a newer request. Anything over CHECK_MS counts as no.
 export function createPointChecker({ platform, ownPid = process.pid, spawn = realSpawn, log = console, screen, startMs = START_MS, checkMs = CHECK_MS }) {
   if (platform !== 'darwin' && platform !== 'win32') return { check: async () => false, dispose() {} } // Linux: no on-screen cursor
@@ -170,9 +171,9 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
           buffer = buffer.slice(nl + 1)
           if (line === 'r' && child === startedChild) { diagnostic('helper ready'); runningStartup.resolve(true) }
           else {
-            const [id, answer, actualPid] = line.split(/\s+/u)
+            const [id, answer, actualPid, actualWindowId] = line.split(/\s+/u)
             if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) {
-              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; actual pid ${actualPid ?? 'unknown'}; visible ${answer}`)
+              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; actual pid ${actualPid ?? 'unknown'}; expected window ${String(pending.windowId)}; actual window ${actualWindowId ?? 'unknown'}; visible ${answer}`)
               pending.resolve(answer === 'y')
               pending = null
             }
@@ -184,11 +185,13 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
     } catch (error) { warn(log, `DS Bot: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
     return child === null ? null : { child, ready: startup.promise }
   }
-  const check = (x, y, pid) => {
+  const check = (x, y, pid, windowId) => {
     const running = ensure()
     // One check in flight at a time keeps the line protocol in order.
     queue = queue.then(async () => {
-      if (running === null || !Number.isInteger(pid) || !await running.ready || child !== running.child) return false
+      const validPid = Number.isInteger(pid) && pid > 0
+      const validWindowId = Number.isSafeInteger(windowId) && windowId > 0
+      if (running === null || (!validPid && !validWindowId) || !await running.ready || child !== running.child) return false
       const point = platform === 'win32' && typeof screen?.dipToScreenPoint === 'function'
         ? screen.dipToScreenPoint({ x: Math.round(x), y: Math.round(y) })
         : { x: Math.round(x), y: Math.round(y) }
@@ -201,8 +204,8 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
           }
           resolve(false)
         }, checkMs)
-        pending = { child: running.child, id, logical: { x, y }, physical: point, pid, resolve: (value) => { clearTimeout(timer); resolve(value) } }
-        try { running.child.stdin.write(`${id} ${Math.round(point.x)} ${Math.round(point.y)} ${pid}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
+        pending = { child: running.child, id, logical: { x, y }, physical: point, pid, windowId, resolve: (value) => { clearTimeout(timer); resolve(value) } }
+        try { running.child.stdin.write(`${id} ${Math.round(point.x)} ${Math.round(point.y)} ${validPid ? pid : 0} ${validWindowId ? windowId : 0}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
       })
     })
     return queue
@@ -212,7 +215,8 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
 }
 
 // macOS: walk the on-screen window list front-to-back; the point is visible
-// when the first layer-0 window containing it belongs to the target pid. Our
+// when the first layer-0 window containing it is the exact target window (or,
+// for older events without a window ID, belongs to the target pid). Our
 // own overlay windows never block the answer — they are skipped by owner pid.
 const JXA_CHECKER = String.raw`
 ObjC.import('Foundation')
@@ -233,8 +237,8 @@ while (true) {
   while ((nl = buf.indexOf('\n')) >= 0) {
     var line = buf.slice(0, nl); buf = buf.slice(nl + 1)
     var parts = line.trim().split(/\s+/)
-    var id = parts[0], x = Number(parts[1]), y = Number(parts[2]), pid = Number(parts[3])
-    var yes = false, found = 0
+    var id = parts[0], x = Number(parts[1]), y = Number(parts[2]), pid = Number(parts[3]), windowId = Number(parts[4])
+    var yes = false, found = 0, foundWindow = 0
     try {
       var ref = $.CGWindowListCopyWindowInfo(1, 0)
       var list = ObjC.castRefToObject(ref)
@@ -248,16 +252,22 @@ while (true) {
         if (!b) continue
         var bx = Number(ObjC.unwrap(b.objectForKey('X'))), by = Number(ObjC.unwrap(b.objectForKey('Y')))
         var bw = Number(ObjC.unwrap(b.objectForKey('Width'))), bh = Number(ObjC.unwrap(b.objectForKey('Height')))
-        if (x >= bx && x < bx + bw && y >= by && y < by + bh) { found = Number(owner); yes = (found === pid); break }
+        if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
+          found = Number(owner)
+          foundWindow = Number(ObjC.unwrap(win.objectForKey('kCGWindowNumber')))
+          yes = windowId > 0 ? foundWindow === windowId : found === pid
+          break
+        }
       }
     } catch (e) {}
-    answer(id + (yes ? ' y ' : ' n ') + found + '\n')
+    answer(id + (yes ? ' y ' : ' n ') + found + ' ' + foundWindow + '\n')
   }
 }
 `
 
-// Windows: the top-most root window at the point decides visibility; the
-// click-through overlays are skipped by their own process id.
+// Windows: the top-most root HWND at the point decides visibility; the
+// click-through overlays are skipped by their own process id. CUA window IDs
+// are HWNDs, so exact identity wins over the process fallback.
 const PS_CHECKER = String.raw`
 Add-Type @"
 using System;
@@ -275,13 +285,16 @@ public class PointCheck {
 # WindowFromPoint already skips our click-through (WS_EX_TRANSPARENT) overlays.
 while (($line = [Console]::In.ReadLine()) -ne $null) {
   $parts = $line.Trim() -split '\s+'
-  if ($parts.Count -lt 4) { continue }
+  if ($parts.Count -lt 5) { continue }
   $p = New-Object PointCheck+POINT
   $p.X = [int]$parts[1]; $p.Y = [int]$parts[2]
   $h = [PointCheck]::WindowFromPoint($p)
   $root = [PointCheck]::GetAncestor($h, 2)
   [uint32]$pid2 = 0
   [void][PointCheck]::GetWindowThreadProcessId($root, [ref]$pid2)
-  if ($pid2 -eq [uint32]$parts[3]) { [Console]::Out.WriteLine($parts[0] + ' y ' + $pid2) } else { [Console]::Out.WriteLine($parts[0] + ' n ' + $pid2) }
+  [uint64]$windowId = [uint64]$parts[4]
+  [uint64]$rootId = [uint64]($root.ToInt64())
+  $yes = if ($windowId -gt 0) { $rootId -eq $windowId } else { $pid2 -eq [uint32]$parts[3] }
+  if ($yes) { [Console]::Out.WriteLine($parts[0] + ' y ' + $pid2 + ' ' + $rootId) } else { [Console]::Out.WriteLine($parts[0] + ' n ' + $pid2 + ' ' + $rootId) }
 }
 `

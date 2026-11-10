@@ -167,7 +167,41 @@ test('win32 checks the physical point while the cursor remains in display-indepe
   }
   const checker = createPointChecker({ platform: 'win32', spawn, screen: { dipToScreenPoint: ({ x, y }) => ({ x: x * 2, y: y * 2 }) }, log: { warn: () => {} } })
   assert.equal(await checker.check(10, 20, 9), true)
-  assert.equal(written, '1 20 40 9\n')
+  assert.equal(written, '1 20 40 9 0\n')
+  checker.dispose()
+})
+
+test('native window identity is sent to the visibility helper', async () => {
+  let written
+  const spawn = () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => {}
+    child.stdin = { write: line => { written = line; const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} y 42 7001\n`)) } }
+    queueMicrotask(() => child.stdout.emit('data', 'r\n'))
+    return child
+  }
+  const checker = createPointChecker({ platform: 'win32', spawn, screen, log: { warn: () => {} } })
+  assert.equal(await checker.check(10, 20, 42, 7001), true)
+  assert.equal(written, '1 10 20 42 7001\n')
+  checker.dispose()
+})
+
+test('window identity works without a pid and invalid window identity falls back to pid', async () => {
+  const writes = []
+  const spawn = () => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => {}
+    child.stdin = { write: line => { writes.push(line); const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} y\n`)) } }
+    queueMicrotask(() => child.stdout.emit('data', 'r\n'))
+    return child
+  }
+  const checker = createPointChecker({ platform: 'win32', spawn, screen, log: { warn: () => {} } })
+  assert.equal(await checker.check(10, 20, undefined, 7001), true)
+  assert.equal(await checker.check(30, 40, 42, 0), true)
+  assert.equal(await checker.check(50, 60), false)
+  assert.deepEqual(writes, ['1 10 20 0 7001\n', '2 30 40 42 0\n'])
   checker.dispose()
 })
 

@@ -1212,9 +1212,9 @@ test('driver cursors: session injection, refused cursor tools, one disable per s
     },
   }
   rt.botOf('w1').computer = { apps: { 'com.apple.Notes': { name: 'Notes', id: 'com.apple.Notes', grantedAt: 0 } } }
-  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-1' }, async () => ({ windows: [{ pid: 42, name: 'Notes', path: '/Applications/Notes.app', bundleId: 'com.apple.Notes' }] }))
+  await track({ name: 'cua_driver_native__list_windows', arguments: {}, agent: { id: 'w1' }, callId: 'list-1' }, async () => ({ windows: [{ pid: 42, window_id: 7, name: 'Notes', path: '/Applications/Notes.app', bundleId: 'com.apple.Notes' }] }))
   // a call whose schema carries session gets a stable per-Bot session injected
-  const exec = { name: 'cua_driver_native__click', arguments: { pid: 42 }, agent: { id: 'w1' }, callId: 'c1' }
+  const exec = { name: 'cua_driver_native__click', arguments: { pid: 42, window_id: 7 }, agent: { id: 'w1' }, callId: 'c1' }
   await gate(exec, allow)
   assert.match(exec.arguments.session, /^dsbot-[0-9a-f]+$/)
   await track(exec, async () => ({ isError: false, value: { done: true } }))
@@ -1224,7 +1224,13 @@ test('driver cursors: session injection, refused cursor tools, one disable per s
   const cursor = rt.computerLive().cursors.find(event => event.botId === 'w1')
   assert.equal(cursor.x, 311)
   assert.equal(cursor.y, 222)
+  assert.equal(cursor.pid, 42)
+  assert.equal(cursor.windowId, 7)
   assert.equal(cursor.ripple, true)
+  const cursorSeq = cursor.seq
+  await track({ name: 'cua_driver_native__click', arguments: { pid: 99, window_id: 70 }, agent: { id: 'w1' }, callId: 'unknown-cursor' }, async () => ({ isError: false, value: { done: true } }))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(rt.computerLive().cursors.find(event => event.botId === 'w1').seq, cursorSeq)
   // the cursor tools themselves are refused to Bots
   assert.equal((await gate({ name: 'cua_driver_native__set_agent_cursor_enabled', arguments: { session: 'x', enabled: true }, agent: { id: 'w1' }, callId: 'c2' }, allow)).kind, 'deny')
   // a tool whose schema has no session property gets nothing injected
