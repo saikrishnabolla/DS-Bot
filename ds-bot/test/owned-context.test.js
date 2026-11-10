@@ -15,7 +15,7 @@ const contextFixture = async (t, options = {}) => {
   const provider = options.provider ?? fauxProvider(options.providerOptions)
   const models = options.models ?? createModels()
   if (options.models === undefined) models.setProvider(provider.provider)
-  const ctx = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, settings: options.settings })
+  const ctx = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, settings: options.settings, transcriptWindow: options.transcriptWindow })
   return { ctx, dataDir, models, provider }
 }
 
@@ -69,6 +69,38 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.deepEqual(after.records, page.records)
   const listed = await restarted.sessionController.list({})
   assert.equal(listed.items.some(item => item.sessionId === sessionId), true)
+})
+
+test('owned event sequences remain absolute when the Pi watch window rolls over', async t => {
+  const transcriptWindow = { min: 1, max: 2 }
+  const { ctx, dataDir, models, provider } = await contextFixture(t, { transcriptWindow })
+  provider.setResponses([
+    fauxAssistantMessage('first answer'),
+    fauxAssistantMessage('second answer'),
+    fauxAssistantMessage('third answer'),
+  ])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  for (const text of ['first prompt', 'second prompt', 'third prompt']) {
+    agent.followup({ content: text, source: { kind: 'user' } })
+    await agent.whenIdle()
+  }
+
+  assert.equal(agent.session.seq, 12)
+  assert.equal(agent.session.eventAt(0).data.content[0].text, 'first prompt')
+  assert.equal(agent.session.eventAt(8).data.content[0].text, 'third prompt')
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+  assert.deepEqual(page.records.map(record => record.event.seq), [...Array(12).keys()])
+  await ctx.close()
+
+  const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, transcriptWindow })
+  t.after(() => restarted.close())
+  const resolved = await restarted.sessionController.resolveAgent(sessionId)
+  assert.equal(resolved.agent.session.seq, 12)
+  assert.equal(resolved.agent.session.eventAt(0).data.content[0].text, 'first prompt')
 })
 
 test('owned projections report durable Pi usage and active context pressure', async t => {

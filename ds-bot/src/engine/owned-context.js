@@ -52,9 +52,9 @@ function sourceOf(entry) {
   return { kind: 'user', ...(entry.data?.requestId === undefined ? {} : { requestId: entry.data.requestId }) }
 }
 
-function eventRecords(entries) {
+function eventRecords(entries, startSeq = 0) {
   const records = []
-  let seq = 0
+  let seq = startSeq
   const push = (entry, type, data, time) => records.push({
     entryId: String(entry.id),
     event: { entryId: String(entry.id), seq: seq++, type, data, ...(time === undefined ? {} : { time }) },
@@ -258,9 +258,10 @@ export class OwnedContext {
   #projectionDefinitions = new Map()
   #compactionExtension
 
-  constructor(harness, { workspacePath, logger = console } = {}, compactionExtension) {
+  constructor(harness, { workspacePath, logger = console, transcriptWindow } = {}, compactionExtension) {
     this.harness = harness
     this.logger = logger
+    this.transcriptWindow = transcriptWindow ?? { min: 10_000, max: 10_000 }
     const path = resolve(workspacePath ?? process.cwd())
     const workspace = { id: 'default', name: 'DS Bot', path }
     this.#workspaces.set(workspace.id, workspace)
@@ -585,8 +586,19 @@ export class OwnedContext {
     const configuredAgent = await this.harness.agent(id)
     this.#selectedExtensions.set(id, new Map((configuredAgent?.extensions ?? []).map(extension => [extension.name, extension])))
     await this.#selectExtensions(id, { add: [this.#compactionExtension] })
-    const watch = await this.harness.watch(id, { min: 10_000, max: 10_000 })
-    const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), restrictions: new Map(), effects: [], eventWaiters: new Set() }
+    const watch = await this.harness.watch(id, this.transcriptWindow)
+    const entries = await this.#allEntries(id)
+    const state = {
+      view: watch.value,
+      entries,
+      entryIds: new Set(entries.map(entry => String(entry.id))),
+      events: eventRecords(entries),
+      status: 'idle',
+      tools: new Map(),
+      restrictions: new Map(),
+      effects: [],
+      eventWaiters: new Set(),
+    }
     this.#sessionStates.set(id, state)
     const session = {
       id,
@@ -594,7 +606,7 @@ export class OwnedContext {
       get header() { return { id, title: this.title, config: state.config } },
       eventAt: seq => state.events[seq]?.event,
       snapshotEvents: () => state.events.map(record => record.event),
-      deriveMessages: () => allMessages(state.view.entries),
+      deriveMessages: () => allMessages(state.entries),
       toolHistory: () => [],
       requestHeader: () => ({ id, config: state.config }),
       setConfig: config => { state.config = config },
@@ -685,7 +697,17 @@ export class OwnedContext {
       const previous = state.view
       state.view = next
       const before = state.events.length
-      state.events = eventRecords(next.entries)
+      let added = next.entries.filter(entry => !state.entryIds.has(String(entry.id)))
+      if (added.length > 0 && state.entries.length > 0 && !next.entries.some(entry => state.entryIds.has(String(entry.id)))) {
+        const refreshed = await this.#allEntries(id)
+        added = refreshed.slice(state.entries.length)
+        state.entries = refreshed
+        state.entryIds = new Set(refreshed.map(entry => String(entry.id)))
+      } else if (added.length > 0) {
+        state.entries.push(...added)
+        for (const entry of added) state.entryIds.add(String(entry.id))
+      }
+      if (added.length > 0) state.events.push(...eventRecords(added, before))
       const appended = state.events.slice(before)
       for (const record of appended) {
         this.emit('session/event', session, record.event)
@@ -905,7 +927,7 @@ export class OwnedContext {
   async #refreshProjectionState(id, state) {
     const context = await this.harness.context(id)
     const configured = await this.harness.agent(id)
-    state.projections = this.#projectionValues(state.view.entries, state.view.docs?.['pi.usage'], context.messages, configured)
+    state.projections = this.#projectionValues(state.entries, state.view.docs?.['pi.usage'], context.messages, configured)
   }
 
   #projectionState(session, key) {
