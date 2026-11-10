@@ -3,6 +3,7 @@
 // DSH keeps for them in the plugin; here the window keeps those as well.
 import { useRef, useSyncExternalStore } from 'react'
 import { call } from '../../../ds-bot/src/client/api.js'
+import { createBotBrowsers, serveBrowserReads } from '../../../ds-bot/src/client/bot-browsers.js'
 import { workPhrase } from '../../../ds-bot/src/client/cells.js'
 import { language } from '../../../ds-bot/src/client/i18n.js'
 import { toolState } from '../../../ds-bot/src/client/mark.js'
@@ -64,8 +65,11 @@ export function createTeam() {
   const heldCards = createSource({})
   const turnClock = createSource({})
   const update = createSource({ available: false, phase: 'idle' })
-  const browserPages = createSource({})
-  const browserTabs = createSource({})
+  const browserBridge = globalThis.dsBotApp?.browser ?? null
+  const browsers = browserBridge ? createBotBrowsers({ bridge: browserBridge, createSource }) : null
+  const browserPages = browsers?.pages ?? createSource({})
+  const browserTabs = browsers?.tabs ?? createSource({})
+  const browserHolds = browsers?.holds ?? createSource({})
   const layout = createSource({ wide: true })
   // The Session facts: the list (each one's latest entry and change, and which one fills
   // the main view), the status (running, a reply not yet seen) and what was just sent.
@@ -183,14 +187,67 @@ export function createTeam() {
     turnFacts: () => ({ turns: undefined, openTurn: undefined }),
     watchTurns: () => () => {},
     openModels: () => actions.openSettings('models'),
-    // Nothing else draws in the window: no shell panels, right sidebar, "@" menu or voice plugin.
-    hasRightSidebar: () => false,
+    hasRightSidebar: () => true,
     canReferenceChat: () => false,
     speech: () => undefined,
     voiceSetup: () => null,
     noteSent: (sessionId) => {
       sent.set(state => ({ ...state, [sessionId]: [...(state[sessionId] ?? []), { placement: 'direct', time: Date.now() }] }))
     },
+  }
+  if (browsers) {
+    Object.assign(actions, {
+      openBrowser: (id) => {
+        const bot = roster.getSnapshot().byId[id]
+        if (!bot) return
+        browsers.ensureTabs(bot.id)
+        if (browsers.tabs.getSnapshot()[bot.id]?.active == null) browsers.openTab(bot.id)
+        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null }))
+      },
+      browserNewTab: (id) => {
+        const bot = roster.getSnapshot().byId[id]
+        if (!bot) return null
+        browsers.ensureTabs(bot.id)
+        const tabId = browsers.openTab(bot.id)
+        ui.set(state => ({ ...state, details: id, view: 'browser', renaming: false, tab: null }))
+        return tabId
+      },
+      browserPick: (id, tabId) => {
+        const bot = roster.getSnapshot().byId[id]
+        if (!bot) return
+        browsers.activate(bot.id, tabId)
+        ui.set(state => ({ ...state, details: id, view: 'browser' }))
+      },
+      browserEnsure: botId => browsers.ensureTabs(botId),
+      browserCloseTab: (botId, tabId) => browsers.closeTab(botId, tabId),
+      browserActivate: (botId, tabId) => browsers.activate(botId, tabId),
+      browserShow: (tabId, box) => browsers.show(tabId, box),
+      browserNavigate: (tabId, input) => browsers.navigate(tabId, input),
+      browserCommand: (tabId, name) => browsers.command(tabId, name),
+      browserFocus: tabId => browsers.focus(tabId),
+      browserTakeover: browserBridge.views ? async botId => {
+        const result = await call('browser-takeover', { botId })
+        await browserBridge.views.hold(botId, true)
+        return result
+      } : undefined,
+      browserStop: browserBridge.views ? async botId => {
+        const result = await call('browser-stop', { botId })
+        await browserBridge.views.hold(botId, true)
+        return result
+      } : undefined,
+      browserGiveBack: browserBridge.views ? async (botId, answer = {}) => {
+        const result = await call('browser-give-back', { botId, ...answer })
+        await browserBridge.views.hold(botId, false)
+        return result
+      } : undefined,
+      browserImport: typeof browserBridge.importSources === 'function' ? {
+        sources: () => browserBridge.importSources(),
+        pick: () => browserBridge.importPick(),
+        live: (source, close) => browserBridge.importLive(source, close),
+        apply: (botId, pending) => browserBridge.importApply(`bot:${botId}`, pending),
+        cancel: pending => browserBridge.importCancel(pending),
+      } : null,
+    })
   }
 
   // Running and the tool at work come with the team's state; the plugin reads them from
@@ -227,6 +284,19 @@ export function createTeam() {
 
   const start = () => {
     let stopped = false
+    let stopReads = null
+    const syncBrowsers = () => {
+      if (!browsers) return
+      const snapshot = roster.getSnapshot()
+      if (!snapshot.ready) return
+      const enabled = snapshot.browser === true
+      if (enabled && !stopReads) stopReads = serveBrowserReads({ browsers, post: call })
+      if (!enabled && stopReads) { stopReads(); stopReads = null }
+      void browsers.retain(snapshot.bots.map(bot => bot.id))
+      ui.set(state => (state.details && state.view === 'browser' && (!enabled || !snapshot.byId[state.details])
+        ? { ...state, view: 'details' }
+        : state))
+    }
     const read = () => {
       void pull().catch((error) => {
         if (stopped) return
@@ -235,6 +305,8 @@ export function createTeam() {
       })
     }
     read()
+    syncBrowsers()
+    const offBrowsers = roster.subscribe(syncBrowsers)
     const closeFeed = openFeed((event, data) => {
       if (READ_AGAIN.has(event)) read()
       onFeed(event, data)
@@ -246,6 +318,9 @@ export function createTeam() {
       stopped = true
       closeFeed()
       clearInterval(timer)
+      offBrowsers()
+      stopReads?.()
+      browsers?.dispose()
       window.removeEventListener('pagehide', onPageHide)
     }
   }
@@ -265,6 +340,7 @@ export function createTeam() {
     useRegistry: use(registry),
     useBrowserPages: use(browserPages),
     useBrowserTabs: use(browserTabs),
+    useBrowserHolds: use(browserHolds),
     useSessions: use(sessions),
     useSessionStatus: use(status),
     useSessionRetainInfo: (id, selector) => useSelect(sessions, list => selector(list.byId[id])),
