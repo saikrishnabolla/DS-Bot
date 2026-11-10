@@ -276,6 +276,8 @@ export function Chat({ sessionId, team }) {
   const approvals = useWork(work => approvalsForConversation(work, bot?.id, room?.id))
   const roomRunning = useWork(work => room !== undefined && (work.rooms?.[room.id] ?? []).length > 0)
   const running = botRunning || roomRunning
+  const turnAt = useWork(work => work.turns?.[sessionId])
+  useEffect(() => actions.noteChat?.(sessionId, view.items, running, turnAt), [actions, sessionId, view.items, running, turnAt])
   const stop = () => {
     const request = stopRequest(bot?.id, room?.id)
     return request.endpoint === 'stop-bot-work'

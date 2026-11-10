@@ -14,6 +14,7 @@ import { teamActions } from '../../../ds-bot/src/client/team-actions.js'
 import { currentPart } from '../../../ds-bot/src/client/text.js'
 import { registry } from '../../../ds-bot/src/client/themes.js'
 import { openFeed } from './api.js'
+import { createConversationState, createVoiceAdapter } from './conversation-state.js'
 
 // Memory news and connector states change without a notice on the feed.
 const CATCH_UP_MS = 15_000
@@ -78,6 +79,8 @@ export function createTeam() {
   const sent = createSource({})
   const shown = createSource(null)
   const chat = createBus()
+  const conversations = createConversationState()
+  const voice = createVoiceAdapter(globalThis.dsBotApp?.speech)
 
   const editRow = (id, edit) => sessions.set((list) => {
     const row = list.byId[id] ?? { id }
@@ -184,13 +187,15 @@ export function createTeam() {
     removeProvider: provider => after(call('provider-remove', { provider })),
     stopBotWork: botId => after(call('stop-bot-work', { botId })),
     learningAnswer: (id, approve) => after(call('learning-answer', { id, approve })),
-    turnFacts: () => ({ turns: undefined, openTurn: undefined }),
-    watchTurns: () => () => {},
+    turnFacts: sessionId => conversations.turnFacts(sessionId),
+    watchTurns: (sessionId, listener) => conversations.watchTurns(sessionId, listener),
+    closingReply: (sessionId, turn) => conversations.closingReply(sessionId, turn),
+    noteChat: (sessionId, items, running, since) => conversations.noteChat(sessionId, items, running, since),
     openModels: () => actions.openSettings('models'),
     hasRightSidebar: () => true,
     canReferenceChat: () => false,
-    speech: () => undefined,
-    voiceSetup: () => null,
+    speech: voice.speech,
+    voiceSetup: voice.voiceSetup,
     noteSent: (sessionId) => {
       sent.set(state => ({ ...state, [sessionId]: [...(state[sessionId] ?? []), { placement: 'direct', time: Date.now() }] }))
     },
@@ -254,10 +259,12 @@ export function createTeam() {
   // DSH's Session status and its own tool cells.
   const followWork = () => {
     const bots = work.getSnapshot().bots ?? {}
+    const turns = work.getSnapshot().turns ?? {}
     for (const bot of roster.getSnapshot().bots) {
       const part = currentPart(bot)
       const doing = bots[bot.id]?.roomId === undefined ? bots[bot.id] : undefined
       setStatus(part, { running: doing !== undefined })
+      conversations.setRunning(part, doing !== undefined, turns[part])
       actions.noteLive(part, 'tool', doing?.tool ? { label: workPhrase(doing), state: toolState(doing.tool) } : null)
     }
   }
@@ -267,6 +274,7 @@ export function createTeam() {
   const onFeed = (event, data) => {
     if (event === 'message' && data?.sessionId && data.item) {
       const { sessionId, item } = data
+      conversations.noteMessage(sessionId, item)
       const text = item.kind === 'bot' || item.kind === 'user' ? item.text : ''
       editRow(sessionId, row => ({
         ...row,
