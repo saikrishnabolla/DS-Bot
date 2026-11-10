@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { dockCards, tailCards } from '../../../ds-bot/src/client/btw-model.js'
 import { proposalPlacement } from '../../../ds-bot/src/client/learning-card-model.js'
+import { transcribeWave } from '../../../ds-bot/src/client/speech.js'
 import { createConversationState, createVoiceAdapter } from '../src/conversation-state.js'
 
 const transcript = [
@@ -90,11 +91,32 @@ test('voice adapter exposes an optional speech bridge and preparation', async ()
   const calls = []
   const speech = {
     prepare: async providerId => { calls.push(providerId); return { ok: true } },
+    catalog: async () => ({ ok: true }),
+    transcribe: async (id, request) => { calls.push([id, request]); return { ok: true, value: { text: 'heard' } } },
+    cancel: id => { calls.push(['cancel', id]) },
   }
   const adapter = createVoiceAdapter(speech)
-  assert.equal(adapter.speech(), speech)
+  assert.equal(adapter.speech().owned, true)
+  assert.equal(typeof adapter.speech().transcribe, 'function')
   assert.equal(await adapter.voiceSetup('local').prepare(), true)
-  assert.deepEqual(calls, ['local'])
+  const controller = new AbortController()
+  assert.equal(await transcribeWave(adapter.speech(), {
+    selection: { providerId: 'local', language: 'en' }, maxAudioBytes: 100,
+  }, new Uint8Array([1, 2]), controller.signal), 'heard')
+  assert.equal(calls[0], 'local')
+  assert.deepEqual(calls[1][1], { audioBase64: 'AQI=', providerId: 'local', language: 'en' })
+
+  let release
+  let pendingId
+  speech.transcribe = async (id) => {
+    pendingId = id
+    return await new Promise(resolve => { release = resolve })
+  }
+  const pending = adapter.speech().transcribe({ audioBase64: 'Yg==' }, controller.signal)
+  controller.abort(new Error('stop'))
+  assert.deepEqual(calls.at(-1), ['cancel', pendingId])
+  release({ ok: false })
+  await pending
 
   const absent = createVoiceAdapter(null)
   assert.equal(absent.speech(), undefined)

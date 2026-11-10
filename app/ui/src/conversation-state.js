@@ -140,7 +140,20 @@ export function createConversationState() {
 }
 
 export function createVoiceAdapter(speech) {
-  const remote = speech && typeof speech === 'object' ? speech : undefined
+  let next = 0
+  const bridge = speech && typeof speech === 'object' ? speech : undefined
+  const remote = bridge === undefined ? undefined : {
+    owned: true,
+    catalog: () => bridge.catalog(),
+    prepare: providerId => bridge.prepare(providerId),
+    transcribe(request, signal) {
+      const id = `${String(Date.now())}-${String(++next)}`
+      if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('Speech transcription cancelled'))
+      const cancel = () => { bridge.cancel?.(id) }
+      signal?.addEventListener('abort', cancel, { once: true })
+      return Promise.resolve(bridge.transcribe(id, request)).finally(() => { signal?.removeEventListener('abort', cancel) })
+    },
+  }
   return {
     speech: () => remote,
     voiceSetup: providerId => remote === undefined || providerId === undefined

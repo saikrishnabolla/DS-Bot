@@ -260,7 +260,7 @@ export function install(rt) {
     if (!pluginPromise) {
       pluginPromise = (async () => {
         const loader = ctx.get?.('loader')
-        if (typeof loader?.import !== 'function') throw new Error('This DSH cannot load MCP servers.')
+        if (typeof loader?.import !== 'function') throw new Error('This host cannot load MCP servers.')
         const exports = await loader.import(MCP_CLIENT)
         return loader.unwrapExports?.(exports) ?? exports?.default ?? exports
       })()

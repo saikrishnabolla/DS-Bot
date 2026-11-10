@@ -180,7 +180,7 @@ function SectionMenu({ menu, roster, actions, leaving }) {
     }, h(TrashIcon), h('span', { className: 'bt-menu-label' }, t('Ungroup section'))))
 }
 
-// Menus for the DSH Agent row and its Sessions; none of the Bot entries apply.
+// Menus for the Agent row and its Sessions; none of the Bot entries apply.
 function AgentMenu({ menu, roster, actions, leaving }) {
   const ref = useRef(null)
   const trigger = useRef(typeof document === 'undefined' ? null : document.activeElement)
@@ -205,7 +205,7 @@ function AgentMenu({ menu, roster, actions, leaving }) {
         ],
         sectionMoveItems(agent, roster, actions),
         [
-          [t('Remove DSH Agent'), TrashIcon, () => actions.removeAgent(agent.id), true],
+          [t('Remove Agent'), TrashIcon, () => actions.removeAgent(agent.id), true],
         ],
       ].filter(group => group.length > 0)
     : [
@@ -216,7 +216,7 @@ function AgentMenu({ menu, roster, actions, leaving }) {
           [t('Archive'), TrashIcon, () => actions.archiveAgentSession(agent.id, menu.id), true],
         ],
       ]
-  return h('div', { ref, className: 'bt-menu', role: 'menu', 'aria-label': menu.kind === 'agent' ? 'DSH Agent' : t('Session actions'), style: place, 'data-leaving': leaving || undefined },
+  return h('div', { ref, className: 'bt-menu', role: 'menu', 'aria-label': menu.kind === 'agent' ? 'Agent' : t('Session actions'), style: place, 'data-leaving': leaving || undefined },
     groups.map((group, index) => h(Fragment, { key: index },
       index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
       group.map(([label, Icon, run, danger, checked]) => h('button', {

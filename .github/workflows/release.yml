@@ -125,8 +125,14 @@ jobs:
       - run: npm ci --no-fund --no-audit
       - run: node scripts/seed-electron-checksums.mjs
       - run: npm run dist
+      - name: Check local speech with known audio
+        run: npm run check-speech
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Check the packaged app
         run: node scripts/check-packed.mjs
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Keep the installer for real-device checks
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
@@ -169,8 +175,14 @@ jobs:
       - run: npm ci --no-fund --no-audit
       - run: node scripts/seed-electron-checksums.mjs
       - run: npm run dist
+      - name: Check local speech with known audio
+        run: npm run check-speech
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Check the packaged app
         run: node scripts/check-packed.mjs
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Keep the zip for real-device checks
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
@@ -207,12 +219,18 @@ jobs:
       - run: npm ci --no-fund --no-audit
       - run: node scripts/seed-electron-checksums.mjs
       - run: npm run dist
+      - name: Check local speech with known audio
+        run: npm run check-speech
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Check the packaged app
         # Ubuntu 24.04's AppArmor blocks the unprivileged user namespaces that Chromium's
         # sandbox needs; the release runner may lift that restriction (it is its own machine).
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           xvfb-run -a node scripts/check-packed.mjs
+        env:
+          DS_BOT_SPEECH_E2E_ROOT: ${{ runner.temp }}/ds-bot-speech-e2e
       - name: Check the files for the release
         # The dry run never uploads, so it checks here that every file the release attaches exists.
         run: |

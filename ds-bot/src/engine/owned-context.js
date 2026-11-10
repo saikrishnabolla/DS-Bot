@@ -7,11 +7,16 @@ import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
 import { createOwnedCompactionExtension } from './owned-range-compaction.js'
+import { OwnedGoalStore } from './owned-goals.js'
+import { ownedDirectoryPicker } from './owned-directory-picker.js'
 import { projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
 const textContent = value => Array.isArray(value) ? value : [{ type: 'text', text: String(value ?? '') }]
 const timeOf = message => Number.isFinite(Number(message?.timestamp)) ? Number(message.timestamp) : Date.now()
+const receiptBlock = block => block?.attachment === undefined && block?.receiptId !== null && typeof block?.receiptId === 'object'
+  ? { ...block, attachment: block.receiptId }
+  : block
 
 async function inputContent(message, attachments, acceptsImages = true) {
   const content = textContent(message?.content ?? message)
@@ -22,7 +27,7 @@ async function inputContent(message, attachments, acceptsImages = true) {
       converted.push(acceptsImages ? block : { type: 'text', text: `[Image (${block.mimeType}) omitted because this model does not accept images.]` })
       continue
     }
-    const attachment = block?.attachment
+    const attachment = block?.attachment ?? (block?.receiptId !== null && typeof block?.receiptId === 'object' ? block.receiptId : undefined)
     if (block?.type === 'image' && typeof attachment?.data === 'string' && typeof attachment?.mimeType === 'string') {
       converted.push(acceptsImages
         ? { type: 'image', data: attachment.data, mimeType: attachment.mimeType }
@@ -66,7 +71,7 @@ function eventRecords(entries, startSeq = 0) {
     const message = Array.isArray(entry?.model) ? entry.model[0] : undefined
     if ((entry.kind === 'pi.user' || entry.kind === INPUT_KIND) && message?.role === 'user') {
       const time = timeOf(message)
-      const receipt = entry.kind === INPUT_KIND && Array.isArray(entry.data?.content) ? entry.data.content : textContent(message.content)
+      const receipt = (entry.kind === INPUT_KIND && Array.isArray(entry.data?.content) ? entry.data.content : textContent(message.content)).map(receiptBlock)
       const references = entry.kind === INPUT_KIND && Array.isArray(entry.data?.references) ? entry.data.references : []
       const referenceLabels = references.map(reference => reference?.label).filter(label => typeof label === 'string' && label !== '')
       push(entry, 'user/message', {
@@ -342,7 +347,7 @@ export class OwnedContext {
   #projectionDefinitions = new Map()
   #compactionExtension
 
-  constructor(harness, { workspacePath, logger = console, transcriptWindow } = {}, compactionExtension) {
+  constructor(harness, { dataDir, workspacePath, logger = console, transcriptWindow } = {}, compactionExtension) {
     this.harness = harness
     this.logger = logger
     this.transcriptWindow = transcriptWindow ?? { min: 10_000, max: 10_000 }
@@ -386,6 +391,7 @@ export class OwnedContext {
     const skills = skillCatalog(() => this.#refreshPromptExtension())
     this.#promptSections.set('skills', { name: 'skills', order: 900, text: () => skills.prompt() })
     this.#services.set('skills', skills)
+    this.#services.set('directoryPicker', ownedDirectoryPicker())
     this.#services.set('tokenMeter', tokenMeter())
     this.#services.set('permissionPresets', permissionPresets())
     this.#services.set('agentPresets', {
@@ -416,7 +422,7 @@ export class OwnedContext {
       },
       kill: id => { const job = jobs.get(id); if (job === undefined) return false; job.status = 'killed'; return true },
     })
-    const goals = new Map()
+    const goals = new OwnedGoalStore(dataDir)
     const goalKey = agent => String(agent?.id ?? agent?.session?.id ?? agent)
     const publishGoal = (agent, goal) => {
       const session = agent?.session
@@ -426,7 +432,7 @@ export class OwnedContext {
     this.#services.set('goals', {
       get: agent => goals.get(goalKey(agent)),
       start: (agent, input = {}) => {
-        const goal = { id: input.id ?? randomUUID(), revision: 1, phase: 'active', ...input }
+        const goal = { ...input, id: randomUUID(), revision: 1, phase: 'active' }
         goals.set(goalKey(agent), goal)
         return publishGoal(agent, goal)
       },
@@ -1163,6 +1169,8 @@ export class OwnedContext {
 
   async #prompt({ sessionId, requestId = randomUUID(), mode, content, references = [] }) {
     const whenBusy = mode === 'steer' ? 'steer' : 'followUp'
+    const resolved = await this.#resolveAgent(String(sessionId))
+    if ('error' in resolved) throw serviceError(resolved.error.code ?? 'session/not-found', resolved.error.message)
     const configured = this.#sessionStates.get(String(sessionId))?.config
     const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
     const receipt = textContent(content)
@@ -1474,10 +1482,11 @@ export class OwnedContext {
 
   #displayEvent(event) {
     if (event.type === 'user/message') {
-      const attachments = event.data.content.filter(block => (block.type === 'image' || block.type === 'file') && block.attachment !== undefined)
+      const content = event.data.content.map(receiptBlock)
+      const attachments = content.filter(block => (block.type === 'image' || block.type === 'file') && block.attachment !== undefined)
       return [{
         kind: 'user',
-        text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
+        text: content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
         ...(attachments.length === 0 ? {} : { attachments, images: attachments.filter(block => block.type === 'image').length }),
         ...(Array.isArray(event.data.referenceLabels) && event.data.referenceLabels.length > 0 ? { referenceLabels: event.data.referenceLabels } : {}),
         time: event.time,

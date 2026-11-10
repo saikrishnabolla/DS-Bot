@@ -7,10 +7,19 @@ directories:
 files:
   - package.json
   - src/**
+  - build/preload.cjs
   - ui/dist/**
   - assets/**
 # Keep the dependency tree that npm installed for this platform and architecture.
 npmRebuild: false
+# Cua Driver opens its sibling dynamic library by path, so both its JavaScript
+# bridge and platform package must run outside app.asar.
+asarUnpack:
+  - node_modules/@trycua/cua-driver/**
+  - node_modules/@trycua/cua-driver-*/**
+  - node_modules/@ubjs/core/**
+  - node_modules/@ubjs/node/**
+  - node_modules/@ubjs/node-*/**
 # So the binaries come from npm as it installed them; a build for another architecture stops.
 beforePack: ./scripts/before-pack.mjs
 win:

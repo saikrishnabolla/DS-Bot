@@ -153,7 +153,7 @@ function RoomRow({ room, roster, actions, useSessions, useSessionStatus, useSess
 
 const agentSessionTitle = session => (session.title === '' ? t('New session') : session.title)
 
-// One expanded DSH Agent Session row: title, relative stamp, rename field, and a
+// One expanded Agent Session row: title, relative stamp, rename field, and a
 // context menu for rename/archive.
 function AgentSessionRow({ session, agent, actions, renaming, index }) {
   const input = useRef(null)
@@ -200,7 +200,7 @@ function AgentSessionRow({ session, agent, actions, renaming, index }) {
   h('span', { className: 'bt-agent-sub-time' }, session.at > 0 ? relativeShort(session.at) : ''))
 }
 
-// The DSH Agent row: a plain dsh Session list lives in the Bot workspace, so it
+// The Agent row: a plain Session list lives in the Bot workspace, so it
 // sits among the Bots with the harness's own whale mark.
 function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, marked, onDragStart }) {
   const info = useSessions(list => JSON.stringify(agent.sessions.map((id) => {
@@ -231,12 +231,12 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
   const unread = sessions.some(session => session.unread) || (marked && !active)
   useMarkedUnread(agent.id, active, marked, actions)
   const preview = sessions[0] === undefined ? t('New session') : agentSessionTitle(sessions[0])
-  const label = ['DSH Agent', running ? t('Working') : '', unread ? t('Unread activity') : ''].filter(Boolean).join(', ')
+  const label = ['Agent', running ? t('Working') : '', unread ? t('Unread activity') : ''].filter(Boolean).join(', ')
   const open = active && wide
   return h('div', { className: 'bt-agent' },
     h('button', {
       type: 'button', className: 'bt-row', 'aria-label': label, 'aria-current': active ? 'page' : undefined,
-      'data-agent-id': agent.id, title: wide ? undefined : 'DSH Agent',
+      'data-agent-id': agent.id, title: wide ? undefined : 'Agent',
       draggable: wide && onDragStart ? true : undefined,
       onDragStart: wide && onDragStart ? event => onDragStart(event, agent.id) : undefined,
       onClick: () => actions.openAgent(agent.id),
@@ -244,7 +244,7 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
     },
     h('span', { className: `bt-agent-ava${running ? ' bt-run' : ''}` }, h(FishLogo, { size: wide ? 22 : 24 })),
     wide ? h('span', { className: 'bt-row-body' },
-      h('span', { className: 'bt-row-name' }, 'DSH Agent'),
+      h('span', { className: 'bt-row-name' }, 'Agent'),
       preview ? h('span', { className: 'bt-row-preview' }, preview) : null) : null,
     wide && unread && !active ? h('span', { className: 'bt-unread', 'aria-hidden': true })
       : !wide && unread && !active ? h('span', { className: 'bt-dot', 'aria-hidden': true }) : null),
@@ -877,7 +877,7 @@ function UpdateButton({ useUpdate, actions }) {
     void actions.installUpdate().catch(failure => setError(hostText(failure?.message ?? String(failure))))
   }
   const label = phase === 'installing' ? t('Updating DS Bot…')
-    : phase === 'installed' ? t('DS Bot {version} is installed. Restart DSH to use it.', { version: update.installed ?? update.latest })
+    : phase === 'installed' ? t('DS Bot {version} is installed. Restart DS Bot to use it.', { version: update.installed ?? update.latest })
       : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
         : update?.available ? t('DS Bot {version} is available', { version: update.latest })
           : t('DS Bot update')
@@ -891,7 +891,7 @@ function UpdateButton({ useUpdate, actions }) {
       update?.available || phase !== 'idle' ? h(Fragment, null,
         h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('DS Bot {version}', { version: update.latest })),
         h('div', { className: 'bt-update-text' }, phase === 'installed'
-          ? t('Restart DSH to start using DS Bot {version}.', { version: update.installed ?? update.latest })
+          ? t('Restart DS Bot to start using version {version}.', { version: update.installed ?? update.latest })
           : phase === 'updated' ? t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
             : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
@@ -1164,7 +1164,7 @@ function useLandOnMainBot(roster, useSessions, actions) {
       if ((room.sessionId ?? room.id) !== id) actions.openSession(room.id)
       return undefined
     }
-    // A DSH Agent Session, blank or not, is a real destination: it stays.
+    // An Agent Session, blank or not, is a real destination: it stays.
     if (id !== '' && ((actions.isAgentSession?.(id) ?? roster.agentOf[id] !== undefined) || blank !== '1')) {
       lastBot.current = null
       return undefined
@@ -1262,7 +1262,7 @@ export const SIDEBAR_CSS = `
 .bt-update-dsh:not(:first-child){margin-top:12px;padding-top:12px;border-top:.5px solid var(--bt-line-2)}
 @media (prefers-reduced-motion:reduce){.bt-round.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
 
-/* The DSH Agent row and its expanding Session list. The black whale is the
+/* The Agent row and its expanding Session list. The black whale is the
    harness's own mark, so the row reads as "plain dsh" next to the Bot marks. */
 .bt-agent-ava{flex:none;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--bt-hover);color:var(--bt-ink)}
 .bt-agent-ava.bt-run{animation:bt-agent-pulse 1.4s ease-in-out infinite}

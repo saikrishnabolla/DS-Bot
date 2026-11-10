@@ -144,7 +144,7 @@ export function install(rt) {
   const loadMcpPlugin = async () => {
     pluginP.p ??= (async () => {
       const loader = ctx.get?.('loader')
-      if (typeof loader?.import !== 'function') throw new Error('This DSH cannot load connectors')
+      if (typeof loader?.import !== 'function') throw new Error('This host cannot load connectors')
       const mod = await loader.import(MCP_CLIENT)
       return loader.unwrapExports?.(mod) ?? mod?.default ?? mod
     })()

@@ -377,7 +377,7 @@ export function ModelMenu({ bot, roster, actions, run, wide = false, onPick, onP
     shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': t('Model for {name}', { name: bot.name }), style: shownPlace, 'data-leaving': leaving || undefined },
       h('div', { className: 'bt-model-scroll' },
         models.length > 0 ? h(ModelRows, { roster: { ...roster, models }, current, onPick: pick, opening })
-          : local ? null : h('div', { className: 'bt-model-none' }, t('No models are set up in DeepSeek Harness yet.')),
+          : local ? null : h('div', { className: 'bt-model-none' }, t('No models are set up yet.')),
         reading ? h('div', { className: 'bt-model-none' }, t('Reading models…')) : null),
       hasEfforts || manage ? h('div', { className: 'bt-model-foot' },
         hasEfforts ? h(EffortBar, { reasoning, current: picked, onPick: pickEffort }) : null,
@@ -429,7 +429,7 @@ export function ModelChoiceDock({ sessionId, useRoster, actions }) {
           h('div', { className: 'bt-model-choice-chips' }, list.map(model => h('button', {
             key: model.ref, type: 'button', className: 'bt-model-chip', disabled: busy !== '', 'aria-busy': busy === model.ref || undefined,
             'aria-label': `${model.name} · ${provider}`,
-            title: model.ref === roster.defaultModel ? `${model.ref} · ${t('Harness default')}` : model.ref,
+            title: model.ref === roster.defaultModel ? `${model.ref} · ${t('Host default')}` : model.ref,
             onClick: () => pick(model.ref),
           }, model.name, busy === model.ref ? h('span', { className: 'bt-model-spin', 'aria-label': t('Saving…') }) : null))))),
         manage ? h('button', { key: 'manage', type: 'button', className: 'bt-model-chip bt-model-chip-quiet', onClick: manage }, h(SlidersIcon), t('Manage models')) : null,

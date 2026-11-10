@@ -436,7 +436,7 @@ test('issueUrl fills the issue form, keeps the versions when the errors are too 
 test('a browser error is noted once, repeats are counted, and clear empties the list', async () => {
   const { noteClientError, markNoted, clientErrors, clearClientErrors } = await import('../src/client/diagnostics.js')
   clearClientErrors()
-  const shown = markNoted(new Error('Could not reach DSH.'))
+  const shown = markNoted(new Error('Could not reach DS Bot.'))
   noteClientError('menu', shown)
   assert.equal(clientErrors().length, 0)
   const failed = new Error('HTTP 502')

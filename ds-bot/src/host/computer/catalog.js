@@ -23,7 +23,7 @@ const CUA_BACKGROUND = new Set([
 export const DRIVER_PREFIX = 'cua_driver_native__'
 const DRIVER_OBSERVE = new Set([
   'list_apps', 'list_windows', 'get_window_state', 'get_accessibility_tree', 'verify_state',
-  'parse_visual_regions', 'get_desktop_state', 'get_screen_size', 'get_cursor_position', 'zoom',
+  'parse_visual_regions', 'get_desktop_state', 'get_screen_size', 'get_cursor_position', 'zoom', 'get_guide',
   'debug_window_info', 'get_browser_state', 'get_session', 'list_sessions', 'get_session_state',
   'get_agent_cursor_state', 'get_recording_state', 'get_config', 'check_permissions', 'health_report',
 ])
@@ -37,7 +37,7 @@ const DRIVER_BACKGROUND = new Set([
   'right_click', 'drag', 'type_text', 'press_key', 'hotkey', 'set_value', 'scroll',
   'clipboard_read', 'clipboard_write', 'page', 'browser_prepare', 'browser_navigate',
   'browser_click', 'browser_type', 'browser_dialog', 'browser_set_input_files',
-  'browser_download', 'browser_pointer', 'start_recording', 'stop_recording',
+  'browser_download', 'browser_pointer', 'browser_select', 'run_steps', 'start_recording', 'stop_recording',
   'replay_trajectory', 'install_ffmpeg', 'start_session', 'end_session', 'set_config',
 ])
 
@@ -53,8 +53,11 @@ export function classify(name, args = {}) {
   }
   if (typeof name === 'string' && name.startsWith(DRIVER_PREFIX)) {
     const method = name.slice(DRIVER_PREFIX.length)
-    const kind = DRIVER_OBSERVE.has(method) ? 'observe'
-      : args?.foreground === true || !DRIVER_BACKGROUND.has(method) ? 'foreground' : 'background'
+    const foreground = args?.foreground === true || args?.delivery_mode === 'foreground' || args?.foreground_fallback === true
+      || (Array.isArray(args?.steps) && args.steps.some(step => step?.delivery_mode === 'foreground' || step?.args?.delivery_mode === 'foreground'))
+    const kind = method === 'browser_dialog' && args?.action === 'inspect' ? 'observe'
+      : DRIVER_OBSERVE.has(method) ? 'observe'
+        : foreground || !DRIVER_BACKGROUND.has(method) ? 'foreground' : 'background'
     return { provider: PROVIDERS.driver, kind, method }
   }
   return undefined
@@ -68,6 +71,7 @@ export const isComputerTool = name => classify(name, {}) !== undefined
 // cannot is refused before it can reach the desktop.
 export const DRIVER_GLOBAL = new Set([
   'list_apps', 'list_windows', 'get_screen_size', 'get_cursor_position',
+  'get_accessibility_tree', 'get_guide',
   'get_config', 'set_config', 'check_permissions', 'health_report',
   'get_session', 'list_sessions', 'get_session_state', 'get_recording_state',
   'get_agent_cursor_state',
@@ -80,6 +84,7 @@ export const DRIVER_GLOBAL = new Set([
 export const DRIVER_REFUSED = new Set([
   'set_config', 'start_recording', 'stop_recording', 'replay_trajectory', 'install_ffmpeg',
   'set_agent_cursor_enabled', 'set_agent_cursor_motion', 'set_agent_cursor_theme',
+  'get_desktop_state', 'escalate_session', 'run_script',
 ])
 
 // The kind a level admits. 'off' sees nothing.

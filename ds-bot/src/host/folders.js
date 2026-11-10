@@ -61,7 +61,7 @@ export function install(rt) {
     if (room !== undefined) return workDirOf({ roomId: room.id }) ?? teamFolder()
     return workDirOf({ botId: rt.selfOf?.(id), roomId: rt.groupOwners?.get(id)?.roomId }) ?? teamFolder()
   }
-  // The desktop app runs its own DSH and names the user's, which Bots must not write either.
+  // The desktop app owns its host and names the user's old DSH data, which Bots must not write either.
   const dataRoots = () => [rt.dshHome, rt.home, process.env.DS_BOT_USER_DSH_HOME?.trim()].filter(Boolean)
 
   // A Bot that could write where DSH or the team keeps its data could change its own
@@ -109,7 +109,7 @@ export function install(rt) {
 
   // A folder, as a real path, as a working folder: undefined for the team workspace.
   async function workFolder(path) {
-    if (await guarded(path)) throw new Error(`${path} holds DeepSeek Harness data, so Bots cannot work there`)
+    if (await guarded(path)) throw new Error(`${path} holds agent host data, so Bots cannot work there`)
     return path === await realTeam() ? undefined : path
   }
 
@@ -131,11 +131,11 @@ export function install(rt) {
       return roots.some(data => within(path, data))
     }
     // A folder to be made counts where it would be made: a link above it can lead into the data.
-    if (await holdsData(await realBeyond(resolve(expanded)))) throw new Error(`${text} holds DeepSeek Harness data, so it cannot be the team workspace`)
+    if (await holdsData(await realBeyond(resolve(expanded)))) throw new Error(`${text} holds agent host data, so it cannot be the team workspace`)
     await mkdir(expanded, { recursive: true })
     const path = await realpath(expanded)
     if (!(await isFolder(path))) throw new Error(`${text} is a file, not a folder`)
-    if (await holdsData(path)) throw new Error(`${text} holds DeepSeek Harness data, so it cannot be the team workspace`)
+    if (await holdsData(path)) throw new Error(`${text} holds agent host data, so it cannot be the team workspace`)
     if (path === await realTeam()) return path
     const clash = await rt.privateClash(path)
     if (clash) throw new Error(`${text} is in or around the folder of ${clash.name}, a private Bot, so it cannot be the team workspace`)
@@ -212,12 +212,12 @@ export function install(rt) {
       }
       case 'folder-pick': {
         const native = picker()
-        if (native?.kind !== 'native') throw new Error('This DeepSeek Harness has no folder chooser')
+        if (native?.kind !== 'native') throw new Error('This host has no folder chooser')
         return await native.pick(AbortSignal.any([signal, AbortSignal.timeout(PICK_TIMEOUT_MS)].filter(Boolean)))
       }
       case 'folder-list': {
         const browse = picker()
-        if (browse?.kind !== 'browse') throw new Error('This DeepSeek Harness cannot list folders')
+        if (browse?.kind !== 'browse') throw new Error('This host cannot list folders')
         const listing = await browse.list(typeof body.path === 'string' && body.path !== '' ? body.path : undefined, signal)
         return { path: listing.path, home: listing.home, crumbs: listing.crumbs, entries: listing.entries, truncated: listing.truncated }
       }

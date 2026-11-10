@@ -15,7 +15,7 @@ const starCount = count => new Intl.NumberFormat(dateLocale(), { notation: 'comp
 
 function botHint(update) {
   if (update.phase === 'installing') return t('Updating DS Bot…')
-  if (update.phase === 'installed') return t('Restart DSH to start using DS Bot {version}.', { version: update.installed ?? update.latest })
+  if (update.phase === 'installed') return t('Restart DS Bot to start using version {version}.', { version: update.installed ?? update.latest })
   if (update.phase === 'updated') return t('DS Bot {version} is installed.', { version: update.installed ?? update.latest })
   if (update.phase === 'failed') return t('The update did not finish: {reason}', { reason: hostText(update.error ?? '') })
   if (update.available) return t('DS Bot {version} is available', { version: update.latest })

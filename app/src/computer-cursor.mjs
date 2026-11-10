@@ -87,7 +87,7 @@ export function createComputerCursor({ BrowserWindow, screen, platform, ownPid =
 // ring ripple replays on every click-type event; .fade dims the whole page out.
 export function cursorHtml({ color = '#4d6bfe', avatar, ripple = false } = {}) {
   const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(String(color)) ? color : '#4d6bfe'
-  const safeAvatar = typeof avatar === 'string' && /^data:image\/(png|jpeg|webp|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(avatar) && avatar.length <= 12000 ? avatar : undefined
+  const safeAvatar = typeof avatar === 'string' && /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(avatar) && avatar.length <= 160000 ? avatar : undefined
   const face = safeAvatar !== undefined
     ? `<img class="ava" src="${safeAvatar}" alt="">`
     : `<span class="ava" style="background:${safeColor}"></span>`

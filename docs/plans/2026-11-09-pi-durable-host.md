@@ -43,8 +43,8 @@ The host is the only writer to the SQLite database. It opens every extension and
 4. Move team tools, approvals, questions and Bot-to-Bot delivery.
 5. Move groups, goals, memory, learning and schedules.
 6. Move MCP capabilities, connectors, browser control, computer control, IM and local agents.
-7. Remove DeepSeek Harness packages, profile code and migration code. Update the app package and documentation.
+7. Remove DeepSeek Harness packages and profile dependencies from the desktop runtime. Keep the one-way import for existing users and the optional DSH plugin adapter.
 
 ## Completion
 
-The migration is complete when all existing API operations have compatibility tests, the desktop app uses its own interface, crash recovery passes for model calls, tools, queued messages, approvals and schedules, and no code or package file imports `@deepseek-ai`.
+The migration is complete when all existing API operations have compatibility tests, the desktop app uses its own interface, and crash recovery passes for model calls, tools, queued messages, approvals and schedules. The desktop package and owned engine must not import `@deepseek-ai`; the optional plugin adapter may load it only when DS Bot runs inside DSH.

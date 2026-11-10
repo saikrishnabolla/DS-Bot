@@ -228,7 +228,7 @@ var ZH = {
   "GitHub did not say who this token belongs to": "GitHub 没有返回这个 token 的账号",
   "Paste a token first": "请先粘贴 token",
   "GitHub addresses must start with https://": "GitHub 地址必须以 https:// 开头",
-  "This DSH cannot load connectors": "这个 DSH 不能加载连接器",
+  "This host cannot load connectors": "这个运行环境不能加载连接器",
   "No such connector": "没有这个连接器",
   "Classic Agent mode": "经典 Agent 模式",
   "Bot mode": "Bot 模式",
@@ -244,8 +244,8 @@ var ZH = {
   "An API key has no spaces or special characters": "API key 里不能有空格或特殊字符",
   "Another provider": "其他服务商",
   // Models page
-  "This DSH cannot set up model providers.": "这个 DSH 不能设置模型服务商。",
-  "This DSH cannot set up model providers": "这个 DSH 不能设置模型服务商",
+  "This host cannot set up model providers.": "这个运行环境不能设置模型服务商。",
+  "This host cannot set up model providers": "这个运行环境不能设置模型服务商",
   "Model providers · {count}": "模型服务商 · {count}",
   "Add a provider": "添加服务商",
   "Needs an API key": "需要 API key",
@@ -275,7 +275,7 @@ var ZH = {
   "Change and start a new part": "更换并开新的一段",
   // Local agents page
   "Local agents": "本地 Agent",
-  "This DSH cannot register local agent routes.": "这个 DSH 不能注册本地 Agent 路由。",
+  "This host cannot register local agent routes.": "这个运行环境不能注册本地 Agent 路由。",
   "Detected agents": "已检测到的 Agent",
   Refresh: "刷新",
   "No agent CLIs found": "没有找到 Agent CLI",
@@ -344,7 +344,7 @@ var ZH = {
   "Could not reach the model service.": "连不上模型服务。",
   "Too many requests. Wait a moment, then try again.": "请求太频繁，稍等一会儿再试。",
   "The model service failed.": "模型服务出错了。",
-  "DeepSeek Harness stopped before this turn finished.": "这一轮还没完成，DeepSeek Harness 就停下了。",
+  "DS Bot stopped before this turn finished.": "这一轮还没完成，DS Bot 就停下了。",
   "This turn failed.": "这一轮运行失败了。",
   "The model service": "模型服务",
   "DeepSeek account": "DeepSeek 账号",
@@ -592,7 +592,7 @@ var ZH = {
   "A Bot named {name} already exists": "已经有叫 {name} 的 Bot 了",
   "The Bot runs on this model. You can change it later in its details.": "Bot 会使用这个模型。以后可以在详情里修改。",
   "Pick a model here, or the Bot asks for one in its chat.": "在这里选一个模型，或者之后由 Bot 在聊天里问你。",
-  "Add a provider and a model in DeepSeek Harness first, or pick one in the Bot's chat later.": "请先在 DeepSeek Harness 里添加服务商和模型，或者稍后在 Bot 的对话里选择。",
+  "Add a provider and a model in Settings first, or pick one in the Bot's chat later.": "请先在设置里添加服务商和模型，或者稍后在 Bot 的对话里选择。",
   "Creating…": "创建中…",
   Create: "创建",
   // Model menu
@@ -603,10 +603,10 @@ var ZH = {
   "Choose a model": "选择模型",
   "{provider} · not available": "{provider} · 不可用",
   "Model for {name}": "{name} 的模型",
-  "No models are set up in DeepSeek Harness yet.": "DeepSeek Harness 里还没有设置模型。",
+  "No models are set up yet.": "还没有设置模型。",
   "Models and providers…": "模型和服务商…",
   Models: "模型",
-  "Harness default": "Harness 默认",
+  "Host default": "运行环境默认",
   Saving: "保存中",
   "Manage models": "管理模型",
   // Shapes
@@ -745,14 +745,13 @@ var ZH = {
   "Copy conversation ID": "复制对话 ID",
   "Hide from sidebar": "从侧栏隐藏",
   "{name} actions": "{name} 的操作",
-  // The DSH Agent's own row and Session list. "DSH Agent" is a product name and
-  // stays in English.
-  "Add DSH Agent": "添加 DSH Agent",
-  "Remove DSH Agent": "移除 DSH Agent",
+  // The plain Agent's own row and Session list.
+  "Add Agent": "添加 Agent",
+  "Remove Agent": "移除 Agent",
   "New session": "新会话",
   Archive: "归档",
   "Session actions": "会话操作",
-  "Plain dsh session": "原生 dsh 会话",
+  "Plain agent session": "普通 Agent 会话",
   "just now": "刚刚",
   "{n} min": "{n} 分钟",
   "{n} h": "{n} 小时",
@@ -760,21 +759,16 @@ var ZH = {
   // Plugin updates
   "DS Bot {version} is available": "DS Bot {version} 可以更新",
   "Updating DS Bot…": "正在更新 DS Bot…",
-  "DS Bot {version} is installed. Restart DSH to use it.": "DS Bot {version} 已安装，重启 DSH 后生效",
+  "DS Bot {version} is installed. Restart DS Bot to use it.": "DS Bot {version} 已安装，重启 DS Bot 后生效",
   "DS Bot {version} is installed.": "DS Bot {version} 已安装。",
   "DS Bot update": "DS Bot 更新",
   "DS Bot {version}": "DS Bot {version}",
   "Update installed": "更新已安装",
-  "Restart DSH to start using DS Bot {version}.": "重启 DSH 后开始使用 DS Bot {version}。",
+  "Restart DS Bot to start using version {version}.": "重启 DS Bot 后开始使用 {version}。",
   "You have {version}.": "当前版本 {version}。",
   "The update did not finish: {reason}": "更新没有完成：{reason}",
   "What's new": "更新说明",
   "Updating…": "正在更新…",
-  "DSH {version} is available": "DSH {version} 可以更新",
-  "Updating DSH…": "正在更新 DSH…",
-  "DSH update": "DSH 更新",
-  "DSH {version}": "DSH {version}",
-  "Restart DSH to start using DSH {version}.": "重启 DSH 后开始使用 DSH {version}。",
   "Update DS Bot {version} first.": "先更新 DS Bot {version}。",
   "Open updates": "打开更新",
   // Command palette
@@ -1275,7 +1269,7 @@ var ZH = {
   "Kept on this computer across restarts, up to about 1 MB.": "保存在这台电脑上，重启后仍在，最多约 1 MB。",
   Clear: "清空",
   "Settings → Feedback has the details.": "详情见 设置 → 反馈。",
-  "Could not reach DSH. Check that it is still running.": "连不上 DSH，请确认它还在运行。",
+  "Could not reach DS Bot. Check that it is still running.": "连不上 DS Bot，请确认它还在运行。",
   "{name} stopped: {reason}. Switch its model or ask it to go on.": "{name} 停下了：{reason}。换个模型，或让它继续。",
   "Unknown error": "未知错误",
   "The model has no API key": "模型还没有 API Key",
@@ -1619,8 +1613,8 @@ var HOST_ZH = {
   "Memory is turned off on this host": "这台主机关闭了记忆功能",
   "The model wrote nothing": "模型没有输出内容",
   "Write the entry to save.": "请写下要保存的内容。",
-  "This DeepSeek Harness has no folder chooser": "这个 DeepSeek Harness 没有文件夹选择窗口",
-  "This DeepSeek Harness cannot list folders": "这个 DeepSeek Harness 不能列出文件夹",
+  "This host has no folder chooser": "这个运行环境没有文件夹选择窗口",
+  "This host cannot list folders": "这个运行环境不能列出文件夹",
   "Side chat is only available in a Bot's private chat.": "侧边对话只在 Bot 的私聊里可用。",
   "Write a question.": "写上问题。",
   "Write a question after /side.": "在 /side 后面写上问题。",
@@ -1814,7 +1808,7 @@ var call = async (endpoint, payload, signal) => {
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: "NETWORK" }));
-    throw markNoted(Object.assign(new Error(t("Could not reach DSH. Check that it is still running.")), { code: "NETWORK", cause: error }));
+    throw markNoted(Object.assign(new Error(t("Could not reach DS Bot. Check that it is still running.")), { code: "NETWORK", cause: error }));
   }
   if (!response.ok) {
     const error = Object.assign(new Error(hostText(`HTTP ${response.status}`)), { code: `HTTP_${response.status}` });
@@ -5979,6 +5973,7 @@ function LevelPicker({ bot, actions, run: run2, disabled }) {
 }
 var PROVIDER_TEXT = {
   loading: ["Loading the provider…", "loading"],
+  permissions: ["Computer permissions are needed", "error"],
   ready: ["Ready", "ready"],
   error: ["Could not load the provider", "error"],
   missing: ["The provider package is not installed", "error"],
@@ -6044,7 +6039,7 @@ function ComputerPage({ roster, actions, run: run2, Section: Section2, Row: Row4
         ["error", "missing", "occupied"].includes(provider.state) && actions.computerProviderRetry ? (0, import_react12.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run2(actions.computerProviderRetry()) }, t("Retry")) : null
       ),
       provider.state === "missing" && provider.install?.command ? (0, import_react12.createElement)(InstallRow, { install: provider.install, Row: Row4 }) : null,
-      computer.macos === true && provider.state === "ready" ? [permRow("accessibility", "Accessibility"), permRow("screenRecording", "Screen Recording")] : null
+      computer.macos === true && ["ready", "permissions"].includes(provider.state) ? [permRow("accessibility", "Accessibility"), permRow("screenRecording", "Screen Recording")] : null
     ) : null,
     (0, import_react12.createElement)(
       Section2,
@@ -9836,7 +9831,7 @@ function ModelMenu({ bot, roster, actions, run: run2, wide = false, onPick, onPi
       (0, import_react20.createElement)(
         "div",
         { className: "bt-model-scroll" },
-        models.length > 0 ? (0, import_react20.createElement)(ModelRows, { roster: { ...roster, models }, current, onPick: pick2, opening }) : local ? null : (0, import_react20.createElement)("div", { className: "bt-model-none" }, t("No models are set up in DeepSeek Harness yet.")),
+        models.length > 0 ? (0, import_react20.createElement)(ModelRows, { roster: { ...roster, models }, current, onPick: pick2, opening }) : local ? null : (0, import_react20.createElement)("div", { className: "bt-model-none" }, t("No models are set up yet.")),
         reading ? (0, import_react20.createElement)("div", { className: "bt-model-none" }, t("Reading models…")) : null
       ),
       hasEfforts || manage ? (0, import_react20.createElement)(
@@ -9890,7 +9885,7 @@ function ModelChoiceDock({ sessionId, useRoster, actions }) {
         disabled: busy !== "",
         "aria-busy": busy === model.ref || void 0,
         "aria-label": `${model.name} · ${provider}`,
-        title: model.ref === roster.defaultModel ? `${model.ref} · ${t("Harness default")}` : model.ref,
+        title: model.ref === roster.defaultModel ? `${model.ref} · ${t("Host default")}` : model.ref,
         onClick: () => pick2(model.ref)
       }, model.name, busy === model.ref ? (0, import_react20.createElement)("span", { className: "bt-model-spin", "aria-label": t("Saving…") }) : null)))
     )),
@@ -15605,7 +15600,7 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
   const unread = sessions.some((session) => session.unread) || marked && !active;
   useMarkedUnread(agent.id, active, marked, actions);
   const preview = sessions[0] === void 0 ? t("New session") : agentSessionTitle(sessions[0]);
-  const label = ["DSH Agent", running ? t("Working") : "", unread ? t("Unread activity") : ""].filter(Boolean).join(", ");
+  const label = ["Agent", running ? t("Working") : "", unread ? t("Unread activity") : ""].filter(Boolean).join(", ");
   const open = active && wide;
   return (0, import_react35.createElement)(
     "div",
@@ -15618,7 +15613,7 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
         "aria-label": label,
         "aria-current": active ? "page" : void 0,
         "data-agent-id": agent.id,
-        title: wide ? void 0 : "DSH Agent",
+        title: wide ? void 0 : "Agent",
         draggable: wide && onDragStart ? true : void 0,
         onDragStart: wide && onDragStart ? (event) => onDragStart(event, agent.id) : void 0,
         onClick: () => actions.openAgent(agent.id),
@@ -15631,7 +15626,7 @@ function AgentRow({ agent, actions, useSessions, useSessionStatus, useUi, wide, 
       wide ? (0, import_react35.createElement)(
         "span",
         { className: "bt-row-body" },
-        (0, import_react35.createElement)("span", { className: "bt-row-name" }, "DSH Agent"),
+        (0, import_react35.createElement)("span", { className: "bt-row-name" }, "Agent"),
         preview ? (0, import_react35.createElement)("span", { className: "bt-row-preview" }, preview) : null
       ) : null,
       wide && unread && !active ? (0, import_react35.createElement)("span", { className: "bt-unread", "aria-hidden": true }) : !wide && unread && !active ? (0, import_react35.createElement)("span", { className: "bt-dot", "aria-hidden": true }) : null
@@ -16317,7 +16312,7 @@ function UpdateButton({ useUpdate, actions }) {
     setError("");
     void actions.installUpdate().catch((failure) => setError(hostText(failure?.message ?? String(failure))));
   };
-  const label = phase === "installing" ? t("Updating DS Bot…") : phase === "installed" ? t("DS Bot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : update?.available ? t("DS Bot {version} is available", { version: update.latest }) : t("DS Bot update");
+  const label = phase === "installing" ? t("Updating DS Bot…") : phase === "installed" ? t("DS Bot {version} is installed. Restart DS Bot to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : update?.available ? t("DS Bot {version} is available", { version: update.latest }) : t("DS Bot update");
   const message = error || (phase === "failed" ? update.error : "");
   return (0, import_react35.createElement)(
     import_react35.Fragment,
@@ -16340,7 +16335,7 @@ function UpdateButton({ useUpdate, actions }) {
         import_react35.Fragment,
         null,
         (0, import_react35.createElement)("div", { className: "bt-update-title" }, phase === "installed" || phase === "updated" ? t("Update installed") : t("DS Bot {version}", { version: update.latest })),
-        (0, import_react35.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using DS Bot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : t("You have {version}.", { version: update.current })),
+        (0, import_react35.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DS Bot to start using version {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("DS Bot {version} is installed.", { version: update.installed ?? update.latest }) : t("You have {version}.", { version: update.current })),
         message ? (0, import_react35.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message })) : null,
         (0, import_react35.createElement)(
           "div",
@@ -16716,7 +16711,7 @@ var SIDEBAR_CSS = `
 .bt-update-dsh:not(:first-child){margin-top:12px;padding-top:12px;border-top:.5px solid var(--bt-line-2)}
 @media (prefers-reduced-motion:reduce){.bt-round.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
 
-/* The DSH Agent row and its expanding Session list. The black whale is the
+/* The Agent row and its expanding Session list. The black whale is the
    harness's own mark, so the row reads as "plain dsh" next to the Bot marks. */
 .bt-agent-ava{flex:none;width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--bt-hover);color:var(--bt-ink)}
 .bt-agent-ava.bt-run{animation:bt-agent-pulse 1.4s ease-in-out infinite}
@@ -17274,7 +17269,7 @@ function CreateBot({ roster, actions, start, brief = "", onBack, canGoBack, onCr
         setModel(ref);
         setEffort(void 0);
       }, onPickEffort: (picked) => setEffort(picked ?? null) }),
-      (0, import_react38.createElement)("span", { className: "bt-note" }, chosen ? t("The Bot runs on this model. You can change it later in its details.") : modelsFor(roster.models).length > 0 ? t("Pick a model here, or the Bot asks for one in its chat.") : t("Add a provider and a model in DeepSeek Harness first, or pick one in the Bot's chat later."))
+      (0, import_react38.createElement)("span", { className: "bt-note" }, chosen ? t("The Bot runs on this model. You can change it later in its details.") : modelsFor(roster.models).length > 0 ? t("Pick a model here, or the Bot asks for one in its chat.") : t("Add a provider and a model in Settings first, or pick one in the Bot's chat later."))
     ) : null,
     error ? (0, import_react38.createElement)("div", { className: "bt-error", role: "alert", style: { padding: 0 } }, error) : null,
     (0, import_react38.createElement)(
@@ -17566,7 +17561,7 @@ function ownerFace(owner, roster) {
   if (owner.kind === "agent") {
     return {
       kind: "agent",
-      name: owner.name || "DSH Agent",
+      name: owner.name || "Agent",
       sub: owner.deleted ? t("Deleted") : "",
       paint: "var(--bt-us-rest)",
       glyph: (size) => glyphBox(size, ChatsIcon)
@@ -21192,7 +21187,7 @@ var CHEER_MS = 1800;
 var starCount = (count) => new Intl.NumberFormat(dateLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(count);
 function botHint(update) {
   if (update.phase === "installing") return t("Updating DS Bot…");
-  if (update.phase === "installed") return t("Restart DSH to start using DS Bot {version}.", { version: update.installed ?? update.latest });
+  if (update.phase === "installed") return t("Restart DS Bot to start using version {version}.", { version: update.installed ?? update.latest });
   if (update.phase === "updated") return t("DS Bot {version} is installed.", { version: update.installed ?? update.latest });
   if (update.phase === "failed") return t("The update did not finish: {reason}", { reason: hostText(update.error ?? "") });
   if (update.available) return t("DS Bot {version} is available", { version: update.latest });
@@ -21352,7 +21347,7 @@ function ProvidersPage({ actions, run: run2, Section: Section2, advanced = null 
     void apply2(actions.providers());
   }, []);
   if (view === null) return null;
-  if (!view.available) return (0, import_react46.createElement)("p", { className: "bt-set-hint" }, t("This DSH cannot set up model providers."));
+  if (!view.available) return (0, import_react46.createElement)("p", { className: "bt-set-hint" }, t("This host cannot set up model providers."));
   return [
     (0, import_react46.createElement)(
       Section2,
@@ -21712,7 +21707,7 @@ function LocalAgentsPage({ run: run2, Row: Row4 }) {
     void load("local-agents");
   }, []);
   if (view === null) return null;
-  if (view.available === false) return (0, import_react47.createElement)("p", { className: "bt-set-hint" }, t("This DSH cannot register local agent routes."));
+  if (view.available === false) return (0, import_react47.createElement)("p", { className: "bt-set-hint" }, t("This host cannot register local agent routes."));
   return [
     (0, import_react47.createElement)(
       "section",
@@ -23138,6 +23133,158 @@ var steerQueued = async (session) => {
   }
 };
 
+// src/client/speech.js
+var VOICE_BUNDLE = "ds-bot/voice-input";
+var USABLE = /* @__PURE__ */ new Set(["ready", "standby", "waking"]);
+async function speechCatalog(speech) {
+  const result = await speech.catalog();
+  if (!result?.ok) throw new Error(result?.error?.message ?? "Speech catalog failed");
+  const catalog = result.value;
+  const provider = catalog.providers.find((item) => item.id === catalog.selection.providerId);
+  return { catalog, usable: USABLE.has(provider?.preparation?.phase) };
+}
+async function requestPreparation(speech, providerId) {
+  try {
+    const result = await speech.prepare(providerId);
+    return result?.ok !== false;
+  } catch {
+    return false;
+  }
+}
+function preparationStep(catalog) {
+  const preparation = catalog.providers.find((item) => item.id === catalog.selection.providerId)?.preparation;
+  if (preparation === void 0) return { state: "done", failed: false };
+  if (USABLE.has(preparation.phase)) return { state: "usable" };
+  if (preparation.phase === "failed" || preparation.phase === "cancelled" || preparation.phase === "unprepared") {
+    return { state: "done", failed: preparation.phase === "failed" };
+  }
+  const pct = preparation.phase === "downloading" && preparation.totalBytes ? Math.floor(preparation.completedBytes / preparation.totalBytes * 100) : void 0;
+  return { state: "waiting", pct };
+}
+function waveBytes(samples, rate = 16e3) {
+  const bytes = new Uint8Array(44 + samples.length * 2);
+  const view = new DataView(bytes.buffer);
+  const ascii = (at, text) => {
+    for (let index = 0; index < text.length; index += 1) bytes[at + index] = text.charCodeAt(index);
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  ascii(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  samples.forEach((sample, index) => {
+    const value = Math.max(-1, Math.min(1, sample));
+    view.setInt16(44 + index * 2, value < 0 ? Math.round(value * 32768) : Math.round(value * 32767), true);
+  });
+  return bytes;
+}
+function base64Of(bytes) {
+  let text = "";
+  for (let index = 0; index < bytes.length; index += 32768) text += String.fromCharCode(...bytes.subarray(index, index + 32768));
+  return btoa(text);
+}
+var captureError = (kind, cause) => Object.assign(new Error(kind), { kind, cause });
+async function openCapture() {
+  const devices = navigator.mediaDevices;
+  if (!devices?.getUserMedia || typeof MediaRecorder === "undefined") throw captureError("unavailable");
+  let stream;
+  try {
+    stream = await devices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+  } catch (error) {
+    throw captureError(error?.name === "NotAllowedError" ? "blocked" : "failed", error);
+  }
+  const audio = new AudioContext();
+  const analyser = audio.createAnalyser();
+  analyser.fftSize = 512;
+  audio.createMediaStreamSource(stream).connect(analyser);
+  const frame = new Float32Array(analyser.fftSize);
+  const recorder = new MediaRecorder(stream);
+  const chunks = [];
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) chunks.push(event.data);
+  };
+  recorder.start();
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (recorder.state !== "inactive") recorder.stop();
+    stream.getTracks().forEach((track) => track.stop());
+    void audio.close().catch(() => {
+    });
+  };
+  return {
+    level() {
+      if (closed) return 0;
+      analyser.getFloatTimeDomainData(frame);
+      let sum = 0;
+      for (const sample of frame) sum += sample * sample;
+      return Math.min(1, Math.sqrt(sum / frame.length) * 4);
+    },
+    cancel: close,
+    async finish(maxSeconds) {
+      if (closed || recorder.state === "inactive") {
+        close();
+        return null;
+      }
+      try {
+        await new Promise((resolve2) => {
+          recorder.onstop = resolve2;
+          recorder.stop();
+        });
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(chunks, { type: recorder.mimeType });
+        if (blob.size === 0) return null;
+        const decoded = await audio.decodeAudioData(await blob.arrayBuffer());
+        const length = Math.max(1, Math.floor(Math.min(decoded.duration, maxSeconds) * 16e3));
+        const offline = new OfflineAudioContext(1, length, 16e3);
+        const source = offline.createBufferSource();
+        source.buffer = decoded;
+        source.connect(offline.destination);
+        source.start();
+        return waveBytes((await offline.startRendering()).getChannelData(0));
+      } finally {
+        close();
+      }
+    }
+  };
+}
+async function transcribeWave(speech, catalog, wave, signal) {
+  if (wave.byteLength > catalog.maxAudioBytes) throw captureError("too-long");
+  const result = await speech.transcribe({ audioBase64: base64Of(wave), ...catalog.selection }, signal);
+  if (!result?.ok) throw Object.assign(new Error(result?.error?.message ?? "Transcription failed"), { kind: "service" });
+  return String(result.value?.text ?? "").trim();
+}
+function closingReplyText(chat, turn) {
+  const location2 = chat?.timeline?.turns?.get(turn);
+  if (location2 === void 0) return void 0;
+  const closing = location2.data?.get("turn-tail")?.closing;
+  if (closing === void 0) return void 0;
+  if (closing === null) return "";
+  return (closing.blocks ?? []).filter((block) => block.kind === "text" && block.text.trim() !== "").map((block) => block.text).join("\n\n");
+}
+function turnDetector({ loud = 0.12, quiet = 0.06, quietMs = 1200 } = {}) {
+  let spokeAt = 0;
+  let quietSince = 0;
+  return (level, now) => {
+    if (level >= loud) {
+      spokeAt ||= now;
+      quietSince = 0;
+      return "speech";
+    }
+    if (!spokeAt) return "waiting";
+    if (level < quiet) quietSince ||= now;
+    return quietSince && now - quietSince >= quietMs ? "done" : "speech";
+  };
+}
+
 // src/client/composer.js
 var import_react51 = require("react");
 var import_react_dom9 = require("react-dom");
@@ -23198,6 +23345,77 @@ function useDictation(onText) {
   const stop = () => recognition.current?.stop();
   return { listening, note, start, stop };
 }
+function useRemoteDictation(speech, onText, { capture = openCapture } = {}) {
+  const [listening, setListening] = (0, import_react51.useState)(false);
+  const [note, setNote] = (0, import_react51.useState)("");
+  const active = (0, import_react51.useRef)(null);
+  const timer = (0, import_react51.useRef)(null);
+  const latest = (0, import_react51.useRef)(onText);
+  latest.current = onText;
+  const cancel = () => {
+    clearTimeout(timer.current);
+    timer.current = null;
+    active.current?.controller.abort(new Error("Dictation cancelled"));
+    active.current?.capture?.cancel();
+    active.current = null;
+    setListening(false);
+  };
+  (0, import_react51.useEffect)(() => cancel, []);
+  (0, import_react51.useEffect)(() => {
+    if (!note) return void 0;
+    const timeout = setTimeout(() => setNote(""), 2600);
+    return () => clearTimeout(timeout);
+  }, [note]);
+  const stop = async () => {
+    const held = active.current;
+    if (held === null) return;
+    clearTimeout(timer.current);
+    timer.current = null;
+    setListening(false);
+    try {
+      const wave = await held.capture.finish(held.catalog.maxDurationSeconds);
+      const text = wave ? await transcribeWave(speech, held.catalog, wave, held.controller.signal) : "";
+      if (active.current !== held) return;
+      if (text) latest.current(text, true);
+    } catch (error) {
+      if (active.current === held && !held.controller.signal.aborted) setNote(t(error?.kind === "too-long" ? "That was too long to recognize" : "Couldn't hear that"));
+    } finally {
+      if (active.current === held) active.current = null;
+    }
+  };
+  const start = async () => {
+    if (!speech || active.current !== null) return false;
+    const controller = new AbortController();
+    const held = { controller, capture: null, catalog: null };
+    active.current = held;
+    try {
+      const { catalog, usable } = await speechCatalog(speech);
+      if (!usable) {
+        await requestPreparation(speech, catalog.selection.providerId);
+        setNote(t("Preparing voice input…"));
+        if (active.current === held) active.current = null;
+        return false;
+      }
+      const recording = await capture();
+      if (controller.signal.aborted) {
+        recording.cancel();
+        return false;
+      }
+      held.capture = recording;
+      held.catalog = catalog;
+      setListening(true);
+      timer.current = setTimeout(() => {
+        void stop();
+      }, Math.max(1, catalog.maxDurationSeconds - 0.1) * 1e3);
+      return true;
+    } catch (error) {
+      if (!controller.signal.aborted) setNote(t(error?.kind === "blocked" ? "Microphone access is blocked" : "Couldn't start dictation"));
+      if (active.current === held) active.current = null;
+      return false;
+    }
+  };
+  return { listening, note, start, stop, cancel };
+}
 function ComposerVoice({ sessionId, inputActions, actions, useUi, useRoster }) {
   const enterToSend = useRoster((state) => sendsOnEnter(state.prefs));
   const composerRoot = (0, import_react51.useRef)(null);
@@ -23209,6 +23427,10 @@ function ComposerVoice({ sessionId, inputActions, actions, useUi, useRoster }) {
     return () => root.removeEventListener("keydown", onKey, true);
   }, [enterToSend, inputActions]);
   const dictation = useDictation((text, final) => {
+    if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion());
+  });
+  const speech = actions.speech();
+  const remoteDictation = useRemoteDictation(speech?.owned === true ? speech : void 0, (text, final) => {
     if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion());
   });
   const quote = useUi((state) => state.quote?.sessionId === sessionId ? state.quote : null);
@@ -23229,18 +23451,19 @@ function ComposerVoice({ sessionId, inputActions, actions, useUi, useRoster }) {
     }
   }, [quote?.token]);
   if (sessionId === void 0) return null;
-  const pluginMic = actions.speech() !== void 0;
+  const pluginMic = speech !== void 0 && speech.owned !== true;
+  const shownDictation = speech?.owned === true ? remoteDictation : dictation;
   return (0, import_react51.createElement)(
     import_react51.Fragment,
     null,
     pluginMic ? null : (0, import_react51.createElement)("button", {
       type: "button",
       className: "bt-mic",
-      "aria-label": dictation.listening ? t("Stop dictation") : t("Dictate"),
-      "aria-pressed": dictation.listening,
-      title: dictation.listening ? t("Stop dictation") : t("Dictate"),
+      "aria-label": shownDictation.listening ? t("Stop dictation") : t("Dictate"),
+      "aria-pressed": shownDictation.listening,
+      title: shownDictation.listening ? t("Stop dictation") : t("Dictate"),
       onMouseDown: keepComposerFocus,
-      onClick: () => dictation.listening ? dictation.stop() : dictation.start()
+      onClick: () => shownDictation.listening ? shownDictation.stop() : shownDictation.start()
     }, (0, import_react51.createElement)(MicIcon)),
     (0, import_react51.createElement)("button", {
       ref: composerRoot,
@@ -23251,7 +23474,7 @@ function ComposerVoice({ sessionId, inputActions, actions, useUi, useRoster }) {
       onMouseDown: keepComposerFocus,
       onClick: () => actions.openVoice(sessionId)
     }, (0, import_react51.createElement)(WaveIcon, { size: 18 })),
-    dictation.note ? (0, import_react51.createElement)("span", { className: "bt-mic-note", role: "status" }, dictation.note) : null
+    shownDictation.note ? (0, import_react51.createElement)("span", { className: "bt-mic-note", role: "status" }, shownDictation.note) : null
   );
 }
 function menuIcons(roster) {
@@ -23783,158 +24006,6 @@ var SIDE_CSS = `
 .bt-pmenu-sep{height:.5px;flex:none;margin:4px 8px;background:var(--bt-line-2)}
 `;
 
-// src/client/speech.js
-var VOICE_BUNDLE = "ds-bot/voice-input";
-var USABLE = /* @__PURE__ */ new Set(["ready", "standby", "waking"]);
-async function speechCatalog(speech) {
-  const result = await speech.catalog();
-  if (!result?.ok) throw new Error(result?.error?.message ?? "Speech catalog failed");
-  const catalog = result.value;
-  const provider = catalog.providers.find((item) => item.id === catalog.selection.providerId);
-  return { catalog, usable: USABLE.has(provider?.preparation?.phase) };
-}
-async function requestPreparation(speech, providerId) {
-  try {
-    const result = await speech.prepare(providerId);
-    return result?.ok !== false;
-  } catch {
-    return false;
-  }
-}
-function preparationStep(catalog) {
-  const preparation = catalog.providers.find((item) => item.id === catalog.selection.providerId)?.preparation;
-  if (preparation === void 0) return { state: "done", failed: false };
-  if (USABLE.has(preparation.phase)) return { state: "usable" };
-  if (preparation.phase === "failed" || preparation.phase === "cancelled" || preparation.phase === "unprepared") {
-    return { state: "done", failed: preparation.phase === "failed" };
-  }
-  const pct = preparation.phase === "downloading" && preparation.totalBytes ? Math.floor(preparation.completedBytes / preparation.totalBytes * 100) : void 0;
-  return { state: "waiting", pct };
-}
-function waveBytes(samples, rate = 16e3) {
-  const bytes = new Uint8Array(44 + samples.length * 2);
-  const view = new DataView(bytes.buffer);
-  const ascii = (at, text) => {
-    for (let index = 0; index < text.length; index += 1) bytes[at + index] = text.charCodeAt(index);
-  };
-  ascii(0, "RIFF");
-  view.setUint32(4, 36 + samples.length * 2, true);
-  ascii(8, "WAVEfmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, rate, true);
-  view.setUint32(28, rate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  ascii(36, "data");
-  view.setUint32(40, samples.length * 2, true);
-  samples.forEach((sample, index) => {
-    const value = Math.max(-1, Math.min(1, sample));
-    view.setInt16(44 + index * 2, value < 0 ? Math.round(value * 32768) : Math.round(value * 32767), true);
-  });
-  return bytes;
-}
-function base64Of(bytes) {
-  let text = "";
-  for (let index = 0; index < bytes.length; index += 32768) text += String.fromCharCode(...bytes.subarray(index, index + 32768));
-  return btoa(text);
-}
-var captureError = (kind, cause) => Object.assign(new Error(kind), { kind, cause });
-async function openCapture() {
-  const devices = navigator.mediaDevices;
-  if (!devices?.getUserMedia || typeof MediaRecorder === "undefined") throw captureError("unavailable");
-  let stream;
-  try {
-    stream = await devices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-  } catch (error) {
-    throw captureError(error?.name === "NotAllowedError" ? "blocked" : "failed", error);
-  }
-  const audio = new AudioContext();
-  const analyser = audio.createAnalyser();
-  analyser.fftSize = 512;
-  audio.createMediaStreamSource(stream).connect(analyser);
-  const frame = new Float32Array(analyser.fftSize);
-  const recorder = new MediaRecorder(stream);
-  const chunks = [];
-  recorder.ondataavailable = (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  };
-  recorder.start();
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    if (recorder.state !== "inactive") recorder.stop();
-    stream.getTracks().forEach((track) => track.stop());
-    void audio.close().catch(() => {
-    });
-  };
-  return {
-    level() {
-      if (closed) return 0;
-      analyser.getFloatTimeDomainData(frame);
-      let sum = 0;
-      for (const sample of frame) sum += sample * sample;
-      return Math.min(1, Math.sqrt(sum / frame.length) * 4);
-    },
-    cancel: close,
-    async finish(maxSeconds) {
-      if (closed || recorder.state === "inactive") {
-        close();
-        return null;
-      }
-      try {
-        await new Promise((resolve2) => {
-          recorder.onstop = resolve2;
-          recorder.stop();
-        });
-        stream.getTracks().forEach((track) => track.stop());
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-        if (blob.size === 0) return null;
-        const decoded = await audio.decodeAudioData(await blob.arrayBuffer());
-        const length = Math.max(1, Math.floor(Math.min(decoded.duration, maxSeconds) * 16e3));
-        const offline = new OfflineAudioContext(1, length, 16e3);
-        const source = offline.createBufferSource();
-        source.buffer = decoded;
-        source.connect(offline.destination);
-        source.start();
-        return waveBytes((await offline.startRendering()).getChannelData(0));
-      } finally {
-        close();
-      }
-    }
-  };
-}
-async function transcribeWave(speech, catalog, wave, signal) {
-  if (wave.byteLength > catalog.maxAudioBytes) throw captureError("too-long");
-  const result = await speech.transcribe({ audioBase64: base64Of(wave), ...catalog.selection }, signal);
-  if (!result?.ok) throw Object.assign(new Error(result?.error?.message ?? "Transcription failed"), { kind: "service" });
-  return String(result.value?.text ?? "").trim();
-}
-function closingReplyText(chat, turn) {
-  const location2 = chat?.timeline?.turns?.get(turn);
-  if (location2 === void 0) return void 0;
-  const closing = location2.data?.get("turn-tail")?.closing;
-  if (closing === void 0) return void 0;
-  if (closing === null) return "";
-  return (closing.blocks ?? []).filter((block) => block.kind === "text" && block.text.trim() !== "").map((block) => block.text).join("\n\n");
-}
-function turnDetector({ loud = 0.12, quiet = 0.06, quietMs = 1200 } = {}) {
-  let spokeAt = 0;
-  let quietSince = 0;
-  return (level, now) => {
-    if (level >= loud) {
-      spokeAt ||= now;
-      quietSince = 0;
-      return "speech";
-    }
-    if (!spokeAt) return "waiting";
-    if (level < quiet) quietSince ||= now;
-    return quietSince && now - quietSince >= quietMs ? "done" : "speech";
-  };
-}
-
 // src/client/surface.js
 function groupsFor({ mode, plain = false }) {
   return { shell: mode === "bot", conversation: mode === "bot" && !plain };
@@ -24088,7 +24159,7 @@ function failureText2(code, { name, provider, status }) {
     case "SERVER":
       return t("The model service failed.");
     case "INTERRUPTED":
-      return t("DeepSeek Harness stopped before this turn finished.");
+      return t("DS Bot stopped before this turn finished.");
     default:
       return knownFailure(code) ?? t("This turn failed.");
   }
@@ -24366,14 +24437,14 @@ function CommandPalette({ start, token, roster, actions, useSessions }) {
     }))
   ];
   if (people.length) sections.push([t("Bots"), people]);
-  const agents = (roster.agents ?? []).filter(() => matchesName("DSH Agent")).map((agent) => ({
+  const agents = (roster.agents ?? []).filter(() => matchesName("Agent")).map((agent) => ({
     key: agent.id,
     avatar: (0, import_react54.createElement)("span", { className: "bt-palette-agent" }, (0, import_react54.createElement)(FishLogo, { size: 18 })),
-    title: "DSH Agent",
-    subtitle: t("Plain dsh session"),
+    title: "Agent",
+    subtitle: t("Plain agent session"),
     run: () => actions.openAgent(agent.id)
   }));
-  if (agents.length) sections.push(["DSH Agent", agents]);
+  if (agents.length) sections.push(["Agent", agents]);
   const messages = JSON.parse(found).map(([id, turn, snippet]) => {
     const bot = roster.byId[id];
     const room2 = roster.roomsById[id];
@@ -24605,7 +24676,7 @@ function NewChat({ mode, sectionId = null, paneLeft, roster, actions }) {
       inputRef.current?.focus();
     } });
     if ((roster.agents ?? []).length === 0 && actions.addAgent) {
-      options.push({ key: "agent", icon: (0, import_react55.createElement)(FishLogo, { size: 16 }), label: t("Add DSH Agent"), run: () => run2(async () => {
+      options.push({ key: "agent", icon: (0, import_react55.createElement)(FishLogo, { size: 16 }), label: t("Add Agent"), run: () => run2(async () => {
         await actions.addAgent();
         close();
       }) });
@@ -24876,6 +24947,23 @@ function watchReply(read, watch, consume) {
     off();
   };
 }
+function createTranscriptionControl() {
+  let active;
+  return {
+    run(task) {
+      const controller = new AbortController();
+      active?.abort(new Error("Speech transcription replaced"));
+      active = controller;
+      return Promise.resolve().then(() => task(controller.signal)).finally(() => {
+        if (active === controller) active = void 0;
+      });
+    },
+    cancel(reason = new Error("Speech transcription cancelled")) {
+      active?.abort(reason);
+      active = void 0;
+    }
+  };
+}
 function useMicLevel(enabled) {
   const [level, setLevel] = (0, import_react57.useState)(0);
   (0, import_react57.useEffect)(() => {
@@ -24937,11 +25025,14 @@ function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, useSessi
   const [serviceLevel, setServiceLevel] = (0, import_react57.useState)(0);
   const [cycle, setCycle] = (0, import_react57.useState)(0);
   const waiting = (0, import_react57.useRef)(null);
+  const transcription = (0, import_react57.useRef)(null);
+  transcription.current ??= createTranscriptionControl();
   const reply = (0, import_react57.useRef)(lastReply);
   reply.current = lastReply;
   const turn = (0, import_react57.useRef)(0);
   const close = () => {
     turn.current += 1;
+    transcription.current.cancel();
     window.speechSynthesis?.cancel();
     actions.closeVoice();
   };
@@ -25000,7 +25091,7 @@ function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, useSessi
       setPhase("transcribing");
       try {
         const wave = await current.finish(catalog.maxDurationSeconds);
-        const text = wave ? await transcribeWave(speech, catalog, wave, new AbortController().signal) : "";
+        const text = wave ? await transcription.current.run((signal) => transcribeWave(speech, catalog, wave, signal)) : "";
         if (turn.current !== own) return;
         if (text) submit(text);
         else setPhase("listening");
@@ -25084,7 +25175,10 @@ function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, useSessi
       }
     );
   }, [phase, running, lastReply]);
-  (0, import_react57.useEffect)(() => () => window.speechSynthesis?.cancel(), []);
+  (0, import_react57.useEffect)(() => () => {
+    transcription.current.cancel();
+    window.speechSynthesis?.cancel();
+  }, []);
   const micLevel = useMicLevel(!speech && phase === "listening" && dictation.listening);
   const level = speech ? serviceLevel : micLevel;
   const markState = phase === "thinking" || phase === "transcribing" ? "thinking" : phase === "speaking" ? "sending" : "idle";
@@ -25095,6 +25189,7 @@ function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, useSessi
       return;
     }
     turn.current += 1;
+    transcription.current.cancel();
     window.speechSynthesis?.cancel();
     setPhase("paused");
   };
@@ -25140,6 +25235,7 @@ function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, useSessi
       return;
     }
     turn.current += 1;
+    transcription.current.cancel();
     setPhase("preparing");
     void Promise.resolve(openSetup.prepare()).then((started) => {
       if (started === false) {
@@ -25469,7 +25565,7 @@ function AgentMenu({ menu, roster, actions, leaving }) {
     ],
     sectionMoveItems(agent, roster, actions),
     [
-      [t("Remove DSH Agent"), TrashIcon, () => actions.removeAgent(agent.id), true]
+      [t("Remove Agent"), TrashIcon, () => actions.removeAgent(agent.id), true]
     ]
   ].filter((group) => group.length > 0) : [
     [
@@ -25481,7 +25577,7 @@ function AgentMenu({ menu, roster, actions, leaving }) {
   ];
   return (0, import_react58.createElement)(
     "div",
-    { ref, className: "bt-menu", role: "menu", "aria-label": menu.kind === "agent" ? "DSH Agent" : t("Session actions"), style: place, "data-leaving": leaving || void 0 },
+    { ref, className: "bt-menu", role: "menu", "aria-label": menu.kind === "agent" ? "Agent" : t("Session actions"), style: place, "data-leaving": leaving || void 0 },
     groups.map((group, index) => (0, import_react58.createElement)(
       import_react58.Fragment,
       { key: index },

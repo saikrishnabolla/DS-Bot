@@ -8,6 +8,7 @@ node_modules/
 /app/dist-next/
 /app/build/runtime/
 /app/build/runtime-cache/
+/app/build/preload.cjs
 
 # A DeepSeek Harness checkout for the tests and the test bench.
 /deepseek-harness/

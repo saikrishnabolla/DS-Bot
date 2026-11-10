@@ -4,6 +4,7 @@ import { call } from '../../../ds-bot/src/client/api.js'
 import { sessionMention } from '../../../ds-bot/src/client/at-menu.js'
 import { Bubbles, ChatRows, Shimmer } from '../../../ds-bot/src/client/cells.js'
 import { ComposerPlus, ComposerVoice } from '../../../ds-bot/src/client/composer.js'
+import { AppAccessDock, ComputerHandoffDock } from '../../../ds-bot/src/client/computer.js'
 import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.js'
 import { sendsOnEnter } from '../../../ds-bot/src/client/enter-key.js'
 import { HandoffDock } from '../../../ds-bot/src/client/handoff-card.js'
@@ -409,6 +410,8 @@ export function Chat({ sessionId, team }) {
       h(SecretDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
       h(ConnectorDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
       h(MailDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(AppAccessDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, useComputer: hooks.useComputer, actions }),
+      h(ComputerHandoffDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, useComputer: hooks.useComputer, actions }),
       h(HandoffDock, {
         sessionId,
         useRoster: hooks.useRoster,

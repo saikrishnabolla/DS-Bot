@@ -20,7 +20,7 @@ export const call = async (endpoint, payload, signal) => {
     if (error?.name === 'AbortError') throw error
     noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: 'NETWORK' }))
     // The browser's own text ("Failed to fetch", "Load failed") does not say what failed.
-    throw markNoted(Object.assign(new Error(t('Could not reach DSH. Check that it is still running.')), { code: 'NETWORK', cause: error }))
+    throw markNoted(Object.assign(new Error(t('Could not reach DS Bot. Check that it is still running.')), { code: 'NETWORK', cause: error }))
   }
   if (!response.ok) {
     const error = Object.assign(new Error(hostText(`HTTP ${response.status}`)), { code: `HTTP_${response.status}` })

@@ -19,7 +19,7 @@ const team = () => ({
     writer: { id: 'writer', sessionId: 'writer', name: 'Writer', role: 'Write', instructions: '', createdAt: 2 },
   },
   rooms: { room: { id: 'room', name: 'Desk', members: ['chief', 'writer'], sessions: { writer: 'room-writer' }, admin: 'chief', mode: 'everyone' } },
-  agents: { dsh: { id: 'dsh', name: 'DSH Agent', sessions: ['plain'], createdAt: 3 } },
+  agents: { dsh: { id: 'dsh', name: 'Agent', sessions: ['plain'], createdAt: 3 } },
   exchanges: [],
   exchangeTurns: {},
   questions: {},

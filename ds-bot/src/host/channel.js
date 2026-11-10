@@ -157,9 +157,9 @@ export function install(rt) {
     // Each Bot's side chats, in creation order. The answers never join the
     // model-visible history; the side panel reads them here.
     sideChats: rt.sideView?.() ?? {},
-    // The team's DSH Agent (at most one): plain dsh Sessions, not Bots.
+    // The team's plain Agent (at most one): ordinary Sessions, not Bots.
     agents: Object.values(state.agents),
-    // Sidebar sections that group Bots, group chats and the DSH Agent by workflow.
+    // Sidebar sections that group Bots, group chats and the Agent by workflow.
     sections: state.sections ?? [],
     // Key names and who may use them; values never leave the host.
     secrets: rt.secretsView(),

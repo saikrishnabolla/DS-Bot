@@ -23,7 +23,7 @@ export function ProvidersPage({ actions, run, Section, advanced = null }) {
   const apply = promise => run(translated(promise).then((next) => { if (next?.providers) setView(next) }))
   useEffect(() => { void apply(actions.providers()) }, [])
   if (view === null) return null
-  if (!view.available) return h('p', { className: 'bt-set-hint' }, t('This DSH cannot set up model providers.'))
+  if (!view.available) return h('p', { className: 'bt-set-hint' }, t('This host cannot set up model providers.'))
   return [
     h(Section, { key: 'list', title: t('Model providers · {count}', { count: view.providers.length }) },
       view.providers.map(provider => h(ProviderRow, {

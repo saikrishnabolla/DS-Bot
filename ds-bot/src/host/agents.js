@@ -1,4 +1,4 @@
-// The DSH Agent: a team's one plain dsh entry, listed beside the Bots but not one of
+// The Agent: a team's one plain session entry, listed beside the Bots but not one of
 // them. Its Sessions are ordinary root Sessions in the DS Bot workspace, so they get
 // the whole dsh conversation surface and none of the team tools.
 import { randomUUID } from 'node:crypto'
@@ -7,7 +7,7 @@ import { AGENT_NAME, AGENT_SESSION_TITLE_MAX } from './constants.js'
 export function install(rt) {
   const { ctx, state } = rt
 
-  /** @type {Map<string, string>} Session id -> DSH Agent record id. */
+  /** @type {Map<string, string>} Session id -> Agent record id. */
   const sessionIndex = new Map()
   // store.js calls this from indexSessions after every adopt and save.
   rt.indexAgents = () => {
@@ -16,7 +16,7 @@ export function install(rt) {
       for (const sessionId of agent.sessions ?? []) sessionIndex.set(sessionId, agent.id)
     }
   }
-  // The DSH Agent a Session belongs to; Bot and group Sessions get undefined.
+  // The Agent a Session belongs to; Bot and group Sessions get undefined.
   const agentOf = sessionId => state.agents[sessionIndex.get(sessionId)]
 
   const writeCheck = () => {
@@ -25,7 +25,7 @@ export function install(rt) {
   }
   const record = (agentId) => {
     const agent = rt.own(state.agents, agentId)
-    if (agent === undefined) throw new Error('Unknown DSH Agent')
+    if (agent === undefined) throw new Error('Unknown Agent')
     return agent
   }
 
@@ -43,7 +43,7 @@ export function install(rt) {
     return sessionId
   }
 
-  // A root Session the user opened from a DSH Agent page (the hero's workspace
+  // A root Session the user opened from an Agent page (the hero's workspace
   // picker or a fork) is adopted into the same Agent: it keeps dsh's surface and
   // the team tools stay hidden.
   async function adoptAgentSession(agentId, sessionId) {
@@ -61,7 +61,7 @@ export function install(rt) {
 
   async function addAgent() {
     writeCheck()
-    if (Object.keys(state.agents).length > 0) throw new Error('The team already has a DSH Agent')
+    if (Object.keys(state.agents).length > 0) throw new Error('The team already has an Agent')
     const agent = { id: randomUUID(), name: AGENT_NAME, sessions: [], createdAt: Date.now() }
     state.agents[agent.id] = agent
     try {
@@ -82,7 +82,7 @@ export function install(rt) {
   async function archiveAgentSession(agentId, sessionId) {
     writeCheck()
     const agent = record(agentId)
-    if (!agent.sessions.includes(sessionId)) throw new Error('Session does not belong to the DSH Agent')
+    if (!agent.sessions.includes(sessionId)) throw new Error('Session does not belong to the Agent')
     // Archive first: the Session leaves the Agent only once it is actually gone,
     // so a failed archive stays retryable and keeps its tool restriction.
     await ctx.workspaceRegistry.archiveSession(sessionId)
@@ -93,7 +93,7 @@ export function install(rt) {
   async function renameAgentSession(agentId, sessionId, title) {
     writeCheck()
     const agent = record(agentId)
-    if (!agent.sessions.includes(sessionId)) throw new Error('Session does not belong to the DSH Agent')
+    if (!agent.sessions.includes(sessionId)) throw new Error('Session does not belong to the Agent')
     const clean = String(title ?? '').trim()
     if (clean === '') throw new Error('A session needs a title')
     const agent_ = await rt.resolveAgent(sessionId)

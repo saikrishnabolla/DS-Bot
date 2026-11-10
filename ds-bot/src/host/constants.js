@@ -60,9 +60,9 @@ export const ROOM_MAX_MEMBERS = 12
 export const SECTION_NAME_MAX = 32
 export const SECTION_COLORS = ['blue', 'orange', 'green', 'violet', 'rose']
 
-// A team's one DSH Agent: a plain dsh entry in the sidebar, not a Bot. Its Sessions
+// A team's one plain Agent entry in the sidebar, not a Bot. Its Sessions
 // are ordinary root Sessions, so the team tools must not be offered to them.
-export const AGENT_NAME = 'DSH Agent'
+export const AGENT_NAME = 'Agent'
 export const AGENT_SESSION_TITLE_MAX = 80
 // Every tool this plugin defines for Bot Sessions; tools.js registers them in
 // each Bot session's own scope. `read_browser` only exists in the Desktop

@@ -115,7 +115,7 @@ export function install(rt) {
     for (const key of Object.keys(state)) delete state[key]
     Object.assign(state, JSON.parse(EMPTY), parsed ?? {})
     state.prefs ??= {}
-    // Teams saved before the DSH Agent existed carry no `agents`; corrupt values reset.
+    // Teams saved before the Agent entry existed carry no `agents`; corrupt values reset.
     if (state.agents === null || typeof state.agents !== 'object' || Array.isArray(state.agents)) state.agents = {}
     // `computer` is the computer-use switch; absent or corrupt means off.
     if (state.computer === null || typeof state.computer !== 'object' || Array.isArray(state.computer)) state.computer = {}
@@ -503,7 +503,7 @@ export function install(rt) {
       }
       for (const [botId, sessionId] of Object.entries(room.sessions ?? {})) groupOwners.set(sessionId, { botId, roomId: room.id })
     }
-    // The agents module owns the DSH Agent session index, and tools.js re-syncs
+    // The agents module owns the Agent session index, and tools.js re-syncs
     // the scoped tools with this ownership (drops Sessions that left, scopes
     // live Agents that joined); both install after this.
     rt.indexAgents?.()

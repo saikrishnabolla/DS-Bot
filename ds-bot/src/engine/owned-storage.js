@@ -210,5 +210,20 @@ export async function installOwnedStorage(context, { dataDir }) {
     await saveMetadata(metadataPath, metadata)
   })
 
-  context.provide('attachments', new OwnedAttachments(join(dataDir, 'attachments')))
+  const attachments = new OwnedAttachments(join(dataDir, 'attachments'))
+  context.provide('attachments', attachments)
+  context.provide('fileUploads', {
+    async uploadStream({ data, name, mediaType }, signal) {
+      const chunks = []
+      let bytes = 0
+      for await (const chunk of data) {
+        signal?.throwIfAborted()
+        const value = bytesOf(chunk)
+        bytes += value.byteLength
+        if (bytes > 32 * 1024 * 1024) throw new Error('Attachment exceeds the 32 MB limit')
+        chunks.push(value)
+      }
+      return { receiptId: await attachments.saveFile({ data: Buffer.concat(chunks), name, mediaType }) }
+    },
+  })
 }

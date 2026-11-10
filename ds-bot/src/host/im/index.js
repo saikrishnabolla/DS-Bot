@@ -141,7 +141,7 @@ export function install(rt) {
       const uploads = ctx.get?.('fileUploads')
       if (typeof uploads?.uploadStream !== 'function') throw new Error('no upload service')
       const data = file.data?.[Symbol.asyncIterator] !== undefined ? file.data : (async function* () { yield file.data })()
-      const value = await uploads.uploadStream({ sessionId, data, name: file.name })
+      const value = await uploads.uploadStream({ sessionId, data, name: file.name, mediaType: file.mediaType ?? file.type })
       return value.receiptId
     },
   })

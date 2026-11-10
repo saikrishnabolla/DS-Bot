@@ -59,7 +59,7 @@ function start(home, { listedExtra, logsExtra, subagentsExtra } = {}) {
       b2: { id: 'b2', sessionId: 'b2', name: 'Writer', instructions: '', createdAt: 2 },
     },
     rooms: { r1: { id: 'r1', name: '研发群', named: true, members: ['b1', 'b2'], admin: 'b1', mode: 'everyone', notice: '', sessions: { b1: 's-g1' }, log: [], createdAt: 3 } },
-    agents: { a1: { id: 'a1', name: 'DSH Agent', sessions: ['s-a1'], createdAt: 4 } },
+    agents: { a1: { id: 'a1', name: 'Agent', sessions: ['s-a1'], createdAt: 4 } },
     exchanges: [],
     exchangeTurns: {},
     questions: {},
@@ -151,7 +151,7 @@ test('the usage view counts every Session under its owner, by hour in the asked 
   const view = (await call('usage', { timeZone: 'Asia/Shanghai' })).value
   // Chief: both parts of its own chat and its subagent; its group Session counts as group use.
   // The DSH Agent's Sessions count beside the Bots, not with the other sessions.
-  assert.deepEqual(totals(view), { 'Chief/chat': 160 + 220 + 10, 'Chief/group': 330, 'DSH Agent/chat': 77, 'other/chat': 44 })
+  assert.deepEqual(totals(view), { 'Chief/chat': 160 + 220 + 10, 'Chief/group': 330, 'Agent/chat': 77, 'other/chat': 44 })
   assert.deepEqual(view.rows.map(row => row[0]), ['1970-01-01 08', '1970-01-01 09', '1970-01-01 09', '1970-01-01 09', '1970-01-01 10'])
   assert.deepEqual(view.models.map(model => model.key).sort(), ['deepseek/v4-flash', 'deepseek/v4-pro', 'kimi/k3'])
   assert.equal(view.scanning, false)

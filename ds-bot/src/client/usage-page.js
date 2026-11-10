@@ -123,7 +123,7 @@ function ownerFace(owner, roster) {
   }
   if (owner.kind === 'agent') {
     return {
-      kind: 'agent', name: owner.name || 'DSH Agent', sub: owner.deleted ? t('Deleted') : '',
+      kind: 'agent', name: owner.name || 'Agent', sub: owner.deleted ? t('Deleted') : '',
       paint: 'var(--bt-us-rest)', glyph: size => glyphBox(size, ChatsIcon),
     }
   }
@@ -443,7 +443,7 @@ export function UsagePage({ roster, actions, focusId }) {
     })
     const ownerAt = focus?.kind === 'owner' ? view.owners.findIndex(owner => owner.key === focus.key) : -1
     const modelAt = focus?.kind === 'model' ? view.models.findIndex(model => model.key === focus.key) : -1
-    // The DSH Agent stacks with the Bots; only rooms and outside sessions lump into the rest.
+    // The Agent stacks with the Bots; only rooms and outside sessions lump into the rest.
     const isBot = at => ['bot', 'agent'].includes(view.owners[at]?.kind)
     const all = summarize(view, range, undefined, row => (by === 'bot' ? (isBot(row[OWNER]) ? `o${row[OWNER]}` : 'rest') : `m${row[MODEL]}`))
     const keep = ownerAt >= 0 ? row => row[OWNER] === ownerAt : modelAt >= 0 ? row => row[MODEL] === modelAt : () => true

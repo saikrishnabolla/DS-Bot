@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 // voice.js imports react; the client tests bundle it and stub react, as the
 // other client tests do.
 const bundle = await build({
-  stdin: { contents: "export { watchReply } from './src/client/voice.js'", resolveDir: dirname(dirname(fileURLToPath(import.meta.url))) },
+  stdin: { contents: "export { createTranscriptionControl, watchReply } from './src/client/voice.js'", resolveDir: dirname(dirname(fileURLToPath(import.meta.url))) },
   bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'silent',
   external: ['react', 'react-dom'],
 })
@@ -22,8 +22,21 @@ const platform = {
   },
   'react-dom': { createPortal: node => node },
 }
-runInNewContext(bundle.outputFiles[0].text, { module, exports: module.exports, require: name => platform[name] ?? {} })
-const { watchReply } = module.exports
+runInNewContext(bundle.outputFiles[0].text, { module, exports: module.exports, require: name => platform[name] ?? {}, AbortController })
+const { createTranscriptionControl, watchReply } = module.exports
+
+test('leaving voice mode aborts the active transcription', async () => {
+  const control = createTranscriptionControl()
+  let signal
+  const pending = control.run(active => {
+    signal = active
+    return new Promise((resolve, reject) => active.addEventListener('abort', () => reject(active.reason), { once: true }))
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  control.cancel(new Error('voice mode closed'))
+  await assert.rejects(pending, /voice mode closed/u)
+  assert.equal(signal.aborted, true)
+})
 
 test('a reply published synchronously during subscribe is spoken once', () => {
   const consumed = []

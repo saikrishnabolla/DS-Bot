@@ -43,7 +43,7 @@ export function failureText(code, { name, provider, status }) {
     case 'TIMEOUT': return t('Could not reach the model service.')
     case 'RATE_LIMIT': return t('Too many requests. Wait a moment, then try again.')
     case 'SERVER': return t('The model service failed.')
-    case 'INTERRUPTED': return t('DeepSeek Harness stopped before this turn finished.')
+    case 'INTERRUPTED': return t('DS Bot stopped before this turn finished.')
     default: return knownFailure(code) ?? t('This turn failed.')
   }
 }

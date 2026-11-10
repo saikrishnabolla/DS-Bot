@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { Cron, RRule, canonicalizeTimeZone, resolveLocalInstant } from '@deepseek-ai/dsh-util-time'
 import { ConversationBusy, defineDoc, defineExtension, defineTask } from '@earendil-works/pi-durable'
+import { Cron, RRule, canonicalizeTimeZone, resolveLocalInstant } from './recurrence.js'
 
 const INPUT_KIND = 'ds-bot.user'
 const TASK_KIND = 'ds-bot.schedule'

@@ -88,7 +88,7 @@ export function apply(ctx) {
   // Whether DS Bot holds the settings seat; Overlays draws the Settings dialog while it does not.
   const settingsShellHeld = createSource(false)
   let settingsShell = null
-  // DSH Agent Session ids from the last pull, so a reload already knows the main
+  // Agent Session ids from the last pull, so a reload already knows the main
   // view is a plain Session before the team answers.
   let agentSessionCache = new Set()
   try { agentSessionCache = new Set(JSON.parse(localStorage.getItem(STORAGE.agentSessions) ?? '[]')) } catch { agentSessionCache = new Set() }
@@ -105,7 +105,7 @@ export function apply(ctx) {
   // A navigation this plugin started: the surface effect trusts the id it lands on.
   let expected = null
   const setPlain = (plain) => surface.set(state => (state.plain === plain ? state : { ...state, plain }))
-  // A DSH Agent Session shows the plain conversation: the Bot details and browser
+  // An Agent Session shows the plain conversation: the Bot details and browser
   // panels would follow it and report it is not on the team, so they close.
   const dropPanels = () => ui.set(state => (state.details || state.renaming ? { ...state, details: null, view: 'details', renaming: false, tab: null } : state))
   // A Bot's chat spans several parts, so when it was last left is kept per Bot.
@@ -464,7 +464,7 @@ export function apply(ctx) {
     // or the click appears to do nothing.
     isAgentSession: id => isAgentSessionId(id),
     openSession: (id) => {
-      // A DSH Agent Session id lands on the plain surface, not the Bot skin.
+      // An Agent Session id lands on the plain surface, not the Bot skin.
       if (isAgentSessionId(id)) return actions.openAgentSession(id)
       ui.set(state => (state.newChat || state.exchange || state.menu || state.palette ? { ...state, newChat: null, exchange: null, menu: null, palette: null } : state))
       setPlain(false)
@@ -1114,10 +1114,10 @@ export function apply(ctx) {
   ctx.effect(() => installCompiledStyles(COMPUTER_CSS, 'computer'), 'ds-bot: computer styles')
   shadow('sidebar.footer.action', { id: 'bot-return', order: -300, inject: face }, BotReturn)
 
-  // The main view decides `plain`: a DSH Agent Session keeps the Bot shell but
+  // The main view decides `plain`: an Agent Session keeps the Bot shell but
   // withdraws the conversation replacements, so the native dsh page shows. A jump
   // this plugin did not start — the hero's workspace picker or a fork — opens an
-  // unowned Session; coming from a DSH Agent Session it is adopted into that Agent.
+  // unowned Session; coming from an Agent Session it is adopted into that Agent.
   ctx.effect(() => {
     let previous
     const sync = () => {

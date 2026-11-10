@@ -7,6 +7,8 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, session, shell as electronShell, systemPreferences, Tray, WebContentsView } from 'electron'
 import { createComputerIndicator, indicatorHtml } from './computer-indicator.mjs'
 import { createComputerCursor } from './computer-cursor.mjs'
+import { ComputerDriverHost, packagedComputerModule } from './computer-driver.mjs'
+import { sendComputerResponse } from './computer-remote.mjs'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { release } from 'node:os'
@@ -21,6 +23,8 @@ import { captureStdio, LogFile } from './logs.mjs'
 import { Pickers } from './picker-host.mjs'
 import { currentRootOf, driveOf, formatBytes, freeSpace, isEmptyTree, pickFrom, placeOf, rootOf, runningLow } from './place.mjs'
 import { createShell, SHELL_TEXT } from './shell.mjs'
+import { SpeechHost } from './speech/host.mjs'
+import { SpeechRequests } from './speech/requests.mjs'
 import { readStartFrame, writeStartFrame } from './start-frame.mjs'
 import { explainOf, StartWindow } from './start-window.mjs'
 import { langOf } from './start/text.mjs'
@@ -47,6 +51,8 @@ const IPC = {
   appUpdateInstall: 'ds-bot:app-update-install', appUpdateOpen: 'ds-bot:app-update-open',
   appUpdateChanged: 'ds-bot:app-update-changed',
   idleSeconds: 'ds-bot:idle-seconds', computer: 'ds-bot:computer', computerAction: 'ds-bot:computer-action', computerCursor: 'ds-bot:computer-cursor',
+  speechCatalog: 'ds-bot:speech-catalog', speechPrepare: 'ds-bot:speech-prepare',
+  speechTranscribe: 'ds-bot:speech-transcribe', speechCancel: 'ds-bot:speech-cancel',
 }
 // A cookie export larger than this is not a cookie export.
 const IMPORT_FILE_MAX = 32 * 1024 * 1024
@@ -62,6 +68,7 @@ const SHORT_DRIVE_BYTES = 5e9
 
 const here = dirname(fileURLToPath(import.meta.url))
 const assets = join(here, '..', 'assets')
+const windowPreload = join(here, '..', 'build', 'preload.cjs')
 // Drawn by scripts/icon.mjs. Windows takes the .ico for its several sizes.
 const iconFile = join(assets, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
 // The tray icon of this platform: Windows takes the .ico, macOS the template and its @2x,
@@ -131,6 +138,20 @@ const copyAbort = new AbortController()
 let browserGuests
 let botViews
 let cookieImports
+let speechHost
+const computerModule = (file, packageName) => app.isPackaged
+  ? import(packagedComputerModule(process.resourcesPath, file))
+  : import(packageName)
+const computerDriver = new ComputerDriverHost({
+  loadDriver: () => computerModule('index.js', '@trycua/cua-driver'),
+  loadPermissions: () => computerModule('electron.js', '@trycua/cua-driver/electron'),
+  openExternal: url => electronShell.openExternal(url),
+})
+const computerRequests = new Map()
+const cancelComputerRequests = reason => {
+  for (const controller of computerRequests.values()) controller.abort(reason)
+  computerRequests.clear()
+}
 // The app's own folder and file picker, on the page of the window that asks (picker-host.mjs).
 const pickers = new Pickers({ ipcMain, getPath: name => app.getPath(name) })
 
@@ -186,7 +207,7 @@ if (canonical !== undefined) {
     electron: { BrowserWindow, ipcMain, screen, shell: electronShell, clipboard, nativeTheme, systemPreferences },
     // 〔保存日志…〕 on the start window's failure cards.
     saveAs: (win, name) => askPicker(win, { mode: 'save', title: tx('dialog.saveLog'), start: knownFolder('desktop'), name }),
-    page: join(here, 'start', 'start.html'), preload: join(here, 'preload.cjs'), icon: iconFile, material, devTools: !app.isPackaged,
+    page: join(here, 'start', 'start.html'), preload: windowPreload, icon: iconFile, material, devTools: !app.isPackaged,
     css: readFileSync(join(here, 'page-card.css'), 'utf8'),
     // On Windows the locale is known only once the app is ready.
     lang: () => langOf(app.getLocale()), motion: readStartFrame(frameFile).motion,
@@ -228,7 +249,7 @@ if (canonical !== undefined) {
     }
     // The app is on its way out: the window may close for good.
     shell.beginQuit()
-    if (stopped || host === undefined) return
+    if (stopped || (host === undefined && speechHost === undefined)) return
     event.preventDefault()
     // The Host is already stopping: the quit follows it.
     if (stopping) { void (hostStop ?? Promise.resolve()).then(() => { app.quit() }); return }
@@ -239,8 +260,21 @@ if (canonical !== undefined) {
 
 function stopHost() {
   stopping = true
-  hostStop ??= (host?.stop() ?? Promise.resolve()).catch((error) => { console.error(error) }).finally(() => { stopped = true })
+  cancelComputerRequests(new Error('DS Bot is stopping'))
+  hostStop ??= Promise.allSettled([host?.stop(), stopSpeech(), computerDriver.stop()]).then((results) => {
+    for (const result of results) if (result.status === 'rejected') console.error(result.reason)
+  }).finally(() => { stopped = true })
   return hostStop
+}
+
+function speechForPlaces() {
+  const root = join(places?.dataDir ?? app.getPath('userData'), 'speech')
+  speechHost ??= new SpeechHost({ options: { log: logs } })
+  return speechHost.use(root)
+}
+
+function stopSpeech() {
+  return speechHost?.stop() ?? Promise.resolve()
 }
 
 // A throwaway run (DS_BOT_HOME) asks nothing and shows what a later start shows.
@@ -548,7 +582,7 @@ function newHost() {
     // A packaged `here` is inside app.asar, which cannot be an operating-system working directory.
     cwd: places.dataDir,
     env: { ...process.env, DS_BOT_DATA_DIR: places.dataDir, DS_BOT_PORT: String(port), DS_BOT_APP: '1', ...(app.isPackaged && process.platform === 'darwin' ? { DS_BOT_COMPUTER_HELPER_HOME: join(app.getPath('userData'), 'computer-use') } : {}), ...(places.workspace ? { DS_BOT_WORKSPACE: places.workspace } : {}) },
-    onFailure: (error) => { if (mine === attempt) void fail(error) },
+    onFailure: (error) => { cancelComputerRequests(error); void computerDriver.stop(); if (mine === attempt) void fail(error) },
     output: hostOutput,
   })
 }
@@ -561,7 +595,25 @@ async function startEngine(mine) {
     updates?.subscribe((state) => { mainWindow?.webContents.send(IPC.appUpdateChanged, state) })
   }
   host = newHost()
-  host.onMessage(message => {
+  const activeHost = host
+  activeHost.onMessage(message => {
+    if (message?.type === 'ds-bot:computer-cancel' && typeof message.id === 'string') {
+      computerRequests.get(message.id)?.abort(new Error('Computer action cancelled'))
+      return
+    }
+    if (message?.type === 'ds-bot:computer-request' && typeof message.id === 'string' && typeof message.action === 'string') {
+      const controller = new AbortController()
+      computerRequests.set(message.id, controller)
+      void computerDriver.handle(message.action, message.payload, { signal: controller.signal }).then(value => {
+        sendComputerResponse(activeHost, { type: 'ds-bot:computer-response', id: message.id, value })
+      }).catch(error => {
+        sendComputerResponse(activeHost, { type: 'ds-bot:computer-response', id: message.id,
+          error: { message: error instanceof Error ? error.message : String(error), code: error?.code, status: error?.status } })
+      }).finally(() => {
+        if (computerRequests.get(message.id) === controller) computerRequests.delete(message.id)
+      })
+      return
+    }
     if (message?.type !== 'ds-bot:browser-endpoint' || typeof message.id !== 'string' || !isBotId(message.botId)) return
     const downloadRoots = message.downloadRoots
     if (!Array.isArray(downloadRoots) || downloadRoots.length > 4 || !Array.from(downloadRoots).every(root => typeof root === 'string' && isAbsolute(root))) {
@@ -572,7 +624,7 @@ async function startEngine(mine) {
       host?.send({ type: 'ds-bot:browser-endpoint-response', id: message.id, url })
     }).catch(() => host?.send({ type: 'ds-bot:browser-endpoint-response', id: message.id, error: 'Could not create the browser endpoint.' }))
   })
-  const engine = await host.start()
+  const engine = await activeHost.start()
   if (mine === attempt) startWindow.card(undefined)
   return engine
 }
@@ -596,12 +648,42 @@ function handleIpc() {
     shell.setComputer(list)
   })
   ipcMain.handle(IPC.idleSeconds, (event) => (fromWindow(event) ? powerMonitor.getSystemIdleTime() : 0))
+  const speechRequests = new SpeechRequests()
+  ipcMain.handle(IPC.speechCatalog, async (event) => {
+    assertWindow(event)
+    try { return { ok: true, value: (await speechForPlaces()).catalog() } }
+    catch (error) { return { ok: false, error: { message: error instanceof Error ? error.message : String(error) } } }
+  })
+  ipcMain.handle(IPC.speechPrepare, async (event, providerId) => {
+    assertWindow(event)
+    try { return (await speechForPlaces()).prepare(String(providerId)) }
+    catch (error) { return { ok: false, error: { message: error instanceof Error ? error.message : String(error) } } }
+  })
+  ipcMain.handle(IPC.speechTranscribe, async (event, id, request) => {
+    assertWindow(event)
+    const active = speechRequests.begin(event.sender, id)
+    try {
+      const service = await speechForPlaces()
+      if (request === null || typeof request !== 'object' || typeof request.audioBase64 !== 'string'
+        || typeof request.providerId !== 'string' || typeof request.language !== 'string') throw new Error('Invalid speech request')
+      if (request.audioBase64.length > Math.ceil(service.config.maxAudioBytes / 3) * 4 + 4
+        || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(request.audioBase64)) throw new Error('Invalid speech audio')
+      const audio = Buffer.from(request.audioBase64, 'base64')
+      if (audio.toString('base64') !== request.audioBase64) throw new Error('Invalid speech audio')
+      return await service.transcribe({ providerId: request.providerId, language: request.language, audio }, active.signal)
+    } catch (error) { return { ok: false, error: { message: error instanceof Error ? error.message : String(error) } } }
+    finally { active.end() }
+  })
+  ipcMain.on(IPC.speechCancel, (event, id) => {
+    if (!fromWindow(event)) return
+    speechRequests.cancel(event.sender, id)
+  })
   const computerCursor = createComputerCursor({ BrowserWindow, screen, platform: process.platform, log: logs })
   ipcMain.on(IPC.computerCursor, (event, entry) => {
     if (!fromWindow(event)) return
     void computerCursor.update(entry)
   })
-  app.on('before-quit', () => { computerIndicator.dispose(); computerCursor.dispose() })
+  app.on('before-quit', () => { computerIndicator.dispose(); computerCursor.dispose(); speechRequests.cancelAll() })
   ipcMain.on(IPC.ready, (event, report) => { if (fromWindow(event)) startWindow.ready(report) })
   // It has drawn the whale the start window hands over: the windows cross-fade.
   ipcMain.on(IPC.handoffReady, (event) => { if (fromWindow(event)) startWindow.teamReady() })
@@ -1089,7 +1171,7 @@ function createWindow() {
     // under them.
     ...frameOptions(process.platform, material, { color: sidebarFill(), symbolColor: dark ? '#f9fafb' : '#0f1115' }),
     webPreferences: {
-      preload: join(here, 'preload.cjs'), contextIsolation: true, sandbox: true, webviewTag: true,
+      preload: windowPreload, contextIsolation: true, sandbox: true, webviewTag: true,
       additionalArguments: [`--ds-bot-origin=${origin}`, ...(frameless ? [`--ds-bot-caption=${String(CAPTION_HEIGHT)}`, ...(material ? [`--ds-bot-material=${material}`] : [])] : [])],
     },
   })

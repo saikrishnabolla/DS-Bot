@@ -34,7 +34,7 @@ export function indexRoster(value) {
   for (const room of value.rooms) {
     for (const id of [room.id, room.sessionId, ...(room.ownParts ?? [])]) roomsById[id] = room
   }
-  // The DSH Agent is not a Bot: it indexes by its own id and by each Session it owns.
+  // The plain Agent is not a Bot: it indexes by its own id and by each Session it owns.
   const agentsById = {}
   const agentOf = {}
   for (const agent of value.agents ?? []) {
@@ -44,7 +44,7 @@ export function indexRoster(value) {
   return { ...value, agents: value.agents ?? [], sections: value.sections ?? [], byId, roomsById, agentsById, agentOf, ready: true }
 }
 
-// Whether a main-view Session id belongs to the team's DSH Agent: the conversation
+// Whether a main-view Session id belongs to the team's plain Agent: the conversation
 // group then stays withdrawn while the shell keeps the sidebar. Before the roster
 // arrives, the ids cached from the last pull answer.
 export function isAgentSession(roster, cache, sessionId) {

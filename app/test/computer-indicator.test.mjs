@@ -141,7 +141,7 @@ test('rows are sanitized: hex color and bounded data-url avatar only', () => {
   assert.equal(sanitizeEntry({ label: 'a', color: 'red' }).color, undefined)
   assert.equal(sanitizeEntry({ label: 'a', color: 'url(evil)' }).color, undefined)
   assert.equal(sanitizeEntry({ label: 'a', avatar: 'data:text/html;base64,aGk=' }).avatar, undefined)
-  assert.equal(sanitizeEntry({ label: 'a', avatar: 'data:image/png;base64,' + 'A'.repeat(13000) }).avatar, undefined)
+  assert.equal(sanitizeEntry({ label: 'a', avatar: 'data:image/png;base64,' + 'A'.repeat(160000) }).avatar, undefined)
   assert.equal(sanitizeEntry(null).label, '')
   const page = indicatorHtml([{ name: 'River', app: 'Notes', color: '#3b82f6', botId: 'w1' }], {})
   assert.match(page, /background:#3b82f6/)

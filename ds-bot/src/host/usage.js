@@ -314,7 +314,7 @@ export function install(rt) {
         for (const segment of segments) owners.set(segment.sessionId, memberOwner(botId))
       }
     }
-    // The DSH Agent is part of the team: its Sessions count beside the Bots, not
+    // The Agent is part of the team: its Sessions count beside the Bots, not
     // with the other sessions.
     for (const agent of Object.values(state.agents ?? {})) {
       for (const sessionId of agent.sessions ?? []) owners.set(sessionId, { owner: `agent:${agent.id}`, name: agent.name })

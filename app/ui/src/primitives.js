@@ -5,7 +5,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MENTION_ORIGIN } from '../../../ds-bot/src/client/text.js'
 
-// The DSH Agent's mark. The app has no DSH Agent, so nothing asks for it.
+// The plain Agent's mark. The standalone app does not show this entry.
 export const FishLogo = () => null
 
 const icon = path => ({ size = 16, className }) => h('svg', {

@@ -61,7 +61,7 @@ export class OwnedHost {
     this.#server = server
   }
 
-  static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry() } = {}) {
+  static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse } = {}) {
     if (typeof dataDir !== 'string' || dataDir === '') throw new TypeError('dataDir must be a directory')
     if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
     const modelRuntime = suppliedModels ?? await ModelRuntime.create({
@@ -75,7 +75,7 @@ export class OwnedHost {
     try {
       installOwnedApprovals(context, { dataDir })
       await installOwnedStorage(context, { dataDir })
-      installOwnedComputerUse(context)
+      installOwnedComputerUse(context, computerUse)
       await installOwnedSchedules(context)
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
       installModelBoundary(runtime, models)
@@ -87,6 +87,11 @@ export class OwnedHost {
       installCodingApprovals(context, runtime)
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)
+      await runtime.load()
+      if (runtime.computerEnabled?.()) {
+        await runtime.computerEndpoint('provider-retry', {})
+        runtime.syncScopedTools?.()
+      }
       context.resume()
       const attachments = context.get('attachments')
       server = await startOwnedServer({

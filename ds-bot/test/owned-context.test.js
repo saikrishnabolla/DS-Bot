@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -69,6 +69,19 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.deepEqual(after.records, page.records)
   const listed = await restarted.sessionController.list({})
   assert.equal(listed.items.some(item => item.sessionId === sessionId), true)
+})
+
+test('owned context exposes a real folder browser', async t => {
+  const { ctx, dataDir } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const picker = ctx.get('directoryPicker').capability()
+  assert.equal(picker.kind, 'browse')
+  const listing = await picker.list(dataDir)
+  const canonical = await realpath(dataDir)
+  assert.equal(listing.path, canonical)
+  assert.equal(listing.crumbs.at(-1).path, canonical)
+  assert.equal(Array.isArray(listing.entries), true)
+  assert.equal(typeof listing.home, 'string')
 })
 
 test('owned event sequences remain absolute when the Pi watch window rolls over', async t => {

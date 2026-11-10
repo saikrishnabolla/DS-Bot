@@ -66,7 +66,7 @@ test('the first model choice shows provider groups and keeps each model route', 
   assert.deepEqual(groups.map(group => nodes(group, node => node.props.className === 'bt-model-choice-provider')[0].children[0]), ['DeepSeek', 'Ollama'])
   const buttons = groups.map(group => nodes(group, node => node.type === 'button'))
   assert.deepEqual(buttons.map(list => list.map(button => button.children[0])), [['DeepSeek Flash', 'DeepSeek Pro'], ['DeepSeek Flash']])
-  assert.match(buttons[0][0].props.title, /official\/flash.*Harness default/)
+  assert.match(buttons[0][0].props.title, /official\/flash.*Host default/)
   buttons[1][0].props.onClick()
   buttons[0][0].props.onClick()
   assert.deepEqual(picked, [['chief', 'local/flash'], ['chief', 'official/flash']])

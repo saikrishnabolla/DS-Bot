@@ -133,7 +133,7 @@ export function sanitizeEntry(entry) {
   for (const key of ['botId', 'label', 'name', 'app']) if (entry[key] !== undefined) clean[key] = String(entry[key])
   if (entry.waiting === true) clean.waiting = true
   if (typeof entry.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(entry.color)) clean.color = entry.color
-  if (typeof entry.avatar === 'string' && /^data:image\/(png|jpeg|webp|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(entry.avatar) && entry.avatar.length <= 12000) clean.avatar = entry.avatar
+  if (typeof entry.avatar === 'string' && /^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(entry.avatar) && entry.avatar.length <= 160000) clean.avatar = entry.avatar
   return clean
 }
 

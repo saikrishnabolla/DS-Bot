@@ -40,6 +40,24 @@ export function watchReply(read, watch, consume) {
   return () => { consumed = true; off() }
 }
 
+export function createTranscriptionControl() {
+  let active
+  return {
+    run(task) {
+      const controller = new AbortController()
+      active?.abort(new Error('Speech transcription replaced'))
+      active = controller
+      return Promise.resolve().then(() => task(controller.signal)).finally(() => {
+        if (active === controller) active = undefined
+      })
+    },
+    cancel(reason = new Error('Speech transcription cancelled')) {
+      active?.abort(reason)
+      active = undefined
+    },
+  }
+}
+
 function useMicLevel(enabled) {
   const [level, setLevel] = useState(0)
   useEffect(() => {
@@ -98,11 +116,13 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
   const [serviceLevel, setServiceLevel] = useState(0)
   const [cycle, setCycle] = useState(0)
   const waiting = useRef(null)
+  const transcription = useRef(null)
+  transcription.current ??= createTranscriptionControl()
   const reply = useRef(lastReply)
   reply.current = lastReply
   // Bumped on pause and close, so a transcript that arrives later is dropped.
   const turn = useRef(0)
-  const close = () => { turn.current += 1; window.speechSynthesis?.cancel(); actions.closeVoice() }
+  const close = () => { turn.current += 1; transcription.current.cancel(); window.speechSynthesis?.cancel(); actions.closeVoice() }
   useEscape(close)
   const submit = (text) => {
     setHeard(text)
@@ -155,7 +175,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
       setPhase('transcribing')
       try {
         const wave = await current.finish(catalog.maxDurationSeconds)
-        const text = wave ? await transcribeWave(speech, catalog, wave, new AbortController().signal) : ''
+        const text = wave ? await transcription.current.run(signal => transcribeWave(speech, catalog, wave, signal)) : ''
         if (turn.current !== own) return
         if (text) submit(text)
         else setPhase('listening')
@@ -229,7 +249,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
         speak(text)
       })
   }, [phase, running, lastReply])
-  useEffect(() => () => window.speechSynthesis?.cancel(), [])
+  useEffect(() => () => { transcription.current.cancel(); window.speechSynthesis?.cancel() }, [])
   const micLevel = useMicLevel(!speech && phase === 'listening' && dictation.listening)
   const level = speech ? serviceLevel : micLevel
   const markState = phase === 'thinking' || phase === 'transcribing' ? 'thinking' : phase === 'speaking' ? 'sending' : 'idle'
@@ -237,6 +257,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
   const togglePause = () => {
     if (phase === 'paused') { setPhase('listening'); return }
     turn.current += 1
+    transcription.current.cancel()
     window.speechSynthesis?.cancel()
     setPhase('paused')
   }
@@ -269,6 +290,7 @@ export function VoiceMode({ sessionId, paneLeft, roster, actions, useSessions, u
   const startSetup = () => {
     if (openSetup?.navigate) { close(); openSetup.navigate(); return }
     turn.current += 1
+    transcription.current.cancel()
     setPhase('preparing')
     void Promise.resolve(openSetup.prepare()).then((started) => {
       if (started === false) { setPhase('setup'); setNote(t("Couldn't prepare voice input")) }

@@ -111,7 +111,7 @@ export function CreateBot({ roster, actions, start, brief = '', onBack, canGoBac
         ? t('The Bot runs on this model. You can change it later in its details.')
         : modelsFor(roster.models).length > 0
           ? t('Pick a model here, or the Bot asks for one in its chat.')
-          : t('Add a provider and a model in DeepSeek Harness first, or pick one in the Bot\'s chat later.'))) : null,
+          : t('Add a provider and a model in Settings first, or pick one in the Bot\'s chat later.'))) : null,
     error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null,
     h('div', { className: 'bt-create-foot' },
       h('button', { type: 'button', className: 'bt-soft', onClick: onBack }, canGoBack ? t('Back') : t('Cancel')),

@@ -9,7 +9,7 @@ const ROSTER_VALUE = {
   mainBotIds: ['m1'],
   bots: [{ id: 'm1', sessionId: 'm1', name: 'Chief', parts: [] }],
   rooms: [{ id: 'g1', name: 'Group', members: ['m1'] }],
-  agents: [{ id: 'a1', name: 'DSH Agent', sessions: ['s1', 's2'], createdAt: 5 }],
+  agents: [{ id: 'a1', name: 'Agent', sessions: ['s1', 's2'], createdAt: 5 }],
   exchangeTurns: {},
   questions: {},
 }
@@ -17,7 +17,7 @@ const ROSTER_VALUE = {
 test('indexRoster indexes agents by id and by Session', () => {
   const roster = indexRoster(ROSTER_VALUE)
   assert.deepEqual(roster.agents.map(agent => agent.id), ['a1'])
-  assert.equal(roster.agentsById.a1.name, 'DSH Agent')
+  assert.equal(roster.agentsById.a1.name, 'Agent')
   assert.equal(roster.agentOf.s1, 'a1')
   assert.equal(roster.agentOf.s2, 'a1')
   assert.equal(roster.agentOf.m1, undefined)

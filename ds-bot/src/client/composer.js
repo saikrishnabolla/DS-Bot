@@ -7,6 +7,7 @@ import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
 import { t } from './i18n.js'
 import { insertComposerNewline, sendsOnEnter } from './enter-key.js'
 import { enterSteers, steerable } from './enter-steer.js'
+import { openCapture, requestPreparation, speechCatalog, transcribeWave } from './speech.js'
 
 // -------------------------------------------------------------------------
 // Composer: dictation mic and the voice-chat button. The shell's send
@@ -56,6 +57,73 @@ export function useDictation(onText) {
   return { listening, note, start, stop }
 }
 
+export function useRemoteDictation(speech, onText, { capture = openCapture } = {}) {
+  const [listening, setListening] = useState(false)
+  const [note, setNote] = useState('')
+  const active = useRef(null)
+  const timer = useRef(null)
+  const latest = useRef(onText)
+  latest.current = onText
+  const cancel = () => {
+    clearTimeout(timer.current)
+    timer.current = null
+    active.current?.controller.abort(new Error('Dictation cancelled'))
+    active.current?.capture?.cancel()
+    active.current = null
+    setListening(false)
+  }
+  useEffect(() => cancel, [])
+  useEffect(() => {
+    if (!note) return undefined
+    const timeout = setTimeout(() => setNote(''), 2600)
+    return () => clearTimeout(timeout)
+  }, [note])
+  const stop = async () => {
+    const held = active.current
+    if (held === null) return
+    clearTimeout(timer.current)
+    timer.current = null
+    setListening(false)
+    try {
+      const wave = await held.capture.finish(held.catalog.maxDurationSeconds)
+      const text = wave ? await transcribeWave(speech, held.catalog, wave, held.controller.signal) : ''
+      if (active.current !== held) return
+      if (text) latest.current(text, true)
+    } catch (error) {
+      if (active.current === held && !held.controller.signal.aborted) setNote(t(error?.kind === 'too-long' ? 'That was too long to recognize' : "Couldn't hear that"))
+    } finally {
+      if (active.current === held) active.current = null
+    }
+  }
+  const start = async () => {
+    if (!speech || active.current !== null) return false
+    const controller = new AbortController()
+    const held = { controller, capture: null, catalog: null }
+    active.current = held
+    try {
+      const { catalog, usable } = await speechCatalog(speech)
+      if (!usable) {
+        await requestPreparation(speech, catalog.selection.providerId)
+        setNote(t('Preparing voice input…'))
+        if (active.current === held) active.current = null
+        return false
+      }
+      const recording = await capture()
+      if (controller.signal.aborted) { recording.cancel(); return false }
+      held.capture = recording
+      held.catalog = catalog
+      setListening(true)
+      timer.current = setTimeout(() => { void stop() }, Math.max(1, catalog.maxDurationSeconds - 0.1) * 1000)
+      return true
+    } catch (error) {
+      if (!controller.signal.aborted) setNote(t(error?.kind === 'blocked' ? 'Microphone access is blocked' : "Couldn't start dictation"))
+      if (active.current === held) active.current = null
+      return false
+    }
+  }
+  return { listening, note, start, stop, cancel }
+}
+
 export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRoster }) {
   const enterToSend = useRoster(state => sendsOnEnter(state.prefs))
   const composerRoot = useRef(null)
@@ -67,6 +135,10 @@ export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRost
     return () => root.removeEventListener('keydown', onKey, true)
   }, [enterToSend, inputActions])
   const dictation = useDictation((text, final) => {
+    if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion())
+  })
+  const speech = actions.speech()
+  const remoteDictation = useRemoteDictation(speech?.owned === true ? speech : undefined, (text, final) => {
     if (final && inputActions) inputActions.insertText(text, inputActions.captureInsertion())
   })
   // Reply from a message's hover toolbar quotes it into this composer.
@@ -87,18 +159,19 @@ export function ComposerVoice({ sessionId, inputActions, actions, useUi, useRost
   }, [quote?.token])
   if (sessionId === undefined) return null
   // With the Voice Input plugin on, its own microphone sits in this composer.
-  const pluginMic = actions.speech() !== undefined
+  const pluginMic = speech !== undefined && speech.owned !== true
+  const shownDictation = speech?.owned === true ? remoteDictation : dictation
   return h(Fragment, null,
     pluginMic ? null : h('button', {
-      type: 'button', className: 'bt-mic', 'aria-label': dictation.listening ? t('Stop dictation') : t('Dictate'),
-      'aria-pressed': dictation.listening, title: dictation.listening ? t('Stop dictation') : t('Dictate'),
-      onMouseDown: keepComposerFocus, onClick: () => (dictation.listening ? dictation.stop() : dictation.start()),
+      type: 'button', className: 'bt-mic', 'aria-label': shownDictation.listening ? t('Stop dictation') : t('Dictate'),
+      'aria-pressed': shownDictation.listening, title: shownDictation.listening ? t('Stop dictation') : t('Dictate'),
+      onMouseDown: keepComposerFocus, onClick: () => (shownDictation.listening ? shownDictation.stop() : shownDictation.start()),
     }, h(MicIcon)),
     h('button', {
       ref: composerRoot, type: 'button', className: 'bt-voice', 'aria-label': t('Start voice chat'), title: t('Voice chat'),
       onMouseDown: keepComposerFocus, onClick: () => actions.openVoice(sessionId),
     }, h(WaveIcon, { size: 18 })),
-    dictation.note ? h('span', { className: 'bt-mic-note', role: 'status' }, dictation.note) : null)
+    shownDictation.note ? h('span', { className: 'bt-mic-note', role: 'status' }, shownDictation.note) : null)
 }
 
 // Character marks for the "@" menu rows. Each Bot keeps one component, so the menu

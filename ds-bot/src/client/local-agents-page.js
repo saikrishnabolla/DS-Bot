@@ -75,7 +75,7 @@ export function LocalAgentsPage({ run, Row }) {
   const refresh = () => load('local-agent-refresh')
   useEffect(() => { void load('local-agents') }, [])
   if (view === null) return null
-  if (view.available === false) return h('p', { className: 'bt-set-hint' }, t('This DSH cannot register local agent routes.'))
+  if (view.available === false) return h('p', { className: 'bt-set-hint' }, t('This host cannot register local agent routes.'))
   return [
     h('section', { key: 'found', className: 'bt-set-section' },
       h('div', { className: 'bt-la-sec-head' },

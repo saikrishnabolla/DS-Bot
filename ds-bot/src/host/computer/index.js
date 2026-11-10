@@ -199,7 +199,7 @@ export function install(rt) {
   const loaderOf = () => service('loader')
   const importPackage = async (name) => {
     const loader = loaderOf()
-    if (typeof loader?.import !== 'function') throw Object.assign(new Error('This DSH cannot load packages.'), { code: 'bot/no-loader' })
+    if (typeof loader?.import !== 'function') throw Object.assign(new Error('This host cannot load packages.'), { code: 'bot/no-loader' })
     const exports = await loader.import(name)
     return loader.unwrapExports?.(exports) ?? exports?.default ?? exports
   }
@@ -231,12 +231,15 @@ export function install(rt) {
             return
           }
           for (const definition of definitions) rt.addTeamTool?.(definition)
+          await Promise.all((service('agents')?.list?.() ?? []).map(agent => ctx.sessions.flush(agent.session)))
           mountedByUs = true
           setProviderStatus({ state: 'ready', name: ownedProvider.providerName })
           refreshComputer()
         } catch (error) {
           await ownedProvider.stop().catch(() => undefined)
-          setProviderStatus({ state: 'error', message: rt.redactSecrets?.(String(error?.message ?? error)) ?? String(error) })
+          setProviderStatus(error?.code === 'computer/permissions'
+            ? { state: 'permissions', message: String(error?.message ?? error) }
+            : { state: 'error', message: rt.redactSecrets?.(String(error?.message ?? error)) ?? String(error) })
         }
         return
       }
@@ -408,6 +411,65 @@ export function install(rt) {
     if (map === undefined) sessionApps.set(sessionId, map = new Map())
     return map
   }
+  const appAliases = (args = {}) => {
+    const aliases = []
+    const pid = [args.pid, args.appPid, args.windowPid, args.target_pid].find(value => Number.isInteger(value))
+    if (pid !== undefined) aliases.push(`pid:${pid}`)
+    const windowId = [args.window_id, args.windowId, args.wid, args.window].find(value => value !== undefined && value !== null && typeof value !== 'object')
+    if (windowId !== undefined) aliases.push(typeof windowId === 'string' && !/^\d+$/u.test(windowId) ? `title:${normName(windowId)}` : `window:${windowId}`)
+    for (const [prefix, values] of [
+      ['browser-target', [args.target_id, args.targetId]],
+      ['browser-tab', [args.tab_id, args.tabId]],
+      ['browser-ref', [args.scope_ref, args.scopeRef, args.ref]],
+      ['capture', [args.capture_id, args.captureId]],
+      ['token', [args.element_token, args.token, args.element_id, args.elementId, args.element, args.target]],
+    ]) {
+      const value = values.find(entry => typeof entry === 'string' || (typeof entry === 'number' && Number.isFinite(entry)))
+      if (value !== undefined) aliases.push(`${prefix}:${value}`)
+    }
+    const app = [args.app, args.app_name, args.appName, args.bundle_id, args.bundleId]
+      .find(value => typeof value === 'string' && value.trim() !== '')
+    if (app !== undefined) aliases.push(`app:${normName(app)}`)
+    return aliases
+  }
+  const appFromAliases = (sessionId, aliases) => {
+    if (aliases.length === 0) return undefined
+    const apps = appsOfSession(sessionId)
+    const found = aliases.map(alias => apps.get(alias))
+    if (found.some(app => app === undefined)) {
+      return {
+        key: aliases.find((alias, index) => found[index] === undefined) ?? aliases[0],
+        name: 'the requested app or window',
+        unknown: true,
+        reason: 'Every target identifier must resolve to the same approved app.',
+      }
+    }
+    const distinct = [...new Map(found.map(app => [app.key, app])).values()]
+    if (distinct.length > 1) return { key: 'ambiguous', name: 'multiple apps', unknown: true, reason: 'A computer call may target only one approved app at a time.' }
+    if (distinct.length === 1) return distinct[0]
+    return { key: aliases[0], name: 'the requested app or window', unknown: true }
+  }
+  const runStepsApp = (sessionId, args) => {
+    const defaults = { app: args.app, window: args.window, pid: args.pid, window_id: args.window_id }
+    const targets = []
+    for (const step of Array.isArray(args.steps) ? args.steps : []) {
+      const direct = ['click', 'double_click', 'right_click', 'set_value', 'type_text', 'press_key', 'hotkey', 'scroll', 'drag', 'move_cursor']
+        .map(name => step?.[name]).find(value => value !== null && typeof value === 'object' && !Array.isArray(value))
+      const action = step?.args !== null && typeof step?.args === 'object' && !Array.isArray(step.args) ? step.args : (direct ?? {})
+      targets.push({ ...defaults, ...action })
+      if (step?.wait_for !== null && typeof step?.wait_for === 'object') targets.push({ ...defaults, ...step.wait_for })
+      for (const expectation of Array.isArray(step?.expect) ? step.expect : []) {
+        if (expectation !== null && typeof expectation === 'object') targets.push({ ...defaults, ...expectation })
+      }
+    }
+    if (args.observe !== null && typeof args.observe === 'object') targets.push({ ...defaults, ...args.observe })
+    const resolved = targets.map(target => appFromAliases(sessionId, appAliases(target))).filter(Boolean)
+    const unknown = resolved.find(app => app.unknown === true)
+    if (unknown !== undefined) return unknown
+    const distinct = [...new Map(resolved.map(app => [app.key, app])).values()]
+    if (distinct.length > 1) return { key: 'cross-app-batch', name: 'multiple apps', unknown: true, reason: 'run_steps cannot cross app boundaries. Use one approved app per batch.' }
+    return distinct[0]
+  }
   // The app a call works on, from its arguments and what earlier results recorded.
   // cua: getApp names it by selector, the rest by the appHandle getApp returned.
   // driver: the pid the call names, known after a list_apps/list_windows result.
@@ -424,6 +486,8 @@ export function install(rt) {
       return appsOfSession(sessionId).get(`handle:${handle}`) ?? { key: `handle:${handle}`, name: 'the selected app', unknown: true }
     }
     const args = exec.arguments ?? {}
+    if (call.method === 'clipboard_read' || call.method === 'clipboard_write') return { key: 'system:clipboard', name: 'Clipboard' }
+    if (call.method === 'run_steps') return runStepsApp(sessionId, args)
     if (call.method === 'launch_app') {
       const id = [args.bundle_id, args.bundleId, args.app_id, args.appId].find(value => typeof value === 'string' && value !== '')
       const path = [args.path, args.app_path, args.executable_path, args.executablePath].find(value => typeof value === 'string' && value !== '')
@@ -431,26 +495,7 @@ export function install(rt) {
       if (id === undefined && path === undefined && name === undefined) return undefined
       return { key: appKeyOf({ id, path, name }), name: name ?? path ?? id, id, path, tentative: true }
     }
-    const pid = [args.pid, args.appPid, args.windowPid, args.target_pid].find(value => Number.isInteger(value))
-    if (pid !== undefined) {
-      const known = appsOfSession(sessionId).get(`pid:${pid}`)
-      return known ?? { key: `pid:${pid}`, name: `pid ${pid}`, pid, unknown: true }
-    }
-    // A window_id resolves to the app that owns the window, recorded from a
-    // list_windows/get_window_state result.
-    const windowId = [args.window_id, args.windowId, args.wid, args.window].find(value => value !== undefined && value !== null)
-    if (windowId !== undefined) {
-      const known = appsOfSession(sessionId).get(`window:${windowId}`)
-      return known ?? { key: `window:${windowId}`, name: `window ${windowId}`, unknown: true }
-    }
-    // An element token resolves to the window it was read from.
-    const token = [args.element_token, args.token, args.ref, args.element_id, args.elementId, args.element, args.target]
-      .find(value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)))
-    if (token !== undefined) {
-      const known = appsOfSession(sessionId).get(`token:${token}`)
-      return known ?? { key: `token:${token}`, name: 'an element', unknown: true }
-    }
-    return undefined
+    return appFromAliases(sessionId, appAliases(args))
   }
   // What a result tells DS Bot about apps: getApp returns the handle plus the app's
   // identity; driver lists name pids.
@@ -481,7 +526,21 @@ export function install(rt) {
     const body = result.structuredContent !== null && typeof result.structuredContent === 'object' && !Array.isArray(result.structuredContent)
       ? result.structuredContent
       : result
+    // A native inventory is authoritative. Process and window identifiers can be
+    // reused after an app exits, so no alias from an older inventory survives it.
+    if (call.method === 'list_apps' || call.method === 'list_windows') apps.clear()
     const textOf = value => (typeof value === 'string' && value.trim() !== '' ? value : undefined)
+    const rememberAlias = (alias, app) => {
+      const previous = apps.get(alias)
+      if (previous === undefined) { apps.set(alias, app); return }
+      if (previous.unknown === true || previous.key === app.key) return
+      apps.set(alias, {
+        key: `ambiguous:${alias}`,
+        name: 'multiple apps',
+        unknown: true,
+        reason: 'The app name or window title is ambiguous. Use its PID and window ID.',
+      })
+    }
     const recordPid = (item, known = {}) => {
       // list_apps lists installed apps too; their pid is 0 and is no target.
       const pid = [item?.pid, item?.appPid, item?.app_pid, item?.processId].find(value => Number.isInteger(value) && value > 0)
@@ -501,13 +560,19 @@ export function install(rt) {
     }
     const recordTitle = (item) => {
       const title = textOf(item?.title)
-      return title === undefined ? undefined : { key: `title:${normName(title)}`, name: title }
+      if (title === undefined) return undefined
+      const windowId = [item?.window_id, item?.windowId, item?.wid].find(value => value !== undefined && value !== null)
+      return { key: windowId === undefined ? `title:${normName(title)}` : `window:${windowId}`, name: title }
     }
     const recordItem = (item, known = {}) => {
       const app = recordPid(item, known) ?? recordTitle(item)
       if (app === undefined) return
       const windowId = [item?.window_id, item?.windowId, item?.wid].find(value => value !== undefined && value !== null)
       if (windowId !== undefined) apps.set(`window:${windowId}`, app)
+      if (typeof app.name === 'string') rememberAlias(`app:${normName(app.name)}`, app)
+      if (typeof app.id === 'string') rememberAlias(`app:${normName(app.id)}`, app)
+      const title = textOf(item?.title) ?? textOf(item?.window_title)
+      if (title !== undefined) rememberAlias(`title:${normName(title)}`, app)
     }
     const lists = [body.apps, body.windows, body.items, Array.isArray(body) ? body : undefined]
     for (const list of lists) {
@@ -532,7 +597,7 @@ export function install(rt) {
     // record both so a later call on either resolves to the window's app.
     const stateWindow = [body.window_id, body.windowId, body.wid, body.window?.window_id, body.window?.id].find(value => value !== undefined && value !== null)
     const statePid = [body.pid, body.appPid, body.app_pid, body.window?.pid, body.window?.app_pid].find(value => Number.isInteger(value) && value > 0)
-    let stateApp = statePid !== undefined ? recordPid(body) ?? apps.get(`pid:${statePid}`) : undefined
+    let stateApp = statePid !== undefined ? apps.get(`pid:${statePid}`) ?? recordPid(body) : undefined
     if (stateApp === undefined && stateWindow !== undefined) stateApp = apps.get(`window:${stateWindow}`)
     if (stateApp === undefined && body.window !== null && typeof body.window === 'object') stateApp = recordPid(body.window)
     if (stateWindow !== undefined && stateApp !== undefined) apps.set(`window:${stateWindow}`, stateApp)
@@ -540,7 +605,29 @@ export function install(rt) {
       const elements = [body.elements, body.interactive_elements, body.targets, body.items].find(list => Array.isArray(list)) ?? []
       for (const element of elements) {
         const token = [element?.element_token, element?.token, element?.element_id, element?.elementId, element?.id, element?.ref, element?.handle].find(value => value !== undefined && value !== null)
-        if (token !== undefined) apps.set(`token:${token}`, stateApp)
+        if (token !== undefined) rememberAlias(`token:${token}`, stateApp)
+      }
+      const captureId = body.capture_id ?? body.captureId ?? body.capture?.capture_id
+      if (typeof captureId === 'string') rememberAlias(`capture:${captureId}`, stateApp)
+    }
+    // Browser targets, tabs and page refs are opaque and session-scoped. Bind
+    // only values returned by a browser read whose native pid/window already
+    // resolved to an approved app.
+    const browserApp = ['get_browser_state', 'browser_prepare'].includes(call.method) ? targetAppOf(exec, call) : undefined
+    if (browserApp !== undefined && browserApp.unknown !== true) {
+      const queue = [body]
+      let visited = 0
+      while (queue.length > 0 && visited++ < 2000) {
+        const value = queue.shift()
+        if (Array.isArray(value)) { queue.push(...value); continue }
+        if (value === null || typeof value !== 'object') continue
+        for (const [key, child] of Object.entries(value)) {
+          if (typeof child === 'string') {
+            if (key === 'target_id' || key === 'targetId') rememberAlias(`browser-target:${child}`, browserApp)
+            else if (key === 'tab_id' || key === 'tabId') rememberAlias(`browser-tab:${child}`, browserApp)
+            else if (['ref', 'scope_ref', 'scopeRef'].includes(key)) rememberAlias(`browser-ref:${child}`, browserApp)
+          } else if (child !== null && typeof child === 'object') queue.push(child)
+        }
       }
     }
   }
@@ -819,6 +906,7 @@ export function install(rt) {
       return { kind: 'deny', reason: `The user is operating the computer for ${bot.name}. Wait until they hand it back.` }
     }
     const app = targetAppOf(exec, call)
+    if (app?.reason !== undefined) return { kind: 'deny', reason: app.reason }
     // A getApp selector is checked as name, id and path, so a protected bundle
     // id is refused the same as a protected name.
     if (app !== undefined && isProtectedApp({ name: app.name, id: app.id ?? (app.tentative === true ? app.name : undefined), path: app.path ?? (app.tentative === true ? app.name : undefined) })) {
@@ -1237,7 +1325,12 @@ export function install(rt) {
         const access = service('cuaAccess')
         if (access === undefined || typeof access.requestPermission !== 'function') throw new Error('System permissions are not available here')
         const permission = ['accessibility', 'screenRecording'].includes(body.permission) ? body.permission : 'accessibility'
-        return access.requestPermission(permission, rt.uiLanguage?.() ?? 'en').catch((error) => { throw new Error(String(error?.message ?? error)) })
+        const status = await access.requestPermission(permission, rt.uiLanguage?.() ?? 'en').catch((error) => { throw new Error(String(error?.message ?? error)) })
+        if (status?.accessibility === true && status?.screenRecording === true && providerStatus.state === 'permissions') {
+          setProviderStatus({ state: 'loading' })
+          await ensureProvider()
+        }
+        return status
       }
       case 'open-settings': {
         const access = ctx.get?.('cuaAccess')

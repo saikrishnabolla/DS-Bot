@@ -4,14 +4,14 @@ Instructions for AI coding agents that work on this repository. Human contributo
 
 ## What this project is
 
-DS Bot is a team of long-lived Bots, built on DeepSeek Harness (DSH). It has two parts:
+DS Bot is a team of long-lived Bots. It has two parts:
 
-- `ds-bot/`: the Bot features, written as a DSH plugin. The plugin runs in DSH Desktop, in DSH Web and in the desktop app.
-- `app/`: the desktop app for Windows, macOS and Linux. It runs a pinned DSH with the `ds-bot` plugin, in its own profile and its own `DSH_HOME`, and imports an existing team from the user's DSH.
+- `ds-bot/`: the Bot features and owned host. It can also run as a DSH plugin.
+- `app/`: the desktop app for Windows, macOS and Linux. It runs the owned Pi Durable host and keeps its data in the folder the user chose.
 
 The Bot team:
 
-- Every Bot is a long-lived identity whose work runs in DSH Sessions: one for its own chat, one for each group it is in, and a fresh one when the context fills up (earlier ones stay readable). Every turn runs through the normal DSH agent loop, tools and model routes.
+- Every Bot is a long-lived identity with one conversation for its own chat, one for each group it is in, and a fresh one when the context fills up. Earlier parts stay readable. Every turn runs through the host's normal agent loop, tools and model routes.
 - The team works together: Bots message each other, share group chats and can see what the other Bots are doing. Each Bot still runs on its own and does not disturb the others.
 - Bots have clear, different roles. A Main Bot has the highest rights: it creates, changes and removes other Bots. Other Bots do not get these rights. There can be more than one Main Bot.
 - Users customize each Bot (name, role label, instructions, model, character).
@@ -19,19 +19,18 @@ The Bot team:
 
 ## Hard rules
 
-1. **Build on DSH; never patch it.** Bot features use the documented plugin APIs. The desktop app starts DSH only through its documented entry points (`@deepseek-ai/dsh/profile-boot`, the `dsh` CLI). Never patch DeepSeek Harness or depend on files inside a DSH install. If something is missing in DSH, stop and say so; do not work around it with a patch.
+1. **Own the desktop host; never patch dependencies.** The desktop app uses `ds-bot/src/engine/` to adapt Pi Durable. Keep Pi types behind that boundary and use its published APIs. The optional DSH plugin uses documented plugin APIs. Never patch an installed dependency or depend on its private files.
 2. **No secrets.** Never write, print or commit API keys, tokens, cookies or `DSH_HOME` contents. Use the mock model (`ds-bot/dev/mock-llm.mjs`) for tests; it needs no key.
 3. **Only original material.** Do not copy code, text, icons, logos or graphics from other products or websites. Code under a license compatible with Apache 2.0 is the only exception: say where it comes from and add its notice to the `NOTICE` file. This rule is about DS Bot's own interface. To name a third-party product that DS Bot connects to (for example the agent CLI a Bot runs on), use that product's official logo, and list it in `NOTICE` with its source and owner.
 4. **`client.js` is generated.** Change `ds-bot/src/client/`, then run `npm run build` and commit both files. Never edit `client.js` by hand.
-5. **Do not touch the user's own DSH data.** The desktop app keeps its data in its own `DSH_HOME`; its import only reads `~/.dsh` and never writes there. The test bench keeps its data in `.dsh-test-<name>/`. Never point a test at `~/.dsh`, at the desktop app's data or at a DSH that the user runs.
+5. **Do not touch the user's own data.** The desktop app keeps its data under the folder chosen during setup. Tests use temporary folders. Never point a test at `~/.dsh`, at the desktop app's data or at a host the user runs.
 
 ## Commands
 
-Run in `ds-bot/`. The unit tests and the linter load the `@deepseek-ai/*` packages from `dev/harness/`, which `npm run harness` installs from npm at the DSH version in `dev/harness/package.json`. `DSH_HARNESS` points them at another install or at a DeepSeek Harness checkout instead. The test bench needs a checkout at `../deepseek-harness` (or `DSH_HARNESS`), at the DSH version in the README.
+Run in `ds-bot/`. The unit tests cover the shared features and the owned host. The optional plugin smoke test needs a DSH checkout at `../deepseek-harness` or `DSH_HARNESS`.
 
 ```sh
 npm ci                                 # build tool only (esbuild)
-npm run harness                        # once: the DSH packages for the tests and the linter
 npm run build                          # src/client → client.js
 npm test                               # unit tests; also fail if client.js is stale
 node scripts/build-client.mjs --check  # client.js matches src/client
@@ -60,7 +59,7 @@ The full workflow is in [CONTRIBUTING.md](CONTRIBUTING.md#how-we-work). The part
 - `ds-bot/index.js` and `ds-bot/src/host/`: the server side (roster and store, tools, turns and delivery, groups, conversation parts and the search index, images, the browser bridge, the `api/bot` channel).
 - `ds-bot/src/client/`: the browser side (sidebar, chat, panels, themes, characters, the Bot browser panel).
 - `ds-bot/web-search.js`: the `auto` web-search provider, independent of the Bot team code.
-- `ds-bot/test/`: unit tests and fixtures. `ds-bot/dev/`: the DSH packages for the tests (`harness/`), mock model, test bench, smoke test, character generator, Desktop scripts for Linux.
+- `ds-bot/test/`: unit tests and fixtures. `ds-bot/dev/`: the mock model, optional plugin test bench, smoke test, character generator and Desktop scripts for Linux.
 - `app/`: the desktop app (Electron main process and window, first-run setup and import, installer and updates).
 
 ## Style

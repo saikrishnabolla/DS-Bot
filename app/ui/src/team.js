@@ -15,6 +15,7 @@ import { teamActions } from '../../../ds-bot/src/client/team-actions.js'
 import { currentPart } from '../../../ds-bot/src/client/text.js'
 import { registry } from '../../../ds-bot/src/client/themes.js'
 import { openFeed } from './api.js'
+import { desktopComputerAction, desktopComputerCursor, desktopComputerEntries } from './computer-bridge.js'
 import { createConversationState, createVoiceAdapter } from './conversation-state.js'
 
 // Memory news and connector states change without a notice on the feed.
@@ -63,10 +64,13 @@ export function createTeam() {
   const work = createSource(NO_WORK)
   const memoryNews = createSource({})
   const live = createSource({})
+  const computer = createSource({ bots: {}, leases: [], cursors: [], asks: {}, holds: {} })
   const cards = createSource({})
   const heldCards = createSource({})
   const turnClock = createSource({})
   const update = createSource({ available: false, phase: 'idle' })
+  const ownAppUpdates = globalThis.dsBotApp?.updates ?? null
+  let wakeUpdate = () => {}
   const browserBridge = globalThis.dsBotApp?.browser ?? null
   const browsers = browserBridge ? createBotBrowsers({ bridge: browserBridge, createSource }) : null
   const browserPages = browsers?.pages ?? createSource({})
@@ -130,6 +134,7 @@ export function createTeam() {
     applied = order
     setChanged(activity, value.activity ?? {})
     setChanged(work, value.work ?? NO_WORK)
+    setChanged(computer, value.computerLive ?? {})
     noteNews(value.memoryNews ?? {})
     const current = roster.getSnapshot()
     const changed = {}
@@ -200,6 +205,20 @@ export function createTeam() {
     referenceChats: async (sessionId) => chatRows(roster.getSnapshot(), await call('reference-chats', { sessionId: partFor(sessionId) }), sessionId),
     speech: voice.speech,
     voiceSetup: voice.voiceSetup,
+    installUpdate: async () => {
+      const value = await call('update-install')
+      update.set(previous => ({ ...previous, ...value }))
+      wakeUpdate()
+    },
+    checkUpdate: async () => {
+      const value = await call('update-check', { fresh: true })
+      update.set(previous => ({ ...value, ownApp: previous.ownApp }))
+      wakeUpdate()
+      return value?.latest === true
+    },
+    checkOwnApp: async () => { await ownAppUpdates?.check?.() },
+    installOwnApp: async () => { await ownAppUpdates?.install?.() },
+    openOwnApp: async () => { await ownAppUpdates?.open?.() },
     noteSent: (sessionId) => {
       sent.set(state => ({ ...state, [sessionId]: [...(state[sessionId] ?? []), { placement: 'direct', time: Date.now() }] }))
     },
@@ -297,6 +316,7 @@ export function createTeam() {
   const start = () => {
     let stopped = false
     let stopReads = null
+    const appComputer = globalThis.dsBotApp
     const syncBrowsers = () => {
       if (!browsers) return
       const snapshot = roster.getSnapshot()
@@ -324,12 +344,77 @@ export function createTeam() {
       onFeed(event, data)
     })
     const timer = setInterval(read, CATCH_UP_MS)
+    let updateStopped = false
+    let updateTimer
+    const updateLoop = async () => {
+      clearTimeout(updateTimer)
+      if (updateStopped) return
+      const value = await call('update-check', { fresh: false }).catch(() => null)
+      if (updateStopped) return
+      if (value) update.set(previous => ({ ...value, ownApp: previous.ownApp }))
+      updateTimer = setTimeout(updateLoop, value?.phase === 'installing' ? 2000 : 60 * 60_000)
+    }
+    wakeUpdate = updateLoop
+    void updateLoop()
+    let ownAppStopped = false
+    const takeOwnApp = ownApp => { if (!ownAppStopped && ownApp) update.set(previous => ({ ...previous, ownApp })) }
+    void ownAppUpdates?.state?.().then(takeOwnApp, () => {})
+    const offOwnApp = ownAppUpdates?.subscribe?.(takeOwnApp)
+    const syncComputer = () => { appComputer?.computer?.(desktopComputerEntries(roster.getSnapshot(), computer.getSnapshot())) }
+    const offComputer = typeof appComputer?.computer === 'function' ? computer.subscribe(syncComputer) : () => {}
+    const offComputerRoster = typeof appComputer?.computer === 'function' ? roster.subscribe(syncComputer) : () => {}
+    if (typeof appComputer?.computer === 'function') syncComputer()
+    let computerLoopStopped = false
+    const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+    if (typeof appComputer?.computerCursor === 'function') {
+      void (async () => {
+        let after = 0
+        while (!computerLoopStopped) {
+          if (roster.getSnapshot().computer?.enabled !== true) { await pause(2000); continue }
+          try {
+            const reply = await call('computer-cursor-wait', { after })
+            if (computerLoopStopped) break
+            for (const event of reply?.events ?? []) {
+              if (Number.isFinite(event.seq) && event.seq > after) after = event.seq
+              if (Number.isFinite(event.t) && Number.isFinite(reply?.now) && reply.now - event.t > 3000) continue
+              appComputer.computerCursor(desktopComputerCursor(roster.getSnapshot(), event))
+            }
+          } catch {
+            if (computerLoopStopped) break
+            await pause(2000)
+          }
+        }
+      })()
+    }
+    const idleTimer = typeof appComputer?.idleSeconds === 'function' ? setInterval(() => {
+      if (roster.getSnapshot().computer?.enabled !== true) return
+      void Promise.resolve(appComputer.idleSeconds()).then((idle) => {
+        if (!computerLoopStopped && Number.isFinite(idle)) call('computer-user-active', { idleSeconds: idle }).catch(() => {})
+      }).catch(() => {})
+    }, 2000) : undefined
+    let computerActionsStopped = false
+    const offComputerAction = typeof appComputer?.onComputerAction === 'function'
+      ? appComputer.onComputerAction(action => {
+        if (!computerActionsStopped) void desktopComputerAction(actions, action)
+      })
+      : null
     const onPageHide = () => leaveVisits(Object.keys(ui.getSnapshot().visits ?? {}))
     window.addEventListener('pagehide', onPageHide)
     return () => {
       stopped = true
       closeFeed()
       clearInterval(timer)
+      updateStopped = true
+      clearTimeout(updateTimer)
+      wakeUpdate = () => {}
+      ownAppStopped = true
+      offOwnApp?.()
+      if (idleTimer !== undefined) clearInterval(idleTimer)
+      computerLoopStopped = true
+      computerActionsStopped = true
+      if (typeof offComputerAction === 'function') offComputerAction()
+      offComputer()
+      offComputerRoster()
       offBrowsers()
       stopReads?.()
       browsers?.dispose()
@@ -345,6 +430,7 @@ export function createTeam() {
     useWork: use(work),
     useMemoryNews: use(memoryNews),
     useLive: use(live),
+    useComputer: use(computer),
     useCards: use(cards),
     useHeldCards: use(heldCards),
     useTurnClock: use(turnClock),

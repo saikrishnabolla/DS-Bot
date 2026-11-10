@@ -124,9 +124,10 @@ export class OwnedComputerUse {
   }
 }
 
-export function installOwnedComputerUse(context, options) {
+export function installOwnedComputerUse(context, { access, ...options } = {}) {
   const service = new OwnedComputerUse({ attachments: context.get?.('attachments'), ...options })
   context.provide('ownedComputerUse', service)
+  if (access !== undefined) context.provide('cuaAccess', access)
   context.effect(() => () => service.stop())
   return service
 }

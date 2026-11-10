@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![version](https://img.shields.io/badge/version-v0.3_preview-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![license](https://img.shields.io/badge/license-Apache_2.0-green)
 
-DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH), available as a standalone desktop app or as a DSH plugin. It turns DSH into bots that you create, talk to and work with.
+DS Bot is an open-source team of bots that you create, talk to and work with. The desktop app runs its own [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable) host. DS Bot is also available as a DeepSeek Harness (DSH) plugin.
 
 ![Say one sentence to Chief, and it sets up the bots and the group chat](docs/images/team.png)
 
@@ -14,7 +14,7 @@ DS Bot is an open-source project built on [DeepSeek Harness](https://github.com/
 
 **Desktop app (Windows, macOS, Linux)**
 
-The desktop app brings its own DSH, so you don't need to install DSH first. Download the installer for your system from [Releases](https://github.com/Fei2411/DS-Bot/releases/latest), open it, and set up a model in Settings (it can also copy your existing bot team from DSH).
+The desktop app includes its runtime, so you do not need to install another agent host. Download the installer for your system from [Releases](https://github.com/Fei2411/DS-Bot/releases/latest), open it, and set up a model in Settings.
 
 If your system warns about an unsigned app: on Windows select **More info** → **Run anyway**; on macOS open **System Settings** → **Privacy & Security** and select **Open Anyway**.
 
@@ -124,7 +124,8 @@ The plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`d
 
 ## Acknowledgments
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): DS Bot is built on the DSH plugin system. Every bot works in DSH sessions and uses the DSH tools and models.
+- [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable): runs the desktop app's durable conversations and model tools.
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): hosts the optional DSH plugin.
 - [esbuild](https://esbuild.github.io/): bundles the plugin's interface code.
 - Thanks to these projects for the ideas they published. DS Bot learned from their designs and does not contain their code:
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo): the Markdown format of Bot memory.
@@ -140,6 +141,6 @@ The plugin source is in [`ds-bot/`](ds-bot/). For options and internals, see [`d
 
 ## Disclaimer
 
-DS Bot is an independent community project. **It is not an official DeepSeek product**, and it is not affiliated with, endorsed by or sponsored by DeepSeek. "DeepSeek", "DeepSeek Harness" and the other names are trademarks of their owners. They are used here only to say what this plugin works with.
+DS Bot is an independent community project. **It is not an official DeepSeek product**, and it is not affiliated with, endorsed by or sponsored by DeepSeek. "DeepSeek" and "DeepSeek Harness" are trademarks of their owners and name the optional plugin host.
 
 Bots use your own model quota, and they read and write files and run commands when you ask them to. Check important actions yourself.

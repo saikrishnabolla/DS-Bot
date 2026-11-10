@@ -6,7 +6,7 @@
 
 ![版本](https://img.shields.io/badge/版本-v0.3_预览-blue) ![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-4D6BFE) ![许可](https://img.shields.io/badge/许可-Apache_2.0-green)
 
-DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 dsh）的开源项目，提供独立桌面应用和 dsh 插件两种形态。它将 dsh 改造为 bot 形式，你可以与自己创建的 bot 交流、工作。
+DS Bot 是一个开源的 bot 团队应用。你可以创建 bot，和它们对话、工作。桌面应用使用自己的 [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable) 运行环境，也可以作为 DeepSeek Harness（dsh）插件使用。
 
 ![和 Chief 说一句话，它就把 bot 和群聊建好](docs/images/team.zh.png)
 
@@ -14,7 +14,7 @@ DS Bot 是一个基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepsee
 
 **桌面应用（Windows、macOS、Linux）**
 
-桌面应用自带 dsh，不用先装 dsh。直接在 [Releases](https://github.com/Fei2411/DS-Bot/releases/latest) 下载对应系统的安装包，打开后在设置里配好模型就能用（也可以直接复制你原来在 dsh 里的 bot 团队）。
+桌面应用自带运行环境，不用先安装其他 Agent host。直接在 [Releases](https://github.com/Fei2411/DS-Bot/releases/latest) 下载对应系统的安装包，打开后在设置里配好模型就能用。
 
 如果安装或打开时提示未签名拦截：Windows 点 **更多信息** → **仍要运行**；macOS 在 **系统设置** → **隐私与安全性** 里点 **仍要打开**。
 
@@ -124,7 +124,8 @@ bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx
 
 ## 致谢
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：ds bot 建在 dsh 的插件系统上。每个 bot 都在 dsh 会话里工作，用的是 dsh 的工具和模型。
+- [Pi Durable](https://github.com/earendil-works/pi/tree/main/packages/durable)：运行桌面应用里的持久对话和模型工具。
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：运行可选的 dsh 插件。
 - [esbuild](https://esbuild.github.io/)：用来打包插件的界面代码。
 - 感谢下面这些项目公开的设计思路。ds bot 参考了它们的思路，没有使用它们的代码：
   - [AgentMemoryRepo](https://github.com/AgentMemoryRepo/agentmemoryrepo)：bot 记忆的 Markdown 格式。
@@ -140,6 +141,6 @@ bot 可以直接创建、检查和修改 Word（`.docx`）、PowerPoint（`.pptx
 
 ## 声明
 
-ds bot 是独立的社区项目，**不是 DeepSeek 官方产品**，与 DeepSeek 没有隶属、认可或赞助关系。“DeepSeek”“DeepSeek Harness”等名称是各自所有者的商标，这里只用来说明本插件和什么一起用。
+ds bot 是独立的社区项目，**不是 DeepSeek 官方产品**，与 DeepSeek 没有隶属、认可或赞助关系。“DeepSeek”和“DeepSeek Harness”是其所有者的商标，这里只用来说明可选插件的运行环境。
 
 bot 会消耗你自己的模型额度，也会按你的要求读写文件、运行命令。重要的操作请自己检查。

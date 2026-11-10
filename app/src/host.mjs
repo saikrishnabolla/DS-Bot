@@ -2,6 +2,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
 import { OwnedHost } from 'ds-bot/host'
+import { ComputerRemote } from './computer-remote.mjs'
 
 const MAX_FATAL_DIAGNOSTIC_CHARS = 64 * 1024
 const here = dirname(fileURLToPath(import.meta.url))
@@ -14,11 +15,25 @@ const send = message => new Promise((resolve, reject) => {
 async function main() {
   const dataDir = process.env.DS_BOT_DATA_DIR
   if (!dataDir) throw new Error('DS Bot data directory is not set')
+  const computer = new ComputerRemote(send)
+  const remote = (action, payload, options) => computer.request(action, payload, options)
+  const driverFactory = async () => ({
+    listToolsJson: async () => await remote('list-tools'),
+    callTool: async (name, raw, options) => await remote('call-tool', { name, raw }, options),
+    shutdown: async () => { await remote('stop') },
+    uniffiDestroy() {},
+  })
+  const access = {
+    systemStatus: async () => await remote('system-status'),
+    requestPermission: async permission => await remote('request-permission', { permission }),
+    openSettings: async permission => await remote('open-settings', { permission }),
+  }
   const owned = await OwnedHost.open({
     dataDir,
     uiDir: join(here, '..', 'ui', 'dist'),
     workspacePath: process.env.DS_BOT_WORKSPACE,
     port: Number(process.env.DS_BOT_PORT || 0),
+    computerUse: { driverFactory, access },
   })
   let stopping
   const stop = () => stopping ??= (async () => {
@@ -26,8 +41,14 @@ async function main() {
     await send({ type: 'shutdown-complete' })
     if (process.connected) process.disconnect()
   })()
-  process.on('message', message => { if (message?.type === 'shutdown') void stop() })
-  process.once('disconnect', () => { void stop() })
+  process.on('message', message => {
+    if (message?.type === 'shutdown') { void stop(); return }
+    computer.accept(message)
+  })
+  process.once('disconnect', () => {
+    computer.disconnect()
+    void stop()
+  })
   await send({ type: 'ready', url: owned.launchUrl, injections: [] })
 }
 
