@@ -4,6 +4,7 @@ import { Bubbles, ChatRows, Shimmer } from '../../../ds-bot/src/client/cells.js'
 import { ComposerPlus, ComposerVoice } from '../../../ds-bot/src/client/composer.js'
 import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.js'
 import { sendsOnEnter } from '../../../ds-bot/src/client/enter-key.js'
+import { HandoffDock } from '../../../ds-bot/src/client/handoff-card.js'
 import { t } from '../../../ds-bot/src/client/i18n.js'
 import { ArrowUpIcon } from '../../../ds-bot/src/client/icons.js'
 import { LearningDock } from '../../../ds-bot/src/client/learning-card.js'
@@ -278,6 +279,16 @@ export function Chat({ sessionId, team }) {
       h(SecretDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
       h(ConnectorDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
       h(MailDock, { sessionId, useRoster: hooks.useRoster, useCards: hooks.useCards, useHeldCards: hooks.useHeldCards, actions }),
+      h(HandoffDock, {
+        sessionId,
+        useRoster: hooks.useRoster,
+        useCards: hooks.useCards,
+        useHeldCards: hooks.useHeldCards,
+        useBrowserHolds: hooks.useBrowserHolds,
+        useBrowserTabs: hooks.useBrowserTabs,
+        useBrowserPages: hooks.useBrowserPages,
+        actions,
+      }),
       h(LearningDock, { sessionId, useRoster: hooks.useRoster, actions }),
       h(Composer, {
         sessionId,

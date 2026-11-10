@@ -13,6 +13,7 @@ const stubs = {
   'cells.js': 'export const Bubbles = () => null\nexport const ChatRows = () => null\nexport const Shimmer = () => null\n',
   'model-menu.js': 'export const ModelChoiceDock = () => null\n',
   'connectors.js': 'export const ConnectorDock = () => null\nexport const MailDock = () => null\n',
+  'handoff-card.js': 'export const HandoffDock = () => null\n',
   'learning-card.js': 'export const LearningDock = () => null\n',
   'secret-card.js': 'export const SecretDock = () => null\n',
   'widget-cell.js': 'export const WidgetDock = () => null\n',
@@ -25,7 +26,7 @@ const { outputFiles } = await build({
   plugins: [{
     name: 'app-chat-stubs',
     setup(bundler) {
-      bundler.onResolve({ filter: /src\/client\/(cells|model-menu|connectors|learning-card|secret-card|widget-cell|api)\.js$/ }, args => ({ path: args.path.split('/').pop(), namespace: 'app-chat-stub' }))
+      bundler.onResolve({ filter: /src\/client\/(cells|model-menu|connectors|handoff-card|learning-card|secret-card|widget-cell|api)\.js$/ }, args => ({ path: args.path.split('/').pop(), namespace: 'app-chat-stub' }))
       bundler.onLoad({ filter: /.*/, namespace: 'app-chat-stub' }, args => ({ contents: stubs[args.path], loader: 'js' }))
     },
   }],

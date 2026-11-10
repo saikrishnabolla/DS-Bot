@@ -7,6 +7,7 @@ import { CONNECTOR_CSS } from '../../../ds-bot/src/client/connectors.js'
 import { FEEDBACK_CSS } from '../../../ds-bot/src/client/feedback.js'
 import { FOLDER_CSS } from '../../../ds-bot/src/client/folder-menu.js'
 import { GROUP_SETTINGS_CSS } from '../../../ds-bot/src/client/group-settings.js'
+import { HANDOFF_CSS } from '../../../ds-bot/src/client/handoff-card.js'
 import { installLocale } from '../../../ds-bot/src/client/i18n.js'
 import { LEARNING_CSS } from '../../../ds-bot/src/client/learning-card.js'
 import { MEMBER_CSS } from '../../../ds-bot/src/client/member-status.js'
@@ -32,7 +33,7 @@ for (const [tag, text] of [
   ['shell', SHELL_CSS], ['sidebar', SIDEBAR_CSS], ['conversation', CONVERSATION_CSS], ['secrets', SECRET_CSS], ['providers', PROVIDERS_CSS],
   ['models', MODEL_CSS + FOLDER_CSS + BOT_SETTINGS_CSS + GROUP_SETTINGS_CSS], ['usage', USAGE_CSS], ['schedules', SCHEDULE_CSS],
   ['feedback', FEEDBACK_CSS], ['about', ABOUT_CSS], ['members', MEMBER_CSS], ['connectors', CONNECTOR_CSS],
-  ['widgets', WIDGET_CSS], ['learning', LEARNING_CSS], ['browser', BROWSER_CSS],
+  ['widgets', WIDGET_CSS], ['learning', LEARNING_CSS], ['browser', BROWSER_CSS], ['handoff', HANDOFF_CSS],
 ]) installStyles(text, tag)
 
 // The plugin's colors switch on body[data-ds-dark-theme], which DSH sets; here the system's
