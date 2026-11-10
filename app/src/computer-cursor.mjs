@@ -138,11 +138,26 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
       const startedChild = child
       let settleStartup
       const ready = new Promise(resolve => { settleStartup = resolve })
-      const startupTimer = setTimeout(() => settleStartup(false), startMs)
-      startup = {
+      let settled = false
+      let startupTimer
+      const runningStartup = {
+        child: startedChild,
         promise: ready,
-        resolve(value) { clearTimeout(startupTimer); settleStartup(value) },
+        resolve(value) {
+          if (settled) return
+          settled = true
+          clearTimeout(startupTimer)
+          settleStartup(value)
+        },
       }
+      startup = runningStartup
+      const reset = () => {
+        if (child === startedChild) child = null
+        if (startup === runningStartup) startup = null
+        runningStartup.resolve(false)
+        if (pending?.child === startedChild) { pending.resolve(false); pending = null }
+      }
+      startupTimer = setTimeout(() => { reset(); try { startedChild.kill() } catch {} }, startMs)
       let buffer = ''
       child.stdout.on('data', (chunk) => {
         buffer += chunk
@@ -150,15 +165,15 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
         while ((nl = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, nl).trim()
           buffer = buffer.slice(nl + 1)
-          if (line === 'r') startup?.resolve(true)
+          if (line === 'r' && child === startedChild) runningStartup.resolve(true)
           else {
             const [id, answer] = line.split(/\s+/u)
-            if (pending?.id === id && (answer === 'y' || answer === 'n')) { pending.resolve(answer === 'y'); pending = null }
+            if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) { pending.resolve(answer === 'y'); pending = null }
           }
         }
       })
-      child.on('error', (error) => { warn(log, `DS Bot: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); startup?.resolve(false); pending?.resolve(false); pending = null })
-      child.on('exit', () => { if (child === startedChild) { child = null; startup?.resolve(false); startup = null }; pending?.resolve(false); pending = null })
+      child.on('error', (error) => { warn(log, `DS Bot: the point checker failed: ${error instanceof Error ? error.message : String(error)}`); reset() })
+      child.on('exit', reset)
     } catch (error) { warn(log, `DS Bot: the point checker did not start: ${error instanceof Error ? error.message : String(error)}`); child = null }
     return child === null ? null : { child, ready: startup.promise }
   }
@@ -173,7 +188,7 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
       const id = String(nextId++)
       return new Promise((resolve) => {
         const timer = setTimeout(() => { if (pending?.id === id) pending = null; resolve(false) }, checkMs)
-        pending = { id, resolve: (value) => { clearTimeout(timer); resolve(value) } }
+        pending = { child: running.child, id, resolve: (value) => { clearTimeout(timer); resolve(value) } }
         try { running.child.stdin.write(`${id} ${Math.round(point.x)} ${Math.round(point.y)} ${pid}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
       })
     })

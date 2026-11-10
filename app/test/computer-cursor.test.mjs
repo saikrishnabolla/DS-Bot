@@ -181,6 +181,26 @@ test('native point helpers warm on supported systems only', () => {
   mac.dispose(); windows.dispose(); linux.dispose()
 })
 
+test('a helper that misses startup is replaced for the next point', async () => {
+  let starts = 0
+  let firstKilled = false
+  const spawn = () => {
+    starts++
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.kill = () => { if (starts === 1) firstKilled = true }
+    child.stdin = { write: line => { const id = line.split(' ')[0]; queueMicrotask(() => child.stdout.emit('data', `${id} y\n`)) } }
+    if (starts > 1) queueMicrotask(() => child.stdout.emit('data', 'r\n'))
+    return child
+  }
+  const checker = createPointChecker({ platform: 'win32', spawn, startMs: 20, screen, log: { warn: () => {} } })
+  assert.equal(await checker.check(10, 20, 9), false)
+  assert.equal(await checker.check(10, 20, 9), true)
+  assert.equal(starts, 2)
+  assert.equal(firstKilled, true)
+  checker.dispose()
+})
+
 test('cursorHtml paints the arrow in the Bot color with the avatar and a ripple', () => {
   const page = cursorHtml({ color: '#22c55e', avatar: 'data:image/png;base64,aGk=', ripple: true })
   assert.match(page, /fill="#22c55e"/)
