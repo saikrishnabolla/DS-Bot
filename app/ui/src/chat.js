@@ -9,7 +9,7 @@ import { ModelChoiceDock } from '../../../ds-bot/src/client/model-menu.js'
 import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
 import { MarkdownText } from '../../../ds-bot/src/client/dsh-primitives.js'
 import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
-import { chatRequest, feedMatches, stopRequest } from './chat-target.js'
+import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
 
 // The chat follows its end while the user is this close to it.
@@ -174,6 +174,24 @@ function ToolRow({ row }) {
     row.error ? h('p', { role: 'alert' }, row.error) : null)
 }
 
+function ApprovalCard({ approval, bot, actions }) {
+  const [busy, setBusy] = useState(false)
+  const answer = (choice) => {
+    setBusy(true)
+    void Promise.resolve(actions.answerApproval(approval.id, choice))
+      .catch(error => actions.reportError(error, 'approval'))
+      .finally(() => setBusy(false))
+  }
+  return h('div', { className: 'bt-mw-card', role: 'group', 'aria-label': t('{name} is waiting for your approval', { name: bot.name }) },
+    h('div', { className: 'bt-mw-tool' }, approval.tool),
+    approval.detail?.text ? h('div', { className: 'bt-mw-text' }, approval.detail.text) : null,
+    approval.reason ? h('div', { className: 'bt-mw-reason' }, approval.reason) : null,
+    approval.detail?.code ? h('code', { className: 'bt-mw-code', title: approval.detail.code }, approval.detail.code) : null,
+    h('div', { className: 'bt-mw-actions' },
+      h('button', { type: 'button', className: 'bt-q-btn', disabled: busy, onClick: () => answer('reject') }, t('Reject')),
+      h('button', { type: 'button', className: 'bt-q-submit', disabled: busy, onClick: () => answer('allow') }, t('Allow once'))))
+}
+
 const rowKey = (row, index) => {
   const item = row.kind === 'chat' ? row.items[0] : row
   return item?.entryId === undefined ? `${row.kind}:${row.callId ?? index}` : `${row.kind}:${item.entryId}:${item.block ?? ''}`
@@ -206,6 +224,7 @@ export function Chat({ sessionId, team }) {
   const question = roster.questions?.[sessionId]
   const botRunning = hooks.useSessionStatus(map => map.get(sessionId)?.running === true)
   const useWork = hooks.useWork ?? (() => false)
+  const approvals = useWork(work => approvalsForConversation(work, bot?.id, room?.id))
   const roomRunning = useWork(work => room !== undefined && (work.rooms?.[room.id] ?? []).length > 0)
   const running = botRunning || roomRunning
   const stop = () => {
@@ -244,6 +263,12 @@ export function Chat({ sessionId, team }) {
           h('div', { 'data-chat-running': '' }),
           question ? h(PendingQuestion, { key: JSON.stringify([sessionId, question.id]), sessionId, question, actions, inline: true, enterToSend: sendsOnEnter(roster.prefs) }) : null))),
     h('div', { className: 'dsb-composer-root' },
+      approvals.length > 0 ? h('div', { className: 'bt-member-cards' }, approvals.map(approval => h(ApprovalCard, {
+        key: approval.id,
+        approval,
+        bot: roster.byId[approval.botId] ?? bot,
+        actions,
+      }))) : null,
       h(ModelChoiceDock, { sessionId, useRoster: hooks.useRoster, actions }),
       h(Composer, {
         sessionId,
