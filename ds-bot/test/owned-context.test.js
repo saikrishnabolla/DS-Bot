@@ -689,3 +689,60 @@ test('owned context transforms every external model request and bridges scripted
   assert.equal(relayCalls[0].messages[0].content[0].text, 'TOP_SECRET stays internal')
   relay.dispose()
 })
+
+test('owned context registers local-agent adapters as Pi model routes', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const calls = []
+  const adapter = {
+    providerInfo: route => ({ id: route, name: 'Fixture Agent' }),
+    listModels: async route => [{ provider: route, id: 'default', name: 'CLI default' }],
+    resolveModel: async (route, model) => ({
+      provider: route,
+      id: model,
+      name: 'CLI default',
+      inputModalities: ['text', 'image'],
+      context: { contextWindow: 200_000 },
+    }),
+    async *stream(options) {
+      calls.push(options)
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'local agent answer' }
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'local agent answer' } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    },
+  }
+  const registration = ctx.llm.registerAdapter(['local-fixture'], adapter)
+  t.after(() => registration())
+
+  assert.deepEqual(ctx.llm.listProviders().find(provider => provider.id === 'local-fixture'), {
+    id: 'local-fixture',
+    name: 'Fixture Agent',
+  })
+  assert.deepEqual(await ctx.llm.listModels('local-fixture'), [{
+    provider: 'local-fixture',
+    id: 'default',
+    name: 'CLI default',
+  }])
+  assert.equal(ctx.llm.listConfigurableProviders().some(provider => provider.provider === 'local-fixture'), false)
+
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'local-fixture', model: 'default' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+  agent.followup({ content: 'run locally', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+  assert.ok(page.records.some(record => record.event.type === 'assistant/message'
+    && record.event.data.message.content.some(block => block.type === 'text' && block.text === 'local agent answer')))
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].provider, 'local-fixture')
+  assert.equal(calls[0].model, 'default')
+  assert.equal(calls[0].sessionId, sessionId)
+  assert.ok(calls[0].messages.some(message => message.role === 'user'))
+
+  registration.replace([])
+  assert.equal(ctx.llm.listProviders().some(provider => provider.id === 'local-fixture'), false)
+  assert.equal(ctx.harness.models.getModel('local-fixture', 'default'), undefined)
+})

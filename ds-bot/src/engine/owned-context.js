@@ -836,6 +836,7 @@ export class OwnedContext {
   }
 
   async #selectModel({ sessionId, provider, model, reasoningEffort }) {
+    await this.harness.resolveAdapterModel(provider, model)
     await this.#configure(sessionId, {
       model: { provider, modelId: model },
       ...(reasoningEffort === undefined ? {} : { thinkingLevel: reasoningEffort }),
@@ -1121,6 +1122,7 @@ export class OwnedContext {
 
   #llmService() {
     const models = this.harness.models
+    const adapterModels = provider => this.harness.listAdapterModels(provider)
     const rawStream = options => {
       const model = models.getModel?.(options.provider, options.model)
       if (model === undefined) throw new Error(`Unknown model ${options.provider}/${options.model}`)
@@ -1144,15 +1146,32 @@ export class OwnedContext {
     }
     return {
       listProviders: () => models.getProviders?.().map(provider => ({ id: provider.id, name: provider.name })) ?? [],
-      listModels: async provider => (models.getModels?.(provider) ?? []).map(modelInfo),
+      listModels: async provider => {
+        const listed = await adapterModels(provider)
+        return listed === undefined ? (models.getModels?.(provider) ?? []).map(modelInfo) : listed
+      },
       resolveModelInfo: async (provider, model) => {
+        const adapted = await this.harness.resolveAdapterModel(provider, model)
+        if (adapted !== undefined) return adapted
         const found = models.getModel?.(provider, model)
         if (found === undefined) throw new Error(`Unknown model ${provider}/${model}`)
         return modelInfo(found)
       },
-      listConfigurableProviders: () => models.getProviders?.().map(provider => ({ provider: provider.id, name: provider.name })) ?? [],
+      listConfigurableProviders: () => {
+        const adapterProviders = new Set(this.harness.adapterProviders().map(provider => provider.id))
+        return models.getProviders?.()
+          .filter(provider => !adapterProviders.has(provider.id))
+          .map(provider => ({ provider: provider.id, name: provider.name })) ?? []
+      },
       discoverModels: async (_kind, request) => (models.getModels?.(request?.provider) ?? []).map(modelInfo),
-      registerAdapter: () => { const handle = () => {}; handle.replace = () => {}; return handle },
+      registerAdapter: (routes, adapter) => {
+        const registration = this.harness.registerAdapter(routes, adapter)
+        const changed = () => this.emit('llm/adapters-updated')
+        const dispose = () => { registration(); changed() }
+        dispose.replace = next => { registration.replace(next); changed() }
+        changed()
+        return dispose
+      },
       script: (id, respond) => this.harness.scriptModel(id, respond),
       beforeRequest: transform => this.harness.beforeRequest(transform),
       stream: options => this.#llmMiddleware(options, () => rawStream(options)),

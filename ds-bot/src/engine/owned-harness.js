@@ -96,18 +96,18 @@ export class OwnedHarness {
   #models
   #registry
   #context
-  #scriptModel
+  #modelBridge
   #requestTransforms
   #generationTransforms
   #environment
   #streamBoundary
 
-  constructor(harness, models, registry, context, scriptModel, requestTransforms, generationTransforms, environment, streamBoundary) {
+  constructor(harness, models, registry, context, modelBridge, requestTransforms, generationTransforms, environment, streamBoundary) {
     this.#harness = harness
     this.#models = models
     this.#registry = registry
     this.#context = context
-    this.#scriptModel = scriptModel
+    this.#modelBridge = modelBridge
     this.#requestTransforms = requestTransforms
     this.#generationTransforms = generationTransforms
     this.#environment = environment
@@ -149,7 +149,8 @@ export class OwnedHarness {
         generationControls.delete(conversationId)
         return controlledStream(model, control)
       }
-      return streamBoundary.run?.(model, request, options, next, { conversationId }) ?? next()
+      const terminal = () => next(conversationId === undefined ? {} : { sessionId: conversationId })
+      return streamBoundary.run?.(model, request, options, terminal, { conversationId }) ?? terminal()
     })
     const generationPolicy = defineExtension({
       name: 'ds-bot-generation-policy',
@@ -187,12 +188,20 @@ export class OwnedHarness {
         shellEnv: environment.shellEnv?.(target),
       })),
     }, context)
-    return new OwnedHarness(harness, bridge.models, registry, context, bridge.script, requestTransforms, generationTransforms, env === undefined ? environment : undefined, streamBoundary)
+    return new OwnedHarness(harness, bridge.models, registry, context, bridge, requestTransforms, generationTransforms, env === undefined ? environment : undefined, streamBoundary)
   }
 
   get models() { return this.#models }
 
-  scriptModel(id, respond) { return this.#scriptModel(id, respond) }
+  scriptModel(id, respond) { return this.#modelBridge.script(id, respond) }
+
+  registerAdapter(routes, adapter) { return this.#modelBridge.registerAdapter(routes, adapter) }
+
+  adapterProviders() { return this.#modelBridge.adapterProviders() }
+
+  listAdapterModels(provider) { return this.#modelBridge.listAdapterModels(provider) }
+
+  resolveAdapterModel(provider, model) { return this.#modelBridge.resolveAdapterModel(provider, model) }
 
   beforeRequest(transform) {
     this.#requestTransforms.add(transform)

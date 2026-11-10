@@ -2,6 +2,7 @@ import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/e
 import { BlockAssembler } from './messages.js'
 
 const PROVIDER = 'ds-bot'
+const ADAPTER_API = 'ds-bot-adapter'
 const ZERO_USAGE = {
   input: 0,
   output: 0,
@@ -22,6 +23,19 @@ const modelOf = id => ({
   cost: ZERO_USAGE.cost,
   contextWindow: 1_000_000_000,
   maxTokens: 4_096,
+})
+
+const adapterModelOf = (provider, model = {}) => ({
+  id: String(model.id ?? 'default'),
+  name: String(model.name ?? model.id ?? 'default'),
+  api: ADAPTER_API,
+  provider,
+  baseUrl: `in-process://${provider}`,
+  reasoning: model.reasoning !== undefined,
+  input: model.inputModalities ?? model.input ?? ['text'],
+  cost: ZERO_USAGE.cost,
+  contextWindow: model.context?.contextWindow ?? model.contextWindow ?? 200_000,
+  maxTokens: model.defaultMaxTokens ?? model.maxTokens ?? 32_768,
 })
 
 function messageOf(model, response) {
@@ -142,10 +156,77 @@ function normalizeModelStream(model, source) {
 
 export function createModelBridge(models, transformRequest = async context => context, interceptStream) {
   const scripts = new Map()
+  const adapters = new Map()
+  const adapterRecord = provider => adapters.get(provider)
+  const cachedModels = (record, provider) => {
+    let cached = record.models.get(provider)
+    if (cached === undefined) {
+      cached = new Map()
+      record.models.set(provider, cached)
+    }
+    return cached
+  }
+  const adapterProvider = (provider, record) => {
+    const info = record.adapter.providerInfo?.(provider) ?? { id: provider, name: provider }
+    return { id: provider, name: info.name ?? provider }
+  }
+  const rememberModels = (provider, record, listed) => {
+    const cached = cachedModels(record, provider)
+    cached.clear()
+    for (const model of listed ?? []) cached.set(String(model.id), adapterModelOf(provider, model))
+  }
+  const listAdapterModels = async (provider) => {
+    const record = adapterRecord(provider)
+    if (record === undefined) return undefined
+    const listed = await record.adapter.listModels(provider)
+    rememberModels(provider, record, listed)
+    return listed
+  }
+  const resolveAdapterModel = async (provider, id) => {
+    const record = adapterRecord(provider)
+    if (record === undefined) return undefined
+    const resolved = typeof record.adapter.resolveModel === 'function'
+      ? await record.adapter.resolveModel(provider, id)
+      : (await listAdapterModels(provider))?.find(model => model.id === id)
+    if (resolved === undefined) return undefined
+    cachedModels(record, provider).set(String(id), adapterModelOf(provider, resolved))
+    return resolved
+  }
+  const adapterOptions = (model, request, options) => {
+    const messages = [...(request.messages ?? [])]
+    if (typeof request.systemPrompt === 'string' && request.systemPrompt !== '') {
+      messages.unshift({ role: 'system', content: [{ type: 'text', text: request.systemPrompt }], timestamp: Date.now() })
+    }
+    return {
+      ...options,
+      provider: model.provider,
+      model: model.id,
+      messages,
+      ...(request.tools === undefined ? {} : { tools: request.tools }),
+      ...(options?.reasoning === undefined ? {} : { reasoningEffort: options.reasoning }),
+    }
+  }
   const bridged = new Proxy(models, {
     get(target, property, receiver) {
+      if (property === 'getProviders') {
+        return () => [
+          ...target.getProviders(),
+          ...[...adapters.entries()].map(([provider, record]) => adapterProvider(provider, record)),
+        ]
+      }
+      if (property === 'getModels') {
+        return provider => {
+          if (provider === undefined) return [...target.getModels(), ...[...adapters.entries()].flatMap(([route, record]) => [...cachedModels(record, route).values()])]
+          return adapterRecord(provider) === undefined ? target.getModels(provider) : [...cachedModels(adapterRecord(provider), provider).values()]
+        }
+      }
       if (property === 'getModel') {
-        return (provider, id) => provider === PROVIDER && scripts.has(id) ? modelOf(id) : target.getModel(provider, id)
+        return (provider, id) => {
+          if (provider === PROVIDER && scripts.has(id)) return modelOf(id)
+          const record = adapterRecord(provider)
+          if (record !== undefined) return cachedModels(record, provider).get(String(id)) ?? adapterModelOf(provider, { id })
+          return target.getModel(provider, id)
+        }
       }
       if (property === 'streamSimple') {
         return (model, context, options) => {
@@ -153,9 +234,13 @@ export function createModelBridge(models, transformRequest = async context => co
           if (respond !== undefined) return responseStream(model, respond, context, options)
           return deferredStream(model, async () => {
             const request = await transformRequest(context, options)
-            const source = interceptStream === undefined
+            const record = adapterRecord(model?.provider)
+            const next = override => record === undefined
               ? target.streamSimple(model, request, options)
-              : await interceptStream(model, request, options, () => target.streamSimple(model, request, options))
+              : record.adapter.stream(adapterOptions(model, request, { ...options, ...override }))
+            const source = interceptStream === undefined
+              ? next()
+              : await interceptStream(model, request, options, next)
             return normalizeModelStream(model, source)
           })
         }
@@ -164,6 +249,7 @@ export function createModelBridge(models, transformRequest = async context => co
         return async (model, context, options) => {
           const respond = model?.provider === PROVIDER ? scripts.get(model.id) : undefined
           if (respond !== undefined) return responseStream(model, respond, context, options).result()
+          if (adapterRecord(model?.provider) !== undefined) return bridged.streamSimple(model, context, options).result()
           return target.completeSimple(model, await transformRequest(context, options), options)
         }
       }
@@ -173,6 +259,25 @@ export function createModelBridge(models, transformRequest = async context => co
   })
   return {
     models: bridged,
+    adapterProviders: () => [...adapters.entries()].map(([provider, record]) => adapterProvider(provider, record)),
+    listAdapterModels,
+    resolveAdapterModel,
+    registerAdapter(routes, adapter) {
+      const record = { adapter, models: new Map() }
+      let current = new Set()
+      const replace = (next) => {
+        for (const route of current) {
+          if (adapters.get(route) === record) adapters.delete(route)
+          record.models.delete(route)
+        }
+        current = new Set((next ?? []).map(String))
+        for (const route of current) adapters.set(route, record)
+      }
+      const dispose = () => replace([])
+      dispose.replace = replace
+      replace(routes)
+      return dispose
+    },
     script(id, respond) {
       const key = String(id)
       scripts.set(key, respond)
