@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
-import { defineExtension, defineTool } from '@earendil-works/pi-durable'
+import { CompactionTask, defineExtension, defineTool, hook } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
 import { projectLive } from './projection.js'
@@ -161,6 +161,48 @@ const waitForCancellation = signal => {
   return new Promise(resolve => signal?.addEventListener('abort', () => resolve('cancelled'), { once: true }))
 }
 
+const serviceError = (code, message) => Object.assign(new Error(message), { code })
+
+function compactionSummary(value) {
+  if (typeof value?.summary === 'string') return value.summary.trim()
+  if (!Array.isArray(value?.summary)) return ''
+  return value.summary
+    .filter(block => block?.type === 'text' && typeof block.text === 'string')
+    .map(block => block.text)
+    .join('\n')
+    .trim()
+}
+
+function piUsage(value) {
+  if (value === undefined) return undefined
+  const input = count(value.inputTokens ?? value.input)
+  const output = count(value.outputTokens ?? value.output)
+  const cacheRead = count(value.cacheReadTokens ?? value.cacheRead)
+  const cacheWrite = count(value.cacheWriteTokens ?? value.cacheWrite)
+  const cost = value.cost ?? {}
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens: count(value.totalTokens) || input + output + cacheRead + cacheWrite,
+    cost: {
+      input: count(cost.input),
+      output: count(cost.output),
+      cacheRead: count(cost.cacheRead),
+      cacheWrite: count(cost.cacheWrite),
+      total: count(cost.total),
+    },
+    ...(value.cacheWrite1h === undefined ? {} : { cacheWrite1h: count(value.cacheWrite1h) }),
+    ...(value.reasoning === undefined && value.reasoningTokens === undefined ? {} : { reasoning: count(value.reasoning ?? value.reasoningTokens) }),
+  }
+}
+
+const createOwnedCompactionExtension = beforeCompact => defineExtension({
+  name: 'ds-bot-owned-compaction',
+  hooks: [hook(CompactionTask, { beforeCompact })],
+})
+
 export class OwnedContext {
   #listeners = new Map()
   #effects = []
@@ -189,8 +231,9 @@ export class OwnedContext {
   #hostRuntime
   #sessionStates = new Map()
   #projectionDefinitions = new Map()
+  #compactionExtension
 
-  constructor(harness, { workspacePath, logger = console } = {}) {
+  constructor(harness, { workspacePath, logger = console } = {}, compactionExtension) {
     this.harness = harness
     this.logger = logger
     const path = resolve(workspacePath ?? process.cwd())
@@ -250,6 +293,16 @@ export class OwnedContext {
       stateOf: (session, key) => this.#projectionState(session, key),
       snapshot: (session, keys) => this.#projectionSnapshot(session, keys),
     })
+    const compaction = {
+      ownedTriggers: true,
+      summarize: async () => undefined,
+      beforeCompact: (input, agent, signal) => compaction.summarize(input, agent, signal),
+      compactIfNeeded: (target, _trigger, signal) => compaction.compactNow(target, signal),
+      compactNow: (target, signal) => this.#compact(target, signal),
+      compactRegion: () => Promise.reject(Object.assign(new Error('Pi Durable does not compact an arbitrary entry range'), { code: 'not-supported' })),
+    }
+    this.#services.set('compaction', compaction)
+    this.#compactionExtension = compactionExtension
     this.harness.setShellEnvironment?.(({ conversationId }) => {
       const agent = this.#agents.get(String(conversationId))
       if (agent === undefined) return undefined
@@ -301,14 +354,23 @@ export class OwnedContext {
   }
 
   static async open(options) {
+    let context
+    const compactionExtension = createOwnedCompactionExtension((input, api, hookContext) => context.#beforeCompact(input, api, hookContext))
     const harness = await OwnedHarness.open({
       ...options,
-      settings: { ...options.settings, extensions: options.settings?.extensions ?? [] },
+      settings: { ...options.settings, extensions: [...(options.settings?.extensions ?? []), compactionExtension] },
     })
-    return new OwnedContext(harness, options)
+    context = new OwnedContext(harness, options, compactionExtension)
+    return context
   }
 
-  static attach(harness, options) { return new OwnedContext(harness, options) }
+  static attach(harness, options) {
+    let context
+    const compactionExtension = createOwnedCompactionExtension((input, api, hookContext) => context.#beforeCompact(input, api, hookContext))
+    harness.install(compactionExtension)
+    context = new OwnedContext(harness, options, compactionExtension)
+    return context
+  }
 
   get(name) { return this.#services.get(name) }
   provide(name, value) { this.#services.set(name, value); return () => this.#services.delete(name) }
@@ -497,6 +559,7 @@ export class OwnedContext {
     if (conversation === undefined) return { error: { code: 'session/not-found', message: `Session ${id} does not exist` } }
     const configuredAgent = await this.harness.agent(id)
     this.#selectedExtensions.set(id, new Map((configuredAgent?.extensions ?? []).map(extension => [extension.name, extension])))
+    await this.#selectExtensions(id, { add: [this.#compactionExtension] })
     const watch = await this.harness.watch(id, { min: 10_000, max: 10_000 })
     const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), restrictions: new Map(), effects: [], eventWaiters: new Set() }
     this.#sessionStates.set(id, state)
@@ -507,6 +570,7 @@ export class OwnedContext {
       eventAt: seq => state.events[seq]?.event,
       snapshotEvents: () => state.events.map(record => record.event),
       deriveMessages: () => allMessages(state.view.entries),
+      toolHistory: () => [],
       requestHeader: () => ({ id, config: state.config }),
       setConfig: config => { state.config = config },
     }
@@ -639,6 +703,88 @@ export class OwnedContext {
     })
     this.#track(id, promise)
     return promise
+  }
+
+  async #compact(target, signal) {
+    const id = String(target?.session?.id ?? target?.id ?? target)
+    if (target?.status !== undefined && target.status !== 'idle') throw serviceError('busy', `Conversation ${id} is busy`)
+    if (signal?.aborted) throw serviceError('cancelled', signal.reason?.message ?? 'Compaction cancelled')
+    const taskId = await this.harness.compact(id)
+    let cancelled
+    const cancellation = signal === undefined ? undefined : new Promise(resolve => {
+      const stop = () => resolve({ cancelled: signal.reason ?? new Error('Compaction cancelled') })
+      signal.addEventListener('abort', stop, { once: true })
+      cancelled = () => signal.removeEventListener('abort', stop)
+    })
+    try {
+      const settled = cancellation === undefined
+        ? await this.harness.waitForTask(taskId)
+        : await Promise.race([this.harness.waitForTask(taskId), cancellation])
+      if (settled?.cancelled !== undefined) {
+        await this.harness.abortTask(taskId)
+        throw serviceError('cancelled', settled.cancelled?.message ?? 'Compaction cancelled')
+      }
+      const outcome = settled.state.outcome
+      if (outcome.status === 'failed') throw new Error(outcome.error.message)
+      if (outcome.status === 'aborted' || outcome.status === 'abandoned') throw serviceError('cancelled', 'Compaction cancelled')
+      const submissionId = outcome.result?.submissionId
+      if (submissionId === undefined) return outcome.result?.entryId === undefined ? null : { status: 'done' }
+      const placed = cancellation === undefined
+        ? await this.harness.waitForSubmission(submissionId)
+        : await Promise.race([this.harness.waitForSubmission(submissionId), cancellation])
+      if (placed?.cancelled !== undefined) {
+        await this.harness.abortSubmission(submissionId, id)
+        throw serviceError('cancelled', placed.cancelled?.message ?? 'Compaction cancelled')
+      }
+      if (placed.status === 'unanswered') throw serviceError(placed.reason ?? 'cancelled', `Compaction summary was not placed: ${placed.reason ?? 'cancelled'}`)
+      return { status: placed.status, ...(placed.reason === undefined ? {} : { reason: placed.reason }) }
+    } finally {
+      cancelled?.()
+    }
+  }
+
+  async #beforeCompact(input, api, context) {
+    const memoName = 'ds-bot-owned-compaction'
+    let decision = await api.memo(memoName, context)
+    await this.#hostRuntime?.load?.()
+    if (decision === undefined) {
+      const resolved = await this.#resolveAgent(String(api.conversationId))
+      if ('error' in resolved) return this.#hostRuntime?.isBotSession?.(String(api.conversationId)) === true ? { decline: true } : undefined
+      const service = this.#services.get('compaction')
+      const value = await service.beforeCompact({
+        messages: input.messages,
+        entries: input.entries,
+        firstKept: input.firstKept,
+        reason: input.reason,
+        ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
+      }, resolved.agent, context.abortSignal)
+      const summary = compactionSummary(value)
+      const rawUsages = Array.isArray(value?.usages)
+        ? value.usages
+        : value?.usage === undefined ? [] : [{ provider: value.provider, model: value.model, usage: value.usage }]
+      const usages = rawUsages.flatMap(item => {
+        const usage = piUsage(item?.usage)
+        return usage === undefined || item?.provider === undefined || item?.model === undefined
+          ? []
+          : [{ provider: String(item.provider), model: String(item.model), usage }]
+      })
+      decision = value?.decline === true
+        ? { kind: 'decline', usages }
+        : summary === ''
+          ? { kind: 'delegate', usages }
+          : {
+              kind: 'summary',
+              summary,
+              usages,
+            }
+      decision = await api.memo(memoName, decision, context)
+    }
+    for (const [index, item] of (decision.usages ?? []).entries()) {
+      await this.harness.recordCompactionUsage(String(api.conversationId), `${api.taskId}:${index}`, item.provider, item.model, item.usage)
+    }
+    if (decision.kind === 'decline') return { decline: true }
+    if (decision.kind !== 'summary') return undefined
+    return { summary: decision.summary }
   }
 
   async #prompt({ sessionId, requestId = randomUUID(), mode, content }) {

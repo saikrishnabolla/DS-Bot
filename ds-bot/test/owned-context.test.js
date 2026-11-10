@@ -109,6 +109,166 @@ test('owned projections report durable Pi usage and active context pressure', as
   assert.ok(after.values.contextPressure.pressureTokens > 0)
 })
 
+test('owned compaction uses one Pi task while preserving raw history', async t => {
+  const { ctx, provider } = await contextFixture(t, {
+    settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
+  })
+  t.after(() => ctx.close())
+  provider.setResponses([fauxAssistantMessage('first answer'), fauxAssistantMessage('second answer')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  agent.followup({ content: 'first prompt must remain in raw history', source: { kind: 'user' } })
+  await agent.whenIdle()
+  agent.followup({ content: 'second prompt', source: { kind: 'user' } })
+  await agent.whenIdle()
+  const usageBefore = (await ctx.sessionController.projections({ sessionId })).values.tokenUsage
+
+  const compaction = ctx.get('compaction')
+  const inputs = []
+  compaction.summarize = async (input, target) => {
+    inputs.push({ input, target })
+    return {
+      summary: [{ type: 'text', text: '[Checkpoint 1]\nOwned summary' }],
+      provider: 'faux',
+      model: 'faux-1',
+      usage: { inputTokens: 4, outputTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0 },
+    }
+  }
+  const result = await compaction.compactNow(agent)
+
+  assert.equal(result.status, 'done')
+  assert.equal(inputs.length, 1)
+  assert.equal(inputs[0].target, agent)
+  assert.equal(inputs[0].input.reason, 'manual')
+  assert.ok(inputs[0].input.messages.some(message => message.role === 'user'))
+  const active = await ctx.harness.context(sessionId)
+  assert.ok(active.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('[Checkpoint 1]'))))
+  const projections = await ctx.sessionController.projections({ sessionId })
+  assert.deepEqual(Object.fromEntries(Object.entries(projections.values.tokenUsage).map(([key, value]) => [key, value - usageBefore[key]])), {
+    uncachedInputTokens: 4,
+    cacheReadTokens: 1,
+    cacheWriteTokens: 0,
+    outputTokens: 2,
+  })
+  const raw = await ctx.sessionController.page({ sessionId, maxMessages: 50 })
+  assert.ok(raw.records.some(record => record.event.type === 'user/message' && record.event.data.content.some(block => block.type === 'text' && block.text === 'first prompt must remain in raw history')))
+  assert.ok(raw.records.some(record => record.event.type === 'session/divider' && record.event.data.reason === 'compaction'))
+})
+
+test('owned compaction refuses a busy conversation without starting a task', async t => {
+  let release
+  let started
+  const provider = fauxProvider()
+  provider.setResponses([async () => {
+    started?.()
+    await new Promise(resolve => { release = resolve })
+    return fauxAssistantMessage('finished')
+  }])
+  const { ctx } = await contextFixture(t, { provider })
+  t.after(() => ctx.close())
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+  const running = new Promise(resolve => { started = resolve })
+  agent.followup({ content: 'stay busy', source: { kind: 'user' } })
+  await running
+  await assert.rejects(ctx.get('compaction').compactNow(agent), error => error?.code === 'busy')
+  release()
+  await agent.whenIdle()
+})
+
+test('stopping an owned compaction aborts it without placing a summary', async t => {
+  const { ctx, provider } = await contextFixture(t, { settings: { compaction: { enabled: false, keepRecentTokens: 1 } } })
+  t.after(() => ctx.close())
+  provider.setResponses([fauxAssistantMessage('first'), fauxAssistantMessage('second')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+  agent.followup({ content: 'first input', source: { kind: 'user' } })
+  await agent.whenIdle()
+  agent.followup({ content: 'second input', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  let began
+  const entered = new Promise(resolve => { began = resolve })
+  ctx.get('compaction').summarize = async (_input, _agent, signal) => {
+    began()
+    await new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  }
+  const controller = new AbortController()
+  const compacting = ctx.get('compaction').compactNow(agent, controller.signal)
+  await entered
+  controller.abort(new Error('stopped by test'))
+  await assert.rejects(compacting, error => error?.code === 'cancelled')
+  const active = await ctx.harness.context(sessionId)
+  assert.equal(active.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('[Checkpoint'))), false)
+})
+
+test('an overflow compaction writes an owned checkpoint and retries the turn', async t => {
+  const { ctx, provider } = await contextFixture(t, {
+    settings: { compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1, backgroundTokens: 0 } },
+  })
+  t.after(() => ctx.close())
+  provider.setResponses([
+    fauxAssistantMessage('first answer'),
+    fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'maximum context length exceeded' }),
+    fauxAssistantMessage('recovered answer'),
+  ])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  const reasons = []
+  ctx.get('compaction').summarize = async input => {
+    reasons.push(input.reason)
+    return { summary: [{ type: 'text', text: '[Checkpoint 1]\nOverflow recovery' }] }
+  }
+  ctx.resume()
+  agent.followup({ content: 'establish context', source: { kind: 'user' } })
+  await agent.whenIdle()
+  agent.followup({ content: 'recover this turn', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  assert.deepEqual(reasons, ['overflow'])
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 30 })
+  assert.ok(page.records.some(record => record.event.type === 'assistant/message' && record.event.data.message.content.some(block => block.type === 'text' && block.text === 'recovered answer')))
+  const active = await ctx.harness.context(sessionId)
+  assert.ok(active.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('Overflow recovery'))))
+})
+
+test('automatic Pi compaction uses the owned summary hook', async t => {
+  const provider = fauxProvider()
+  provider.models[0].contextWindow = 200
+  provider.models[0].maxTokens = 20
+  const { ctx } = await contextFixture(t, { provider })
+  t.after(() => ctx.close())
+  provider.setResponses([fauxAssistantMessage('first answer'), fauxAssistantMessage('second answer')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  const reasons = []
+  ctx.get('compaction').summarize = async input => {
+    reasons.push(input.reason)
+    return { summary: [{ type: 'text', text: '[Checkpoint 1]\nAutomatic owned summary' }] }
+  }
+  ctx.resume()
+
+  agent.followup({ content: `first ${'detail '.repeat(100)}`, source: { kind: 'user' } })
+  await agent.whenIdle()
+  agent.followup({ content: `second ${'detail '.repeat(100)}`, source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  assert.ok(reasons.includes('threshold'))
+  const active = await ctx.harness.context(sessionId)
+  assert.ok(active.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('Automatic owned summary'))))
+})
+
 test('owned pre-step control never sends rejected or empty requests to a provider', async t => {
   for (const decision of [{ kind: 'reject', reason: 'blocked by policy' }, { kind: 'enter', messages: [] }]) {
     const { ctx, provider } = await contextFixture(t)

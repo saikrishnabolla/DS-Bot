@@ -311,6 +311,7 @@ export function install(rt) {
       compactIfNeeded: engine.compactIfNeeded,
       compactNow: engine.compactNow,
       compactRegion: engine.compactRegion,
+      ...(typeof engine.beforeCompact === 'function' ? { beforeCompact: engine.beforeCompact } : {}),
       // compaction-basic's one customization hook; it runs for every summary.
       ...(typeof engine.summarize === 'function' ? { summarize: engine.summarize } : {}),
     }
@@ -333,6 +334,35 @@ export function install(rt) {
       engine.summarize = function summarizeForBots(input, agent, signal) {
         if (isBotTarget(agent)) return writeCheckpoint(input, agent, signal)
         return original.summarize.call(this, input, agent, signal)
+      }
+    }
+    if (engine.ownedTriggers === true && original.beforeCompact !== undefined) {
+      engine.beforeCompact = async function beforeCompactForBots(input, agent, signal) {
+        if (!isBotTarget(agent)) return original.beforeCompact.call(this, input, agent, signal)
+        const place = placeOf(agent.id)
+        const bot = rt.botOf(place?.botId)
+        if (place?.botId === undefined || readOnly()
+          || rt.isLocalAgentRef?.(bot?.model ?? bot?.appliedModel) === true) {
+          return input.reason === 'overflow' ? writeCheckpoint(input, agent, signal) : { decline: true }
+        }
+        if (input.reason !== 'overflow') {
+          const usages = []
+          const lines = await contextLines(agent.session).catch(() => undefined)
+          const tokens = tokensOf(agent.session)
+          const messages = agent.session.deriveMessages()
+          const handoffOnly = messages.some(message => message.source?.handoff === true)
+            && !messages.some(message => message.role === 'user' && message.source?.kind === 'user')
+          if (switches.has(agent.id) || freshParts.has(agent.id) || settlingParts.has(agent.id)
+            || handoffOnly
+            || (input.reason === 'threshold' && lines !== undefined && tokens !== undefined && !grown(agent.id, tokens, lines))) return { decline: true }
+          if (await decide(agent, { midTurn: agent.status !== 'idle', usages }) === 'switch') {
+            if (await canMakeRoom(agent)) startSwitch(agent, { hard: lines !== undefined && tokens !== undefined && tokens >= lines.hard })
+            return { decline: true, usages }
+          }
+          const checkpoint = await writeCheckpoint(input, agent, signal)
+          return { ...checkpoint, usages: [...usages, ...(checkpoint.usage === undefined ? [] : [{ provider: checkpoint.provider, model: checkpoint.model, usage: checkpoint.usage }])] }
+        }
+        return writeCheckpoint(input, agent, signal)
       }
     }
     adoptedEngines.add(engine)
@@ -575,16 +605,25 @@ export function install(rt) {
     // of the Bot's own replies.
     const maxTokens = route.maxTokens
     const head = input.messages
-    const tail = checkpointTail(head, session.deriveMessages())
+    const tail = input.firstKept === undefined ? checkpointTail(head, session.deriveMessages()) : []
     const prompt = tail.length === 0 ? CHECKPOINT_PROMPT : `${CHECKPOINT_PROMPT}\n\n${checkpointTailNote(tail)}`
-    const written = await summaryThrough(session, route, { input, head, tail, prompt, maxTokens, signal })
+    let written
+    try {
+      written = await summaryThrough(session, route, { input, head, tail, prompt, maxTokens, signal })
+    } catch (error) {
+      if (input.reason === 'manual') throw error
+      rt.warn('ds-bot: the checkpoint for %s fell back to the saved messages: %s', session.id, error?.message ?? error)
+    }
     const place = placeOf(session.id)
     const lines = await contextLines(session).catch(() => undefined)
-    const { kept, more } = await keptMessages(session.id, {
-      budget: Math.min(RECENT_TOKENS, Math.floor((lines?.check ?? 4 * RECENT_TOKENS) / 4)),
-      group: place?.roomId !== undefined,
-      number: place === undefined ? 1 : partsOf(place.botId, place.roomId).length,
-    })
+    const budget = Math.min(RECENT_TOKENS, Math.floor((lines?.check ?? 4 * RECENT_TOKENS) / 4))
+    const { kept, more } = input.firstKept === undefined
+      ? await keptMessages(session.id, {
+          budget,
+          group: place?.roomId !== undefined,
+          number: place === undefined ? 1 : partsOf(place.botId, place.roomId).length,
+        })
+      : keptPrefixMessages(head, budget)
     const text = checkpointText({
       number: checkpointCount(input.messages) + 1,
       summary: written?.summary ?? NO_SUMMARY,
@@ -600,6 +639,25 @@ export function install(rt) {
       ...(maxTokens !== undefined ? { maxTokens } : {}),
       ...(written?.usage === undefined ? {} : { usage: written.usage }),
     }
+  }
+
+  function keptPrefixMessages(messages, budget) {
+    const kept = []
+    let used = 0
+    let more = false
+    for (const message of [...messages].reverse()) {
+      if (message?.role !== 'user') continue
+      const text = textOf(message.content)
+      if (text === '') continue
+      const cost = estimateTokens(text)
+      if (kept.length > 0 && used + cost > budget) {
+        more = true
+        break
+      }
+      kept.push(text)
+      used += cost
+    }
+    return { kept: kept.reverse(), more }
   }
 
   // The summary request itself. The Session's own route answers it, as it always has. A
@@ -679,16 +737,22 @@ export function install(rt) {
     })) assembler.push(chunk)
     const finish = assembler.finish
     if (finish.kind === 'error' || finish.kind === 'aborted') throw new Error(finish.failure?.message ?? finish.kind)
-    return parseDecision(assembler.blocks().filter(block => block.type === 'text').map(block => block.text).join('\n'))
+    return {
+      action: parseDecision(assembler.blocks().filter(block => block.type === 'text').map(block => block.text).join('\n')),
+      provider: route.provider,
+      model: route.model,
+      usage: assembler.usage,
+    }
   }
 
   // What the steward decides; a part that cannot be condensed, or a steward that
   // gives no answer, moves on as it always could.
-  async function decide(agent, { midTurn }) {
+  async function decide(agent, { midTurn, usages }) {
     if (engineOf(agent) === undefined) return 'switch'
     try {
-      const action = await askSteward(agent, { midTurn })
-      if (action !== undefined) return action
+      const result = await askSteward(agent, { midTurn })
+      if (result.usage !== undefined) usages?.push({ provider: result.provider, model: result.model, usage: result.usage })
+      if (result.action !== undefined) return result.action
       rt.warn('ds-bot: the context steward gave no usable answer for %s; moving on to a fresh part', agent.id)
     } catch (error) {
       rt.warn('ds-bot: the context steward failed for %s; moving on to a fresh part: %s', agent.id, error)
@@ -818,6 +882,9 @@ export function install(rt) {
   const rescued = new Map()
   // Parts that have not started a turn yet, with their handoff package's size.
   const freshParts = new Map()
+  // A fresh part's handoff is its own first turn. A large handoff must not trigger
+  // another size switch before the part receives new user input.
+  const settlingParts = new Map()
   // Context size where a part started, or where a checkpoint or a failed switch left
   // it. A part makes room again only once it grew by a quarter of the check line past
   // it, so a large system prompt or a broken switch cannot make it act every turn.
@@ -1214,6 +1281,7 @@ export function install(rt) {
       const engine = job.engine ? rt.engineNameOf?.(bot.model ?? bot.appliedModel) : undefined
       const text = handoffPackage({ room, self: bot === undefined, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, cutoff: job.cutoff === true, failed: job.failed, bare: job.bare, folder, manual: job.manual, engine })
       freshParts.set(freshId, estimateTokens(text))
+      settlingParts.set(freshId, new Set([...job.carry, ...held].flatMap(message => message.source?.requestId === undefined ? [] : [message.source.requestId])))
       fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume) }))
       await ctx.sessions.flush(fresh.session)
       carry.push(...job.carry.splice(0))
@@ -1278,6 +1346,7 @@ export function install(rt) {
     // A local agent CLI owns its in-session compaction; the DSH Session keeps the
     // full history for read_own_chat and never condenses or switches on size.
     if (rt.isLocalAgentRef?.(rt.botOf(place.botId)?.model ?? rt.botOf(place.botId)?.appliedModel) === true) return next()
+    if (ctx.get('compaction')?.ownedTriggers === true) return next()
     const lines = await contextLines(agent.session).catch(() => undefined)
     const tokens = tokensOf(agent.session)
     if (lines === undefined || tokens === undefined || tokens < lines.hard || !grown(agent.id, tokens, lines) || readOnly()) return next()
@@ -1439,6 +1508,7 @@ export function install(rt) {
       }
       return
     }
+    if (ctx.get('compaction')?.ownedTriggers === true) return
     const lines = await contextLines(agent.session)
     const tokens = tokensOf(agent.session)
     if (lines === undefined || tokens === undefined || tokens < lines.check || !grown(agent.id, tokens, lines)) return
@@ -1500,6 +1570,14 @@ export function install(rt) {
       releaseRescued(agent)
       void checkContext(agent).catch(error => rt.warn('ds-bot: context check for %s failed: %s', agent.id, error))
     }
+  })
+  ctx.on('session/event', (session, event) => {
+    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'user') return
+    const settling = settlingParts.get(session.id)
+    const requestId = event.data.source.requestId
+    if (settling === undefined || requestId === undefined) return
+    if (settling.has(requestId)) settling.delete(requestId)
+    else settlingParts.delete(session.id)
   })
 
   // The handoff package opens a part as a turn of its own, so it is the first message

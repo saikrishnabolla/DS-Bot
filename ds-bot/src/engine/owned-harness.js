@@ -3,9 +3,10 @@ import { dirname, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
-import { createRegistry, defineExtension, GenerationTask, Harness, hook } from '@earendil-works/pi-durable'
+import { createRegistry, defineDoc, defineExtension, GenerationTask, Harness, hook, UsageDoc } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
+import { linesFor } from '../host/steward.js'
 import { createModelBridge } from './model-bridge.js'
 
 const numericId = id => {
@@ -24,6 +25,49 @@ const ZERO_USAGE = {
 }
 
 const isGenerationControl = value => value?.kind === 'complete' || value?.kind === 'reject'
+
+const CompactionUsageDoc = defineDoc({
+  kind: 'ds-bot.compaction-usage',
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'initial',
+  initial: () => ({ tasks: [] }),
+  checkpointWhen: () => true,
+})
+
+function addUsage(total, usage) {
+  for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens']) total[key] += usage[key]
+  for (const key of ['cacheWrite1h', 'reasoning']) {
+    if (usage[key] !== undefined) total[key] = (total[key] ?? 0) + usage[key]
+  }
+  for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'total']) total.cost[key] += usage.cost[key]
+}
+
+function ownedCompactionPolicy(models) {
+  return {
+    enabled: true,
+    reserveTokens: 16_384,
+    keepRecentTokens: 16_384,
+    backgroundTokens: 32_768,
+    get modelOverrides() {
+      const overrides = {}
+      for (const provider of models.getProviders?.() ?? []) {
+        for (const model of models.getModels?.(provider.id) ?? []) {
+          if (!Number.isInteger(model.contextWindow) || model.contextWindow <= 0) continue
+          const lines = linesFor({ window: model.contextWindow, reserve: model.maxTokens })
+          overrides[`${model.provider}/${model.id}`] = {
+            enabled: true,
+            reserveTokens: model.contextWindow - lines.hard,
+            keepRecentTokens: Math.min(16_384, Math.max(1, lines.check)),
+            backgroundTokens: Math.max(0, lines.hard - lines.check),
+          }
+        }
+      }
+      return overrides
+    },
+  }
+}
 
 function controlledStream(model, control) {
   const stream = createAssistantMessageEventStream()
@@ -129,13 +173,15 @@ export class OwnedHarness {
         },
       })],
     })
+    for (const extension of settings?.extensions ?? []) registry.install(extension)
     registry.install(generationPolicy)
     const extensions = [...(settings?.extensions ?? []), generationPolicy]
+    const compaction = settings?.compaction ?? ownedCompactionPolicy(bridge.models)
     const environment = { shellEnv: undefined }
     const harness = await Harness.open(storage, {
       models: bridge.models,
       registry,
-      settings: { ...settings, extensions },
+      settings: { ...settings, compaction, extensions },
       env: env ?? (target => new NodeExecutionEnv({
         cwd: target.cwd ?? process.cwd(),
         shellEnv: environment.shellEnv?.(target),
@@ -211,6 +257,40 @@ export class OwnedHarness {
     if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
     return conversation.context(this.#context)
   }
+
+  async compact(id, instructions) {
+    const conversation = await this.conversation(id)
+    if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
+    return conversation.compact(instructions, this.#context)
+  }
+
+  async recordCompactionUsage(id, taskId, provider, model, usage) {
+    const conversation = await this.conversation(id)
+    if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
+    const conversationId = numericId(id)
+    return conversation.commit(async tx => {
+      const ledger = await tx.doc(CompactionUsageDoc, conversationId)
+      const key = String(taskId)
+      if (ledger.tasks.includes(key)) return false
+      ledger.tasks.push(key)
+      const models = (await tx.doc(UsageDoc, conversationId)).models
+      const modelKey = `${provider}/${model}`
+      const total = Object.hasOwn(models, modelKey) ? models[modelKey] : undefined
+      if (total === undefined) Object.defineProperty(models, modelKey, { value: structuredClone(usage), enumerable: true, writable: true })
+      else addUsage(total, usage)
+      return true
+    }, this.#context)
+  }
+
+  waitForTask(id) { return this.#harness.waitForTask(id, this.#context) }
+
+  async waitForSubmission(id) {
+    const submission = await this.#harness.submission(id, this.#context)
+    if (submission === undefined) throw new Error(`Submission ${String(id)} does not exist`)
+    return submission.wait(this.#context)
+  }
+
+  abortSubmission(id, conversationId) { return this.#harness.abortSubmission(id, this.#context, numericId(conversationId)) }
 
   async configure(id, change) {
     const conversation = await this.conversation(id)

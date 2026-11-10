@@ -86,6 +86,7 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'on workspace/session-stop',
     'on workspace/session-activity',
     'on agent/status',
+    'on session/event',
     'on llm/stream',
     'on llm/stream',
     'on agent/status',

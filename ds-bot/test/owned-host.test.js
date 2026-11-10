@@ -127,9 +127,179 @@ test('owned Host preserves the desktop API, feed and transcript across restart',
   assert.equal(restoredChat.value.items.filter(item => item.kind === 'user' && item.text === 'idempotent').length, 1)
 })
 
+test('owned Host lets Pi persist DS Bot checkpoints without losing earlier chat', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-compaction-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  const respond = async context => {
+    const request = JSON.stringify(context)
+    if (request.includes('You are now writing a checkpoint of this conversation')) return fauxAssistantMessage('The user asked for both earlier facts.')
+    if (request.includes('You are the context steward of an AI assistant')) return fauxAssistantMessage('{"action":"compact","reason":"the requested work is still in progress"}')
+    if (request.includes('You keep the long-term memory of one Bot')) return fauxAssistantMessage('{"changes":[]}')
+    if (request.includes('Keep the second fact while the work remains in progress')) return fauxAssistantMessage('Second answer.')
+    if (request.includes('Establish the first fact')) return fauxAssistantMessage('First answer.')
+    return fauxAssistantMessage('Ready.')
+  }
+  faux.setResponses(Array.from({ length: 20 }, () => respond))
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  const host = await OwnedHost.open({
+    dataDir,
+    uiDir,
+    models,
+    workspacePath: dataDir,
+    settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
+  })
+  t.after(() => host.close())
+  const cookie = await authenticate(host)
+  const call = api(host, cookie)
+  const bot = (await call('state', { locale: 'en' })).value.bots[0]
+  assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  await waitFor(() => faux.state.callCount >= 1)
+  assert.equal((await call('send', { sessionId: bot.id, text: 'Establish the first fact.' })).ok, true)
+  await waitFor(async () => (await call('chat', { botId: bot.id })).value.items.some(item => item.kind === 'bot' && item.text === 'First answer.'))
+  const prompt = 'Keep the second fact while the work remains in progress.'
+  assert.equal((await call('send', { sessionId: bot.id, text: prompt })).ok, true)
+  await waitFor(async () => (await call('chat', { botId: bot.id })).value.items.some(item => item.kind === 'bot' && item.text === 'Second answer.'))
+
+  await host.runtime.resolveAgent(bot.id)
+  const taskId = await host.runtime.ctx.harness.compact(bot.id)
+  const settled = await host.runtime.ctx.harness.waitForTask(taskId)
+  assert.equal(settled.state.outcome.status, 'completed')
+  const placed = await host.runtime.ctx.harness.waitForSubmission(settled.state.outcome.result.submissionId)
+  assert.equal(placed.status, 'done')
+  const active = await host.runtime.ctx.harness.context(bot.id)
+  assert.ok(active.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('[Checkpoint 1]'))))
+  const activeText = active.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).join('\n')
+  assert.equal(activeText.split('Establish the first fact.').length - 1, 1)
+  assert.equal(activeText.split(prompt).length - 1, 1)
+  const chat = await call('chat', { botId: bot.id })
+  assert.ok(chat.value.items.some(item => item.kind === 'user' && item.text === 'Establish the first fact.'))
+  assert.ok(chat.value.items.some(item => item.kind === 'user' && item.text === prompt))
+})
+
+test('owned Host reaches the production Pi threshold through the DS Bot checkpoint hook', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-threshold-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  faux.models[0].contextWindow = 128_000
+  faux.models[0].maxTokens = 500
+  let stewardCalls = 0
+  let checkpointCalls = 0
+  const response = async context => {
+    const request = JSON.stringify(context)
+    const input = request.includes('threshold-turn-') ? Math.ceil(request.length / 4) : 10
+    const usage = { input, output: 8, cacheRead: 0, cacheWrite: 0, totalTokens: input + 8, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }
+    if (request.includes('You are now writing a checkpoint of this conversation')) {
+      checkpointCalls += 1
+      return fauxAssistantMessage('The numbered facts remain available.', { usage })
+    }
+    if (request.includes('You are the context steward of an AI assistant')) {
+      stewardCalls += 1
+      return fauxAssistantMessage('{"action":"compact","reason":"the numbered work is still in progress"}', { usage })
+    }
+    if (request.includes('You keep the long-term memory of one Bot')) return fauxAssistantMessage('{"changes":[]}', { usage })
+    const turn = /threshold-turn-(\d+)/.exec(request)?.[1]
+    return fauxAssistantMessage(turn === undefined ? 'Ready.' : `threshold-answer-${turn}`, { usage })
+  }
+  faux.setResponses(Array.from({ length: 100 }, () => response))
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  const host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  t.after(() => host.close())
+  const cookie = await authenticate(host)
+  const call = api(host, cookie)
+  const bot = (await call('state', { locale: 'en' })).value.bots[0]
+  assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  await waitFor(() => faux.state.callCount >= 1)
+  host.runtime.ctx.harness.models.getModel('faux', 'faux-1').contextWindow = 8_000
+
+  const markers = []
+  for (let turn = 1; turn <= 12 && checkpointCalls === 0; turn += 1) {
+    const marker = `threshold-turn-${turn}`
+    markers.push(marker)
+    assert.equal((await call('send', { sessionId: bot.id, text: `${marker} ${'detail '.repeat(350)}` })).ok, true)
+    await waitFor(async () => (await call('chat', { botId: bot.id })).value.items.some(item => item.kind === 'bot' && item.text === `threshold-answer-${turn}`))
+  }
+  await waitFor(() => checkpointCalls > 0)
+  await waitFor(async () => (await host.runtime.ctx.harness.context(bot.id)).messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('[Checkpoint 1]'))))
+
+  assert.equal(stewardCalls, 1)
+  assert.equal(checkpointCalls, 1)
+  const active = await host.runtime.ctx.harness.context(bot.id)
+  const text = active.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).join('\n')
+  for (const marker of markers) assert.equal(text.split(marker).length - 1, 1)
+})
+
+test('a production Pi threshold switch waits for the running turn and keeps its request', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-threshold-switch-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  faux.models[0].contextWindow = 128_000
+  faux.models[0].maxTokens = 500
+  let stewardCalls = 0
+  const response = async context => {
+    const request = JSON.stringify(context)
+    const input = request.includes('threshold-switch-request') ? Math.ceil(request.length / 4) : 10
+    const usage = { input, output: 8, cacheRead: 0, cacheWrite: 0, totalTokens: input + 8, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }
+    if (request.includes('You are the context steward of an AI assistant')) {
+      stewardCalls += 1
+      return fauxAssistantMessage('{"action":"switch","reason":"the turn can finish before moving on"}', { usage })
+    }
+    if (request.includes('You are now writing a handoff note to yourself')) {
+      return fauxAssistantMessage('## Goals\n- Keep the threshold request.\n\n## Constraints and preferences\n- (none)\n\n## Progress\n- Done: the turn answered.\n- In progress: none.\n- Blocked: none.\n\n## Decisions\n- Move to a fresh part after the answer.\n\n## Facts to keep\n- threshold-switch-request\n\n## Open threads\n- (none)\n\n## Next step\n- (none)\n\n## Where to look\n- threshold-switch-request', { usage })
+    }
+    if (request.includes('You keep the long-term memory of one Bot')) return fauxAssistantMessage('{"changes":[]}', { usage })
+    if (request.includes('threshold-switch-request')) return fauxAssistantMessage('threshold-switch-answer', { usage })
+    return fauxAssistantMessage('Ready.', { usage })
+  }
+  faux.setResponses(Array.from({ length: 100 }, () => response))
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  const host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  t.after(() => host.close())
+  const cookie = await authenticate(host)
+  const call = api(host, cookie)
+  const bot = (await call('state', { locale: 'en' })).value.bots[0]
+  assert.equal((await call('update-bot', { id: bot.id, model: 'faux/faux-1' })).ok, true)
+  await waitFor(() => faux.state.callCount >= 1)
+  host.runtime.ctx.harness.models.getModel('faux', 'faux-1').contextWindow = 8_000
+  const oldSession = host.runtime.chatOf(bot.id)
+
+  assert.equal((await call('send', { sessionId: bot.id, text: `threshold-switch-request ${'detail '.repeat(350)}` })).ok, true)
+  await waitFor(async () => (await call('chat', { botId: bot.id })).value.items.some(item => item.kind === 'bot' && item.text === 'threshold-switch-answer'))
+  const newSession = await waitFor(() => {
+    const current = host.runtime.chatOf(bot.id)
+    return current !== oldSession ? current : undefined
+  })
+  await waitFor(() => [...host.runtime.switchJobs()].length === 0)
+
+  assert.equal(stewardCalls, 1)
+  assert.notEqual(newSession, oldSession)
+  const handoff = await host.runtime.ctx.harness.context(newSession)
+  const handoffText = handoff.messages.flatMap(message => message.content).filter(block => block.type === 'text').map(block => block.text).join('\n')
+  assert.match(handoffText, /threshold-switch-request/)
+})
+
 test('owned Host redacts saved secrets from durable model requests', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-secrets-'))
-  t.after(() => rm(dataDir, { recursive: true, force: true }))
   const uiDir = join(dataDir, 'ui')
   await mkdir(uiDir)
   await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
@@ -141,7 +311,10 @@ test('owned Host redacts saved secrets from durable model requests', async t => 
   await models.refresh({ allowNetwork: false })
 
   const host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
-  t.after(() => host.close())
+  t.after(async () => {
+    await host.close()
+    await rm(dataDir, { recursive: true, force: true })
+  })
   const cookie = await authenticate(host)
   const call = api(host, cookie)
   const initial = await call('state', { locale: 'en' })
