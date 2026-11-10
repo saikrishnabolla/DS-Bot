@@ -26,7 +26,7 @@ if (!existsSync(executable)) {
 }
 
 const workRoot = process.platform === 'darwin' ? join(homedir(), 'Library', 'Caches') : tmpdir()
-const work = mkdtempSync(join(workRoot, 'ds-bot-packed-'))
+const work = realpathSync.native(mkdtempSync(join(workRoot, 'ds-bot-packed-')))
 mkdirSync(join(work, 'home'))
 mkdirSync(join(work, 'shell'))
 writeFileSync(join(work, 'shell', 'tray-close-acknowledged'), '')
@@ -111,7 +111,9 @@ function checkFiles(app) {
 function packagedWindow(app, expectedPid, expectedWindowId) {
   const resources = process.platform === 'darwin' ? resolve(app, '..', '..', 'Resources') : join(dirname(app), 'resources')
   const unpackedRoot = process.platform === 'linux' ? join(resources, 'app') : join(resources, 'app.asar.unpacked')
-  const request = JSON.stringify(process.platform === 'win32' ? { pid: expectedPid } : { on_screen_only: true })
+  const request = JSON.stringify(process.platform === 'darwin'
+    ? { pid: expectedPid, on_screen_only: true }
+    : { pid: expectedPid })
   const script = `
     const { join } = require('node:path')
     const { pathToFileURL } = require('node:url')
@@ -282,7 +284,8 @@ async function checkPackedSpeech(cdp) {
 let failed = false
 const problems = []
 try {
-  const packedApp = outsideCheckout(resolve(executable))
+  const copiedApp = outsideCheckout(resolve(executable))
+  const packedApp = process.platform === 'win32' ? realpathSync.native(copiedApp) : copiedApp
   checkFiles(packedApp)
   const port = await freePort()
   const mainPort = await freePort()
@@ -299,6 +302,16 @@ try {
   await cdp.opened
   const main = devtools((await appPage(mainPort, Date.now() + 30_000, true)).webSocketDebuggerUrl, problems)
   await main.opened
+  const identityAnswer = await main.call('Runtime.evaluate', {
+    expression: '({ pid: process.pid, execPath: process.execPath })',
+    returnByValue: true,
+  })
+  if (identityAnswer.exceptionDetails) throw new Error(identityAnswer.exceptionDetails.exception?.description ?? identityAnswer.exceptionDetails.text)
+  const mainIdentity = identityAnswer.result?.value
+  console.log(`check-packed: process identity pid ${String(mainIdentity?.pid)}, executable ${String(mainIdentity?.execPath)}`)
+  if (mainIdentity?.pid !== app.pid || mainIdentity?.execPath !== packedApp) {
+    throw new Error(`the packaged app relaunched outside the tracked process: child ${String(app.pid)} ${packedApp}; main ${String(mainIdentity?.pid)} ${String(mainIdentity?.execPath)}`)
+  }
   await cdp.call('Runtime.enable')
   const state = await cdp.call('Runtime.evaluate', {
     expression: "fetch('api/bot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'state', payload: {} }) }).then(r => r.json())",
@@ -349,7 +362,8 @@ try {
   while (Date.now() < indicatorCloseDeadline && await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html'))")) await sleep(100)
   if (await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html'))") === true) throw new Error('the packaged computer indicator did not close')
   try {
-    if (process.platform !== 'linux') await windowState("win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); win.setAlwaysOnTop(true); true")
+    if (process.platform === 'darwin') await windowState("win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); true")
+    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(true); true')
     await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
     await sleep(300)
     if (process.platform !== 'linux') {
@@ -374,12 +388,13 @@ try {
       if (!cursorVisible) throw new Error('the packaged computer cursor did not appear')
     }
   } finally {
-    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); win.setVisibleOnAllWorkspaces(false); true')
+    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); true')
+    if (process.platform === 'darwin') await windowState('win.setVisibleOnAllWorkspaces(false); true')
   }
   console.log('check-packed: packaged computer indicator, action and cursor flow passed')
   await windowState('win.close()')
   await sleep(500)
-  if (app.exitCode !== null) throw new Error('the app ended with its window')
+  if (app.exitCode !== null) throw new Error(`the app ended with its window (exit ${String(app.exitCode)}, signal ${String(app.signalCode)})`)
   if (await windowState('win !== undefined && !win.isDestroyed() && !win.isVisible()') !== true) throw new Error('the window is not hidden')
   await hostAlive()
   console.log('check-packed: the window is hidden and the Host goes on')
