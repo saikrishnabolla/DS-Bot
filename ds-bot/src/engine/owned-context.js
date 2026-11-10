@@ -202,7 +202,7 @@ export class OwnedContext {
       register: definition => this.#registerDefinition(definition),
       guard: guard => { this.#guards.push(guard); return () => { const at = this.#guards.indexOf(guard); if (at >= 0) this.#guards.splice(at, 1) } },
       get: name => this.#tools.get(name)?.definition,
-      schemas: () => [...this.#tools.values()].map(item => ({ name: item.definition.name, description: item.definition.description, parameters: legacyParameters(item.definition.parameters) })),
+      schemas: agent => this.#toolSchemas(agent),
     }
     this.systemPrompt = { section: section => {
       this.#promptSections.set(section.name, section)
@@ -462,7 +462,7 @@ export class OwnedContext {
     const configuredAgent = await this.harness.agent(id)
     this.#selectedExtensions.set(id, new Map((configuredAgent?.extensions ?? []).map(extension => [extension.name, extension])))
     const watch = await this.harness.watch(id, { min: 10_000, max: 10_000 })
-    const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), effects: [], eventWaiters: new Set() }
+    const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), restrictions: new Map(), effects: [], eventWaiters: new Set() }
     this.#sessionStates.set(id, state)
     const session = {
       id,
@@ -494,9 +494,9 @@ export class OwnedContext {
     }
     const toolScope = {
       register,
-      restrict: () => () => {},
+      restrict: filter => this.#restrictTools(id, state, filter),
       get: name => state.tools.get(name)?.definition,
-      schemas: () => [...state.tools.values()].map(item => ({ name: item.definition.name, description: item.definition.description, parameters: legacyParameters(item.definition.parameters) })),
+      schemas: () => this.#toolSchemas(agent),
     }
     const agentContext = {
       tools: toolScope,
@@ -586,6 +586,8 @@ export class OwnedContext {
     state.config = configuredAgent?.model === undefined ? undefined : { provider: configuredAgent.model.provider, model: configuredAgent.model.modelId, reasoningEffort: configuredAgent.thinkingLevel }
     if (this.#promptExtension !== undefined) await this.#selectExtensions(id, { add: [this.#promptExtension] })
     await this.emitAsync('agent/created', { agent })
+    await this.#applyToolRestrictions(id, state)
+    await this.#flush(id)
     return { agent }
   }
 
@@ -688,6 +690,57 @@ export class OwnedContext {
     }
   }
 
+  #toolRecords(agent) {
+    if (agent === undefined) return new Map(this.#tools)
+    const id = String(agent.id ?? agent.session?.id)
+    const state = this.#sessionStates.get(id)
+    if (state === undefined) return new Map()
+    const selected = this.#selectedExtensions.get(id) ?? new Map()
+    const records = new Map()
+    for (const [name, record] of this.#tools) {
+      if (selected.has(record.extension.name)) records.set(name, record)
+    }
+    for (const [name, record] of state.tools) records.set(name, record)
+    return records
+  }
+
+  #toolSchemas(agent) {
+    const state = agent === undefined ? undefined : this.#sessionStates.get(String(agent.id ?? agent.session?.id))
+    return [...this.#toolRecords(agent)]
+      .filter(([name]) => !state?.restrictions.has(name))
+      .map(([, item]) => ({ name: item.definition.name, description: item.definition.description, parameters: legacyParameters(item.definition.parameters) }))
+  }
+
+  #restrictTools(id, state, filter) {
+    const names = [...new Set(filter?.deny ?? [])]
+    const records = this.#toolRecords({ id })
+    for (const name of names) {
+      const record = records.get(name)
+      if (record === undefined) throw new Error(`Tool ${String(name)} is not available in this session`)
+      const held = state.restrictions.get(name)
+      if (held === undefined) state.restrictions.set(name, { count: 1, tool: record.tool })
+      else held.count += 1
+    }
+    this.#applyToolRestrictions(id, state)
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      for (const name of names) {
+        const held = state.restrictions.get(name)
+        if (held === undefined) continue
+        held.count -= 1
+        if (held.count === 0) state.restrictions.delete(name)
+      }
+      return this.#applyToolRestrictions(id, state)
+    }
+  }
+
+  #applyToolRestrictions(id, state) {
+    const remove = [...state.restrictions.values()].map(entry => entry.tool)
+    return this.#configure(id, { tools: remove.length === 0 ? null : { remove } })
+  }
+
   #createDefinitionRecord(definition, extensionName) {
     const tool = defineTool({
       name: definition.name,
@@ -700,6 +753,9 @@ export class OwnedContext {
       execute: async (args, api, context) => {
         const resolved = await this.#resolveAgent(String(api.conversationId))
         if ('error' in resolved) throw new Error(resolved.error.message)
+        if (this.#sessionStates.get(String(api.conversationId))?.restrictions.has(definition.name)) {
+          return { output: [{ type: 'text', text: `Tool ${definition.name} is not available in this session` }], isError: true }
+        }
         await this.#waitForToolCall(String(api.conversationId), api.callId, context.abortSignal)
         let terminate = false
         const exec = {

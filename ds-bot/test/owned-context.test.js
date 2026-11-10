@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { createModels } from '@earendil-works/pi-ai/models'
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
+import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { createRuntime } from '../index.js'
 import { OwnedContext } from '../src/engine/owned-context.js'
 
@@ -14,9 +15,26 @@ const contextFixture = async (t, options = {}) => {
   const provider = options.provider ?? fauxProvider(options.providerOptions)
   const models = options.models ?? createModels()
   if (options.models === undefined) models.setProvider(provider.provider)
-  const ctx = await OwnedContext.open({ dataDir, models, workspacePath: dataDir })
+  const ctx = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, settings: options.settings })
   return { ctx, dataDir, models, provider }
 }
+
+const legacyTool = (name, execute = async () => name) => ({
+  name,
+  description: `Run ${name}`,
+  parameters: {},
+  execute,
+})
+
+const selectedExtension = name => defineExtension({
+  name: `ds-bot-${name}`,
+  tools: [defineTool({
+    name,
+    description: `Run ${name}`,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    execute: async () => ({ output: [{ type: 'text', text: name }] }),
+  })],
+})
 
 test('owned context runs a Pi conversation through the session controller and projects a restart-safe page', async t => {
   const { ctx, dataDir, models, provider } = await contextFixture(t)
@@ -269,6 +287,111 @@ test('owned context isolates same-named MCP tools between Bot sessions', async t
     { label: 'B', name: 'echo', args: { text: 'three' } },
   ])
   await mountB.dispose()
+})
+
+test('owned context restricts tools per session with reference-counted idempotent lifts', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const definition = legacyTool('scoped_fixture')
+  const sessionA = (await ctx.sessionController.create()).sessionId
+  const sessionB = (await ctx.sessionController.create()).sessionId
+  const agentA = (await ctx.sessionController.resolveAgent(sessionA)).agent
+  const agentB = (await ctx.sessionController.resolveAgent(sessionB)).agent
+  agentA.ctx.tools.register(definition)
+  agentB.ctx.tools.register(definition)
+  await Promise.all([ctx.sessions.flush(agentA.session), ctx.sessions.flush(agentB.session)])
+
+  const firstLift = agentA.ctx.tools.restrict({ deny: ['scoped_fixture'] })
+  const secondLift = agentA.ctx.tools.restrict({ deny: ['scoped_fixture'] })
+  assert.equal(ctx.tools.schemas(agentA).some(schema => schema.name === 'scoped_fixture'), false)
+  assert.equal(ctx.tools.schemas(agentB).some(schema => schema.name === 'scoped_fixture'), true)
+  await ctx.sessions.flush(agentA.session)
+  assert.equal((await ctx.harness.agent(sessionA)).callable.some(tool => tool.name === 'scoped_fixture'), false)
+  assert.equal((await ctx.harness.agent(sessionB)).callable.some(tool => tool.name === 'scoped_fixture'), true)
+
+  firstLift()
+  firstLift()
+  await ctx.sessions.flush(agentA.session)
+  assert.equal((await ctx.harness.agent(sessionA)).callable.some(tool => tool.name === 'scoped_fixture'), false)
+
+  secondLift()
+  await ctx.sessions.flush(agentA.session)
+  assert.equal(ctx.tools.schemas(agentA).some(schema => schema.name === 'scoped_fixture'), true)
+  assert.equal((await ctx.harness.agent(sessionA)).callable.some(tool => tool.name === 'scoped_fixture'), true)
+})
+
+test('owned context agent schemas merge selected global and session tools', async t => {
+  const global = legacyTool('global_fixture')
+  const { ctx } = await contextFixture(t, { settings: { extensions: [selectedExtension(global.name)] } })
+  t.after(() => ctx.close())
+  ctx.installTools([global])
+  const sessionA = (await ctx.sessionController.create()).sessionId
+  const sessionB = (await ctx.sessionController.create()).sessionId
+  const agentA = (await ctx.sessionController.resolveAgent(sessionA)).agent
+  const agentB = (await ctx.sessionController.resolveAgent(sessionB)).agent
+  agentA.ctx.tools.register(legacyTool('only_a'))
+  await ctx.sessions.flush(agentA.session)
+
+  assert.deepEqual(ctx.tools.schemas().map(schema => schema.name), ['global_fixture'])
+  assert.deepEqual(ctx.tools.schemas(agentA).map(schema => schema.name).sort(), ['global_fixture', 'only_a'])
+  assert.deepEqual(ctx.tools.schemas(agentB).map(schema => schema.name), ['global_fixture'])
+
+  const lift = agentA.ctx.tools.restrict({ deny: ['global_fixture'] })
+  assert.deepEqual(ctx.tools.schemas(agentA).map(schema => schema.name), ['only_a'])
+  assert.deepEqual(ctx.tools.schemas(agentB).map(schema => schema.name), ['global_fixture'])
+  lift()
+  await ctx.sessions.flush(agentA.session)
+})
+
+test('owned context denies a restricted tool execution before configuration settles', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  let executions = 0
+  const definition = legacyTool('race_fixture', async () => { executions += 1; return 'ran' })
+  const { sessionId } = await ctx.sessionController.create()
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  agent.ctx.tools.register(definition)
+  await ctx.sessions.flush(agent.session)
+  const registered = (await ctx.harness.agent(sessionId)).callable.find(tool => tool.name === 'race_fixture')
+
+  agent.ctx.tools.restrict({ deny: ['race_fixture'] })
+  const result = await registered.execute({}, { conversationId: sessionId, callId: 'direct-call' }, { abortSignal: new AbortController().signal })
+
+  assert.equal(result.isError, true)
+  assert.match(result.output[0].text, /not available/i)
+  assert.equal(executions, 0)
+})
+
+test('owned context rebuilds active restrictions after restart and lets the new handle lift them', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-context-restrict-restart-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const models = createModels()
+  models.setProvider(fauxProvider().provider)
+  const definition = legacyTool('restart_fixture')
+  const settings = { extensions: [selectedExtension(definition.name)] }
+
+  const first = (await contextFixture(t, { dataDir, models, settings })).ctx
+  first.installTools([definition])
+  first.on('agent/created', ({ agent }) => { agent.ctx.tools.restrict({ deny: [definition.name] }) })
+  const { sessionId } = await first.sessionController.create()
+  const firstAgent = (await first.sessionController.resolveAgent(sessionId)).agent
+  assert.equal(first.tools.schemas(firstAgent).some(schema => schema.name === definition.name), false)
+  assert.equal((await first.harness.agent(sessionId)).callable.some(tool => tool.name === definition.name), false)
+  await first.close()
+
+  const restarted = (await contextFixture(t, { dataDir, models, settings })).ctx
+  t.after(() => restarted.close())
+  restarted.installTools([definition])
+  let lift
+  restarted.on('agent/created', ({ agent }) => { lift = agent.ctx.tools.restrict({ deny: [definition.name] }) })
+  const restartedAgent = (await restarted.sessionController.resolveAgent(sessionId)).agent
+  assert.equal(restarted.tools.schemas(restartedAgent).some(schema => schema.name === definition.name), false)
+  assert.equal((await restarted.harness.agent(sessionId)).callable.some(tool => tool.name === definition.name), false)
+
+  lift()
+  await restarted.sessions.flush(restartedAgent.session)
+  assert.equal(restarted.tools.schemas(restartedAgent).some(schema => schema.name === definition.name), true)
+  assert.equal((await restarted.harness.agent(sessionId)).callable.some(tool => tool.name === definition.name), true)
 })
 
 test('owned context transforms every external model request and bridges scripted models', async t => {
