@@ -114,7 +114,6 @@ test('apply registers listeners and effects in a fixed order', (t) => {
     'effect ds-bot: usage ledger',
     'on llm/stream',
     'effect ds-bot: update check',
-    'effect ds-bot: dsh update install',
     'on agent/status',
     'on session/event',
     'on agent/assistant-stream',

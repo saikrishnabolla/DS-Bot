@@ -17,7 +17,6 @@ import { CHATS_SOURCE, atSources } from './at-menu.js'
 import { BtwDock, BtwTurnTail } from './btw.js'
 import { SIDE_CSS, sideSource } from './side-chat.js'
 import { VOICE_BUNDLE, closingReplyText, requestPreparation } from './speech.js'
-import { sameVersion } from './dsh-offer.js'
 import { QuestionCard, QuestionDock } from './questions.js'
 import { AnsweredReply, WidgetDock, WIDGET_CSS } from './widget-cell.js'
 import { HandoffDock, HANDOFF_CSS } from './handoff-card.js'
@@ -272,26 +271,13 @@ export function apply(ctx) {
       if (stopped) return
       const value = await call('update-check', { fresh: false }).catch(() => null)
       if (stopped) return
-      if (value) update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
-      timer = setTimeout(loop, value?.phase === 'installing' || value?.dsh?.phase === 'installing' ? 2000 : 60 * 60_000)
+      if (value) update.set(previous => ({ ...value, ownApp: previous.ownApp }))
+      timer = setTimeout(loop, value?.phase === 'installing' ? 2000 : 60 * 60_000)
     }
     wakeUpdate = loop
     void loop()
     return () => { stopped = true; clearTimeout(timer); wakeUpdate = () => {} }
   }, 'ds-bot: update check')
-
-  // A packaged DSH updates through its own updater; what that updater found is
-  // kept beside the host's answer so the card can match it to the verified DSH.
-  const appUpdates = window.dshDesktop?.protocolVersion === 1 ? window.dshDesktop.updates ?? null : null
-  if (appUpdates?.status && appUpdates.subscribe) {
-    ctx.effect(() => {
-      let stopped = false
-      const take = (app) => { if (!stopped && app) update.set(previous => ({ ...previous, app })) }
-      void appUpdates.status().then(take, () => {})
-      const unsubscribe = appUpdates.subscribe(take)
-      return () => { stopped = true; unsubscribe?.() }
-    }, 'ds-bot: app update status')
-  }
 
   // The DS Bot app's own updater; its state goes beside the host's answer as ownApp,
   // which the About row turns into the app's update state and buttons.
@@ -716,22 +702,9 @@ export function apply(ctx) {
     update.set(previous => ({ ...previous, ...value }))
     wakeUpdate()
   }
-  // The DSH the newest released DS Bot verified installs the same way.
-  actions.installDshUpdate = async () => {
-    const dsh = await call('dsh-update-install')
-    update.set(previous => ({ ...previous, dsh }))
-    wakeUpdate()
-  }
-  // The app's panel installs whatever its updater found by now, so it opens only
-  // while that is still the verified version.
-  actions.openAppUpdates = async (verified) => {
-    const app = await appUpdates?.status?.()
-    if (app) update.set(previous => ({ ...previous, app }))
-    if (sameVersion(app?.version, verified)) await appUpdates.open()
-  }
   actions.checkUpdate = async () => {
     const value = await call('update-check', { fresh: true })
-    update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
+    update.set(previous => ({ ...value, ownApp: previous.ownApp }))
     wakeUpdate()
   }
   // The app's own updater answers through its bridge; the state it pushes back re-renders
