@@ -100,7 +100,7 @@ test('without the schedule service the page says so and creating is refused', as
   assert.deepEqual((await call('schedules', {})).value, { available: false, tasks: [] })
   const refused = await call('schedule-create', { target: 'm1', title: 'Briefing', prompt: 'Sum up', when: { kind: 'daily', time: '09:00', timeZone: 'Asia/Shanghai' } })
   assert.equal(refused.ok, false)
-  assert.match(refused.error.message, /Automation tasks are off/)
+  assert.match(refused.error.message, /Automation tasks are not available in this build/)
 })
 
 test('tasks are created on the Bot’s current part, listed by Bot, and deleted', async (t) => {

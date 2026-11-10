@@ -121,7 +121,7 @@ export function install(rt) {
   const shadowShell = (agent, name) => {
     if (typeof ctx.tools?.get !== 'function') return
     const def = ctx.tools.get(name, agent)
-    if (def === undefined) return
+    if (def === undefined || def.ownedNative === true) return
     const promoted = (def.output?.schema?.oneOf ?? []).find(variant => variant?.properties?.kind?.const === 'promoted')
     if (typeof def.output?.render !== 'function'
       || promoted?.properties?.cwd === undefined || promoted?.properties?.jobId === undefined

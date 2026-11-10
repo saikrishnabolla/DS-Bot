@@ -150,7 +150,7 @@ test('the chat endpoint pages a Bot\'s own chat from the newest part back', asyn
   const first = (await call('chat', { botId: 'm1' })).value
   assert.deepEqual(first, {
     sessionId: 'm1c',
-    items: [{ kind: 'user', text: 'second', time: 70, seq: 41 }, { kind: 'bot', text: 'reply', time: 71, seq: 42 }],
+    items: [{ kind: 'user', text: 'second', time: 70, seq: 41 }, { kind: 'bot', text: 'reply', time: 71, seq: 42, block: 0 }],
     cursor: { part: 1, beforeSeq: 41 },
   })
   // The current part's first message has the line that marks where the part began.
@@ -171,7 +171,7 @@ test('a show_view call in a part reads back as a view row with its blueprint', a
         records: [
           record(userMessage('look', 70), 41),
           record(showView(71, { title: 'A long note', view: { type: 'stack', children: [0, 1, 2, 3].map(() => ({ type: 'text', text: 'x'.repeat(1900) })) } }), 42),
-          // A view needs no title; a call the tool refused leaves no row. Other tools stay out too.
+          // A view needs no title; a call the tool refused leaves no row. Other tools keep their generic call row.
           record(showView(72, { view: { type: 'text', text: 'y' } }), 43),
           record(showView(72, { title: 'Refused', view: { type: 'nope' } }), 45),
           record({ type: 'tool/call', time: 73, data: { callId: 'c3', name: 'list_bots', arguments: '{}' } }, 44),
@@ -188,8 +188,8 @@ test('a show_view call in a part reads back as a view row with its blueprint', a
   assert.equal(row.callId, 'c1')
   assert.equal(row.view.children.length, 4)
   assert.equal(JSON.stringify(row.view).length > 7500, true)
-  assert.deepEqual(page.items.map(item => item.kind), ['divider', 'user', 'view', 'view'])
-  assert.equal(page.items.at(-1).title, '')
+  assert.deepEqual(page.items.map(item => item.kind), ['divider', 'user', 'view', 'view', 'tool-call'])
+  assert.equal(page.items.findLast(item => item.kind === 'view').title, '')
 })
 
 test('view replay omits hidden, refused and interactive calls in pages and the live feed', async (t) => {

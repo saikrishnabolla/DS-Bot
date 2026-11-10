@@ -46,7 +46,7 @@ function setup({ fail = false, github = { api: 'https://gh.test' } } = {}) {
   const mounts = []
   const plugin = { name: 'mcp-client', apply() {} }
   const loader = {
-    import: async name => { assert.equal(name, '@deepseek-ai/dsh-mcp-client'); return { default: plugin } },
+    import: async name => { assert.equal(name, '@earendil-works/pi-mcp'); return { default: plugin } },
     unwrapExports: exports => exports.default,
   }
   const ctx = fakeContext({ services: { loader } })

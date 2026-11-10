@@ -129,7 +129,7 @@ export function install(rt) {
   const endpoints = {
     schedules: () => schedulesView(),
     async 'schedule-create'(body) {
-      if (service === null) throw invalid('Automation tasks are off in DSH')
+      if (service === null) throw invalid('Automation tasks are not available in this build')
       const bot = rt.botOf(body.target)
       const room = rt.roomOf(body.target)
       if (bot === undefined && room === undefined) throw invalid('No such Bot or group chat')
@@ -145,7 +145,7 @@ export function install(rt) {
       return schedulesView()
     },
     async 'schedule-delete'(body) {
-      if (service === null) throw invalid('Automation tasks are off in DSH')
+      if (service === null) throw invalid('Automation tasks are not available in this build')
       if (ownerOf(body.sessionId) === undefined) throw invalid('No such task')
       if (hostWide(service)) {
         // Ids are Host-wide here, so the task must still deliver to the team Session named.

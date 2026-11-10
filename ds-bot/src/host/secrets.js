@@ -513,6 +513,14 @@ export function install(rt) {
     return ctx.llm.stream({ ...options, messages: fresh, ...(system !== undefined ? { system } : {}) })
   })
 
+  // Pi Durable's main conversation loop does not pass through `llm/stream`.
+  // Its request hook applies the same last-line defense before provider dispatch.
+  ctx.effect(() => ctx.llm.beforeRequest?.((messages) => {
+    if (secrets.size === 0) return undefined
+    const redacted = redactDeep(messages, redact)
+    return redacted === messages ? undefined : redacted
+  }), 'ds-bot: redact secrets from model requests')
+
   function resolveEnv(execution) {
     const botId = rt.selfOf(execution?.agent?.session?.header?.id ?? execution?.agent?.id)
     if (rt.botOf(botId) === undefined) return {}

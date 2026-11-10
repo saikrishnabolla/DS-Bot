@@ -34,7 +34,7 @@ const PROVIDER_TEXT = {
   error: ['Could not load the provider', 'error'],
   missing: ['The provider package is not installed', 'error'],
   occupied: ['Another computer-use provider is running', 'error'],
-  unsupported: ['Computer use is not available on this platform', 'error'],
+  unsupported: ['Computer use is not available in this build', 'error'],
 }
 
 // A missing provider package: what to install, and the command to copy.

@@ -70,8 +70,74 @@ const normName = name => String(name ?? '').trim().toLowerCase()
 // provider's application id) when known, else the display name.
 const appKeyOf = app => String(app?.id ?? app?.path ?? app?.executablePath ?? normName(app?.name) ?? '')
 
+function installUnsupported(rt) {
+  const { state } = rt
+  const provider = { state: 'unsupported', message: 'The owned Pi host does not provide computer use.' }
+  const enabled = () => state.computer?.enabled === true
+  const levelOf = bot => (LEVELS.includes(bot?.computer?.level) ? bot.computer.level : 'background')
+  const grantsOf = bot => (bot?.computer?.apps ?? {})
+  const view = () => ({
+    enabled: enabled(),
+    provider,
+    macos: process.platform === 'darwin',
+    bots: Object.fromEntries(Object.values(state.bots).map(bot => [bot.id, { level: levelOf(bot), apps: grantsOf(bot) }])),
+  })
+  const save = async (change) => {
+    await rt.load()
+    const readOnly = rt.readOnly()
+    if (readOnly !== undefined) throw new Error(readOnly)
+    change()
+    await rt.save()
+  }
+  rt.computerStatus = () => provider
+  rt.computerView = view
+  rt.computerLive = () => ({ bots: {}, leases: [], cursors: [], asks: {}, holds: {} })
+  rt.computerEndpoint = async (endpoint, body = {}) => {
+    if (endpoint === 'set-enabled') {
+      await save(() => {
+        state.computer ??= {}
+        state.computer.enabled = body.enabled === true
+      })
+      return view()
+    }
+    if (endpoint === 'set-level') {
+      const level = String(body.level ?? '')
+      if (!LEVELS.includes(level)) throw new Error(`Level must be one of ${LEVELS.join(', ')}`)
+      await save(() => {
+        const bot = rt.botOf(String(body.botId ?? ''))
+        if (bot === undefined) throw new Error('Unknown Bot')
+        bot.computer ??= {}
+        if (level === 'background') delete bot.computer.level
+        else bot.computer.level = level
+      })
+      return true
+    }
+    if (endpoint === 'revoke-app') {
+      await save(() => {
+        const bot = rt.botOf(String(body.botId ?? ''))
+        if (bot === undefined) throw new Error('Unknown Bot')
+        if (bot.computer?.apps !== undefined) delete bot.computer.apps[String(body.appKey ?? '')]
+      })
+      return true
+    }
+    if (endpoint === 'provider-retry') return view()
+    if (endpoint === 'system-status' || endpoint === 'shot') return null
+    if (endpoint === 'user-active' || endpoint === 'stop') return true
+    throw Object.assign(new Error('Computer use is not available in the owned Pi host.'), { code: 'bot/refused' })
+  }
+  rt.computerLevelOf = levelOf
+  rt.computerEnabled = enabled
+  rt.isProtectedApp = isProtectedApp
+}
+
 export function install(rt) {
   const { ctx, state } = rt
+  // The owned Pi context deliberately has no legacy dynamic-service reflector, so
+  // it cannot mount the DSH registry or provider packages this integration needs.
+  if (typeof ctx.reflect?.get !== 'function') {
+    installUnsupported(rt)
+    return
+  }
   const leases = createLeases()
   /** @type {Map<string, {state:string, app?:string, waitingFor?:string, steps:any[], lastShot?:any, allowForegroundUntil:number}>} */
   const control = new Map()

@@ -174,13 +174,11 @@ function TaskForm({ roster, actions, start, onDone, onCancel }) {
       h('button', { type: 'submit', className: 'bt-send bt-soft-sm', disabled: busy || !target || title.trim() === '' || prompt.trim() === '' }, busy ? t('Creating…') : t('Create task'))))
 }
 
-// Settings has no schedule service to show: Automation tasks are off in DSH.
-function AutomationOff({ actions }) {
+// Settings has no schedule service to show in this build.
+function AutomationOff() {
   return h('div', { className: 'bt-set-card bt-task-off' },
     h('span', { className: 'bt-task-off-mark' }, h(ClockIcon)),
-    h('span', { className: 'bt-task-off-title' }, t('Turn on Automation tasks in DSH')),
-    h('span', { className: 'bt-set-hint' }, t('Switch on Automation tasks on the Plugins page in Settings.')),
-    h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('dsh', 'plugins') }, t('Open Plugins')))
+    h('span', { className: 'bt-task-off-title' }, t('Automation tasks are not available in this build')))
 }
 
 // A plain `start` opens the create form for that Bot or group chat; the

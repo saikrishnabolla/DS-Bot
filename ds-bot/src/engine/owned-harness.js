@@ -2,8 +2,10 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
-import { createRegistry, Harness } from '@earendil-works/pi-durable'
+import { createRegistry, defineExtension, GenerationTask, Harness, hook } from '@earendil-works/pi-durable'
+import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
+import { createModelBridge } from './model-bridge.js'
 
 const numericId = id => {
   const value = Number(id)
@@ -16,12 +18,22 @@ export class OwnedHarness {
   #models
   #registry
   #context
+  #scriptModel
+  #requestTransforms
+  #generationTransforms
+  #environment
+  #streamBoundary
 
-  constructor(harness, models, registry, context) {
+  constructor(harness, models, registry, context, scriptModel, requestTransforms, generationTransforms, environment, streamBoundary) {
     this.#harness = harness
     this.#models = models
     this.#registry = registry
     this.#context = context
+    this.#scriptModel = scriptModel
+    this.#requestTransforms = requestTransforms
+    this.#generationTransforms = generationTransforms
+    this.#environment = environment
+    this.#streamBoundary = streamBoundary
   }
 
   static async open({ dataDir, database = join(dataDir, 'runtime.sqlite'), models, registry = createRegistry(), context = BACKGROUND_CONTEXT, settings, env }) {
@@ -32,16 +44,73 @@ export class OwnedHarness {
       refreshOnCreate: false,
     })
     const storage = await openNodeSqliteStorage(database)
+    const requestTransforms = new Set()
+    const generationTransforms = new Set()
+    const messageOwners = new WeakMap()
+    const streamBoundary = { run: undefined }
+    const bridge = createModelBridge(runtime, async (request) => {
+      const conversationId = request.messages?.map(message => messageOwners.get(message)).find(id => id !== undefined)
+      let messages = request.messages
+      for (const transform of requestTransforms) {
+        const next = await transform(messages, {
+          conversationId,
+        })
+        if (next !== undefined) messages = next
+      }
+      return messages === request.messages ? request : { ...request, messages }
+    }, (model, request, options, next) => streamBoundary.run?.(model, request, options, next, {
+      conversationId: request.messages?.map(message => messageOwners.get(message)).find(id => id !== undefined),
+    }) ?? next())
+    const generationPolicy = defineExtension({
+      name: 'ds-bot-generation-policy',
+      hooks: [hook(GenerationTask, {
+        beforeRequest: async (request, api) => {
+          let messages = request.messages
+          for (const transform of generationTransforms) {
+            const next = await transform(messages, { conversationId: String(api.conversationId) })
+            if (next !== undefined) messages = next
+          }
+          for (const message of messages) {
+            if (message !== null && typeof message === 'object') messageOwners.set(message, String(api.conversationId))
+          }
+          return messages === request.messages ? undefined : { messages }
+        },
+      })],
+    })
+    registry.install(generationPolicy)
+    const extensions = [...(settings?.extensions ?? []), generationPolicy]
+    const environment = { shellEnv: undefined }
     const harness = await Harness.open(storage, {
-      models: runtime,
+      models: bridge.models,
       registry,
-      ...(settings === undefined ? {} : { settings }),
-      ...(env === undefined ? {} : { env }),
+      settings: { ...settings, extensions },
+      env: env ?? (target => new NodeExecutionEnv({
+        cwd: target.cwd ?? process.cwd(),
+        shellEnv: environment.shellEnv?.(target),
+      })),
     }, context)
-    return new OwnedHarness(harness, runtime, registry, context)
+    return new OwnedHarness(harness, bridge.models, registry, context, bridge.script, requestTransforms, generationTransforms, env === undefined ? environment : undefined, streamBoundary)
   }
 
   get models() { return this.#models }
+
+  scriptModel(id, respond) { return this.#scriptModel(id, respond) }
+
+  beforeRequest(transform) {
+    this.#requestTransforms.add(transform)
+    return () => this.#requestTransforms.delete(transform)
+  }
+
+  beforeGeneration(transform) {
+    this.#generationTransforms.add(transform)
+    return () => this.#generationTransforms.delete(transform)
+  }
+
+  setShellEnvironment(resolve) {
+    if (this.#environment !== undefined) this.#environment.shellEnv = resolve
+  }
+
+  setStreamInterceptor(intercept) { this.#streamBoundary.run = intercept }
 
   install(extension) {
     this.#registry.install(extension)

@@ -1,10 +1,41 @@
 import { join } from 'node:path'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createRegistry } from '@earendil-works/pi-durable'
+import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createRuntime } from '../../index.js'
 import { OwnedContext } from './owned-context.js'
 import { OwnedModels } from './owned-models.js'
 import { startOwnedServer } from '../server/owned-server.js'
+
+const GUARDED_CODING_TOOLS = new Set(['bash', 'powershell', 'write', 'edit'])
+
+function installCodingApprovals(context, runtime) {
+  context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
+    if (exec.ownedNative !== true || !GUARDED_CODING_TOOLS.has(exec.name)) return next()
+    const approval = context.get('approval')
+    if (approval === undefined || exec.agent?.session === undefined) {
+      return { kind: 'deny', reason: 'This action needs your approval, but approval is not available.' }
+    }
+    const botId = runtime.selfOf(exec.agent.id)
+    const name = runtime.botOf(botId)?.name ?? 'this Bot'
+    const shell = exec.name === 'bash' || exec.name === 'powershell'
+    const reason = shell ? `Allow ${name} to run this shell command?` : `Allow ${name} to change this file?`
+    const outcome = await approval.request({
+      agent: exec.agent,
+      toolName: exec.name,
+      ...(exec.callId === undefined ? {} : { callId: exec.callId }),
+      reason,
+      displayReason: {
+        en: reason,
+        zh: shell ? `允许${name}运行这条 shell 命令吗？` : `允许${name}修改这个文件吗？`,
+      },
+      ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+    })
+    return outcome === 'allowed-once'
+      ? next()
+      : { kind: 'deny', reason: outcome === 'cancelled' ? 'The approval was cancelled.' : 'The user did not allow this action.' }
+  }, { prepend: true }))
+}
 
 export class OwnedHost {
   #context
@@ -32,6 +63,8 @@ export class OwnedHost {
     try {
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
       installModelBoundary(runtime, models)
+      runtime.teamTools.push(...CodingTools.tools.map(tool => ({ ...tool, ownedNative: true })))
+      installCodingApprovals(context, runtime)
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)
       context.resume()

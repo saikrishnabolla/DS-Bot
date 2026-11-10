@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { encodeUrlComponent } from './secrets.js'
 import { own } from './store.js'
 
-const MCP_CLIENT = '@deepseek-ai/dsh-mcp-client'
+const MCP_CLIENT = '@earendil-works/pi-mcp'
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SECRET_REFERENCE = /\$DSH_SECRET_([A-Z][A-Z0-9_]*)/g
 const ENSURE_TIMEOUT_MS = 15_000
@@ -314,17 +314,25 @@ export function install(rt) {
     await drop()
     statusSet(bot.id, name, sessionId, { state: 'connecting' })
     try {
-      const plugin = item.kind === 'skill'
-        ? {
+      if (stopped) return
+      let fiber
+      if (item.kind === 'skill' && typeof agent.ctx.mountSkill === 'function') {
+        fiber = agent.ctx.mountSkill(config)
+      } else if (item.kind === 'mcp' && typeof agent.ctx.mountMcp === 'function') {
+        fiber = await agent.ctx.mountMcp(config)
+      } else if (item.kind === 'skill') {
+        const plugin = {
           name: `ds-bot-capability-skill-${name}`,
           inject: ['skills'],
           apply(c) {
             c.effect(() => c.skills.register({ name: config.name, description: config.description, source: 'runtime', content: config.content }))
           },
         }
-        : await loadMcpPlugin()
-      if (stopped) return
-      const fiber = item.kind === 'skill' ? agent.ctx.plugin(plugin) : agent.ctx.plugin(plugin, config)
+        fiber = agent.ctx.plugin(plugin)
+      } else {
+        fiber = agent.ctx.plugin(await loadMcpPlugin(), config)
+      }
+      if (stopped) { await disposeMount({ fiber }); return }
       agentMounts.set(name, { key, fiber })
       await fiber.await()
       if (stopped || agents.get(sessionId)?.deref() !== agent) return

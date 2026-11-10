@@ -5,6 +5,7 @@ import {
   createToolResultMessage,
   createUserMessage,
 } from '../../engine/messages.js'
+import { parseToolCallArguments } from '@earendil-works/pi-ai/utils/json-parse'
 
 const NO_SESSION_MODEL = 'browser_task needs a Bot session model'
 const OMITTED_IMAGE = '[Browser screenshot omitted.]'
@@ -27,6 +28,11 @@ function routeOf(exec) {
 function textParts(content) {
   if (Array.isArray(content)) return content.filter(part => part?.type === 'text').map(part => part.text ?? '')
   return [typeof content === 'string' ? content : String(content ?? '')]
+}
+
+function toolArguments(value) {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) return { arguments: value }
+  return parseToolCallArguments(typeof value === 'string' ? value : JSON.stringify(value ?? {}))
 }
 
 function imageInput(part) {
@@ -101,15 +107,16 @@ function assistantContent(message, config) {
     const fn = call.function ?? {}
     const args = fn.arguments
     blocks.push({
-      type: 'tool-call',
+      type: 'toolCall',
       id: String(call.id ?? ''),
       name: String(fn.name ?? ''),
-      arguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+      ...toolArguments(args),
     })
   }
   return createAssistantMessage({
     content: blocks,
-    source: { provider: config.provider, model: config.model },
+    provider: config.provider,
+    model: config.model,
   })
 }
 
@@ -129,7 +136,8 @@ async function dshMessages(messages, attachments, config, readsImages) {
       output.push(assistantContent(message, config))
     } else if (message.role === 'tool') {
       output.push(createToolResultMessage({
-        callId: String(message.tool_call_id ?? ''),
+        toolCallId: String(message.tool_call_id ?? ''),
+        toolName: output.at(-1)?.content?.find?.(block => block.type === 'toolCall' && block.id === message.tool_call_id)?.name ?? 'tool',
         content: textParts(message.content).map(text => ({ type: 'text', text })),
         isError: false,
       }))

@@ -664,6 +664,7 @@ export function install(rt) {
       await rt.save()
       // The Session was resolved before the group owned it, so its relay tool lands now.
       await rt.resolveAgent(id)
+      await rt.configureRoomAgent?.(id)
       if (name !== title) await retitleRoom(room)
       return room
     } catch (error) {

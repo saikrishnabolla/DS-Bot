@@ -641,6 +641,18 @@ export function install(rt) {
             counted.add(chunk)
             usage = chunk.usage
           }
+          if ((chunk?.type === 'done' || chunk?.type === 'error') && typeof chunk === 'object' && !counted.has(chunk)) {
+            const terminalUsage = chunk.message?.usage ?? chunk.error?.usage
+            if (terminalUsage !== undefined) {
+              counted.add(chunk)
+              usage = {
+                inputTokens: terminalUsage.inputTokens ?? terminalUsage.input ?? 0,
+                outputTokens: terminalUsage.outputTokens ?? terminalUsage.output ?? 0,
+                cacheReadTokens: terminalUsage.cacheReadTokens ?? terminalUsage.cacheRead ?? 0,
+                cacheWriteTokens: terminalUsage.cacheWriteTokens ?? terminalUsage.cacheWrite ?? 0,
+              }
+            }
+          }
           yield chunk
         }
       } finally {

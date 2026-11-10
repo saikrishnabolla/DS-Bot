@@ -1351,6 +1351,7 @@ var ZH = {
   "No scheduled tasks yet.": "还没有定时任务。",
   "No scheduled tasks yet. Add one": "还没有定时任务，去添加",
   "Automation tasks are off in DSH": "DSH 的「自动化任务」没有打开",
+  "Automation tasks are not available in this build": "此版本不提供自动化任务",
   "No such Bot": "没有这个 Bot",
   "No such Bot or group chat": "没有这个 Bot 或群聊",
   "Give the task a name": "给任务起个名字",
@@ -1657,7 +1658,7 @@ var HOST_ZH = {
   "Copy command": "复制命令",
   "Bots get no computer tools until the provider is ready.": "提供方就绪之前，Bot 拿不到电脑工具。",
   "Another computer-use provider is running": "另一个电脑操控提供方正在运行",
-  "Computer use is not available on this platform": "此平台不支持电脑操控",
+  "Computer use is not available in this build": "此版本不支持电脑操控",
   "Accessibility": "辅助功能",
   "Screen Recording": "屏幕录制",
   "Allowed": "已允许",
@@ -5972,7 +5973,7 @@ var PROVIDER_TEXT = {
   error: ["Could not load the provider", "error"],
   missing: ["The provider package is not installed", "error"],
   occupied: ["Another computer-use provider is running", "error"],
-  unsupported: ["Computer use is not available on this platform", "error"]
+  unsupported: ["Computer use is not available in this build", "error"]
 };
 function InstallRow({ install, Row: Row4 }) {
   const [copied, setCopied] = (0, import_react12.useState)(false);
@@ -8718,7 +8719,7 @@ button.dv-q-opt:active{background:var(--dv-active)}
 .dv-menu.dv-view-menu{position:absolute;z-index:4}
 .dv-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dv-ink);cursor:pointer;box-sizing:border-box}
 .dv-menu button:hover{background:var(--dv-hover)}
-.dv-menu 
+.dv-menu
 .dv-menu button{display:flex;align-items:center;gap:4px;width:100%;min-height:30px;text-align:left;border:0;background:none;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;line-height:18px;color:var(--dv-ink);cursor:pointer;box-sizing:border-box}
 .dv-menu button:hover{background:var(--dv-hover)}
 .dv-menu button svg{flex:none;width:16px;height:16px;margin:0 1px}
@@ -10655,14 +10656,12 @@ function TaskForm({ roster, actions, start, onDone, onCancel }) {
     )
   );
 }
-function AutomationOff({ actions }) {
+function AutomationOff() {
   return (0, import_react23.createElement)(
     "div",
     { className: "bt-set-card bt-task-off" },
     (0, import_react23.createElement)("span", { className: "bt-task-off-mark" }, (0, import_react23.createElement)(ClockIcon)),
-    (0, import_react23.createElement)("span", { className: "bt-task-off-title" }, t("Turn on Automation tasks in DSH")),
-    (0, import_react23.createElement)("span", { className: "bt-set-hint" }, t("Switch on Automation tasks on the Plugins page in Settings.")),
-    (0, import_react23.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.openSettings("dsh", "plugins") }, t("Open Plugins"))
+    (0, import_react23.createElement)("span", { className: "bt-task-off-title" }, t("Automation tasks are not available in this build"))
   );
 }
 function SchedulesPage({ roster, actions, start }) {
@@ -13062,7 +13061,7 @@ function mailView(request, roster, settled = false) {
         cancelLabel: settled ? t("Discarded") : t("Discard"),
         fields
       },
-      attachments ? { type: "text", tone: "muted", text: literal(attachments) } : null
+      attachments ? { type: "text", tone: "muted", text: attachments } : null
     ].filter(Boolean)
   };
 }

@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
 
-// jsdom comes from the harness that test/harness-resolve.mjs found, like the dsh packages.
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)))
-const { JSDOM } = createRequire(join(process.env.DSH_HARNESS ?? join(PLUGIN, '..', 'deepseek-harness'), 'package.json'))('jsdom')
 
 // The mailbox catalog row, bundled once and rendered with a minimal React stand-in whose
 // useState survives re-renders: hooks are numbered by expansion order, which is
@@ -211,8 +209,7 @@ test('the mail send card is an editable show_view form card with the approval ru
   assert.equal(toInput.props.value, 'team@corp.dev')
   assert.equal(ccInput.props.value, '')
   assert.equal(bodyArea.props.value, body, 'body stays literal in textarea')
-  const texts = collect(n => typeof n.props?.text === 'string' && n.props?.variant === 'compact').map(n => n.props.text)
-  assert.ok(texts.some(text => text.includes('report\\.pdf \\(2 KB\\)')), 'attachments')
+  assert.match(flatten(collect(n => n.props?.className === 'dv-view-muted')[0]).join(''), /Attachments: report\.pdf \(2 KB\)/)
   // Approval menu defaults to Needs approval.
   const ruleBtn = collect(n => n.type === 'button' && n.props?.className === 'bt-mail-rule-btn')[0]
   assert.equal(flatten(ruleBtn).join(''), 'Needs approval')

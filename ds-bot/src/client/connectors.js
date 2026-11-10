@@ -569,7 +569,7 @@ function mailView(request, roster, settled = false) {
         cancelLabel: settled ? t('Discarded') : t('Discard'),
         fields,
       },
-      attachments ? { type: 'text', tone: 'muted', text: literal(attachments) } : null,
+      attachments ? { type: 'text', tone: 'muted', text: attachments } : null,
     ].filter(Boolean),
   }
 }

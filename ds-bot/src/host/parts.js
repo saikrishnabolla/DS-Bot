@@ -1535,8 +1535,10 @@ export function install(rt) {
     // turn/start from the page before, so seed that turn when the projection has
     // it — or when the caller walked the log back to it (no live session).
     let turn = seedTurn ?? openTurnAt(ctx.get?.('sessionProjections'), session, events[0]?.seq)
-    const stamp = (event, item) => {
+    const stamp = (event, item, block) => {
       if (typeof event.seq === 'number' && Number.isInteger(event.seq)) item.seq = event.seq
+      if (event.entryId !== undefined) item.entryId = String(event.entryId)
+      if (Number.isInteger(block)) item.block = block
       if (turn !== undefined) item.turn = turn
       items.push(item)
     }
@@ -1549,8 +1551,22 @@ export function install(rt) {
         if (hidden.has(event.data?.turn)) continue
         // One entry per text block: the chat shows each block in a bubble of its own.
         const content = Array.isArray(event.data?.message?.content) ? event.data.message.content : []
-        for (const block of content) {
-          if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') stamp(event, { kind: 'bot', text: block.text, time: event.time })
+        for (let index = 0; index < content.length; index += 1) {
+          const block = content[index]
+          if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
+            stamp(event, { kind: 'bot', text: block.text, time: event.time }, index)
+          } else if (block?.type === 'thinking' && typeof block.thinking === 'string') {
+            stamp(event, { kind: 'reasoning', text: block.thinking, ...(block.redacted === true ? { redacted: true } : {}), time: event.time }, index)
+          }
+        }
+        const reason = event.data?.message?.stopReason
+        if (reason === 'error' || reason === 'aborted') {
+          stamp(event, {
+            kind: 'failure',
+            reason,
+            ...(typeof event.data.message.errorMessage === 'string' ? { detail: event.data.message.errorMessage } : {}),
+            time: event.time,
+          }, content.length)
         }
         continue
       }
@@ -1561,9 +1577,9 @@ export function install(rt) {
         // Hidden turns and refused calls never showed a display card. Interactive
         // cards live in the pending dock or on their answer message instead.
         const named = event.data?.name
+        let args = event.data?.arguments
+        if (typeof args === 'string') { try { args = JSON.parse(args) } catch { args = undefined } }
         if ((named === 'show_view' || named === 'ask_user') && !hidden.has(event.data?.turn)) {
-          let args = event.data?.arguments
-          if (typeof args === 'string') { try { args = JSON.parse(args) } catch { args = undefined } }
           const callId = event.data?.callId ?? null
           const closed = callId === null ? undefined : rt.own(rt.own(state.closedCards, partId), callId)
           if (named === 'ask_user') {
@@ -1577,6 +1593,14 @@ export function install(rt) {
           } else if (shown.error === undefined && closed !== undefined) {
             items.push({ kind: 'closed', closed, title: shown.title, view, callId, time: event.time })
           }
+        } else if (named !== 'group_relay' && !hidden.has(event.data?.turn)) {
+          stamp(event, {
+            kind: 'tool-call',
+            callId: String(event.data?.callId ?? ''),
+            name: String(named ?? ''),
+            arguments: args ?? {},
+            time: event.time,
+          }, event.data?.block)
         }
         continue
       }
@@ -1585,16 +1609,27 @@ export function install(rt) {
         // calls whose results hold the round's replies — the group's conversation,
         // read the way the live chat reads a settled call (shared/group-replies.js).
         const message = event.data?.message
-        if (!relayCalls.has(message?.toolCallId)) continue
-        const { replies } = parseReplies(textOf(message?.content))
-        for (const { reply, texts, time, duration } of stackReplies(replies)) {
-          // Reply rows take the reply's own time, and no seq: several rows share
-          // the result event's seq, which the chat keys a post's anchor by.
-          const item = { time: time ?? reply.time ?? event.time }
-          if (turn !== undefined) item.turn = turn
-          if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...(reply.via ? { via: reply.via } : {}), ...item })
-          else if (reply.kind === undefined) items.push({ kind: 'post', botId: reply.botId ?? null, name: reply.name ?? null, texts, ...item, ...(duration === undefined ? {} : { duration }) })
-          else items.push({ kind: 'relay', reply, ...item })
+        if (relayCalls.has(message?.toolCallId)) {
+          const { replies } = parseReplies(textOf(message?.content))
+          for (const { reply, texts, time, duration } of stackReplies(replies)) {
+            // Reply rows take the reply's own time, and no seq: several rows share
+            // the result event's seq, which the chat keys a post's anchor by.
+            const item = { time: time ?? reply.time ?? event.time }
+            if (turn !== undefined) item.turn = turn
+            if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...(reply.via ? { via: reply.via } : {}), ...item })
+            else if (reply.kind === undefined) items.push({ kind: 'post', botId: reply.botId ?? null, name: reply.name ?? null, texts, ...item, ...(duration === undefined ? {} : { duration }) })
+            else items.push({ kind: 'relay', reply, ...item })
+          }
+        } else {
+          stamp(event, {
+            kind: 'tool-result',
+            callId: String(message?.toolCallId ?? ''),
+            name: String(message?.toolName ?? ''),
+            text: textOf(message?.content),
+            isError: message?.isError === true,
+            ...(message?.details === undefined ? {} : { details: message.details }),
+            time: event.time,
+          })
         }
         continue
       }
@@ -1643,7 +1678,7 @@ export function install(rt) {
       ...(Number.isInteger(cursor?.beforeSeq) ? { beforeSeq: cursor.beforeSeq } : {}),
       maxMessages: EARLIER_PAGE,
     }, signal)
-    const events = page.records.map(record => record.event)
+    const events = page.records.map(record => ({ ...record.event, entryId: record.entryId ?? record.event.entryId }))
     let seedTurn
     if (agent === undefined) {
       // Without the live session's projection, rows on a page that does not

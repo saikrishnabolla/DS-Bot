@@ -263,6 +263,28 @@ function withProvider(ctx, services, { providerName } = {}) {
   return fibers
 }
 
+test('the owned host reports computer use unsupported without provider imports or masking', async (t) => {
+  const home = mkdtempSync(join(tmpdir(), 'ds-bot-computer-owned-'))
+  const imports = []
+  const ctx = fakeContext({ services: { loader: { import: async name => { imports.push(name); return { name } } } } })
+  delete ctx.reflect
+  const rt = createRuntime(ctx, { home })
+  t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })
+
+  await rt.load()
+  assert.equal(rt.computerStatus().state, 'unsupported')
+  assert.match(rt.computerStatus().message, /owned Pi host/i)
+  await rt.computerEndpoint('set-enabled', { enabled: true })
+  await rt.computerEndpoint('provider-retry', {})
+  assert.equal(rt.computerView().enabled, true)
+  assert.equal(rt.computerView().provider.state, 'unsupported')
+  assert.deepEqual(imports, [])
+  assert.equal(ctx.sections.has('computer-use:ds-bot'), false)
+  for (const listeners of ctx.listeners.values()) {
+    assert.equal(listeners.some(listener => ['computerConsent', 'computerGate', 'computerTrack'].includes(listener.name)), false)
+  }
+})
+
 test('the provider mounts when the switch comes on and reports its status', async (t) => {
   const { ctx, home, rt } = setup()
   t.after(async () => { await ctx.dispose(); rmSync(home, { recursive: true, force: true, maxRetries: 5 }) })

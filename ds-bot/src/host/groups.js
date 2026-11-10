@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { getCurrentTools } from '@earendil-works/pi-ai/utils/transcript'
 import { createUserMessage } from '../engine/messages.js'
 import { defineTool } from '../engine/tool-definition.js'
 import { GROUP_LINE_READ, LATE_ANSWER, ROOM_IDLE_RELAY_LIMIT, ROOM_REPLY_TIMEOUT_MS, ROOM_STEP_GAP_MS, ROOM_WORK_GRACE_MS, SOURCE_KIND, TEAM_TOOLS, TEXT_KEPT } from './constants.js'
@@ -1565,49 +1566,106 @@ export function install(rt) {
   // group_relay" (they message one member directly when the user names it), so the
   // relay step is synthesized here. Auxiliary calls such as titles, and DS Bot's own
   // calls for the room such as image readings, still reach the model.
-  ctx.on('llm/stream', (options, next) => {
-    if (options.sessionId === undefined || options.purpose !== undefined || rt.ownRequest(options)) return next()
-    return (async function* relayOrPass() {
+  const opensRelay = message => message.role === 'user'
+    && (message.source?.kind === 'user' || message.source?.kind === 'schedule' || (message.source?.kind === SOURCE_KIND && (message.source.role === 'post' || message.source.role === 'kickoff' || message.source.role === 'goal')))
+
+  async function groupModelResponse(options) {
+    if (options.sessionId === undefined || options.purpose !== undefined || rt.ownRequest(options)) return undefined
+    await rt.load()
+    const room = rt.roomOf(options.sessionId)
+    if (room === undefined) return undefined
+    // Plugins append context as user-role messages (time, attachments), so only a
+    // message from the user, a scheduled task, or a Bot's post after the last model or
+    // tool step starts a relay.
+    const latest = [...options.messages].reverse()
+      .find(message => message.role === 'assistant' || message.role === 'tool' || message.role === 'toolResult' || opensRelay(message))
+    if (latest?.role !== 'user') return { content: [], stopReason: 'stop' }
+    const declared = new Set((options.tools ?? []).map(tool => tool.name))
+    // Neither relay path is declared, so a synthesized call could only fail
+    // unseen. The assemble scope keeps this unreachable; if it is reached the
+    // step ends with a line the user can read instead.
+    if (!declared.has('group_relay') && !declared.has('run_code')) {
+      rt.warn('ds-bot: group %s cannot relay: group_relay is not available in its Session', room.name)
+      return {
+        content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart DS Bot; if it keeps happening, report it.' }],
+        stopReason: 'stop',
+      }
+    }
+    const id = `toolu_relay_${randomUUID().replace(/-/g, '')}`
+    // Only for a group made under the PTC preset, which can call nothing but run_code;
+    // new group Sessions get the standard preset.
+    const [name, args] = declared.has('run_code') && !declared.has('group_relay')
+      ? ['run_code', { description: 'Relay the group chat to its Bots', code: 'return await tools.group_relay({})', timeoutMs: 600_000 }]
+      : ['group_relay', {}]
+    return { content: [{ type: 'toolCall', id, name, arguments: args }], stopReason: 'toolUse' }
+  }
+
+  if (typeof ctx.llm.script === 'function') {
+    const relays = new Map()
+    const relayFor = (sessionId) => {
+      const key = String(sessionId)
+      const existing = relays.get(key)
+      if (existing !== undefined) return existing
+      const relay = ctx.llm.script(`group-relay-${key}`, ({ context }) => {
+        const messages = context.messages ?? []
+        const agent = ctx.sessionController.resolveAgent(key)
+        return Promise.resolve(agent).then((resolved) => {
+          const transcript = resolved?.agent?.session?.deriveMessages?.() ?? []
+          const latest = [...transcript].reverse()
+            .find(message => message.role === 'assistant' || message.role === 'tool' || message.role === 'toolResult' || opensRelay(message))
+          if (latest?.role !== 'user') return { content: [], stopReason: 'stop' }
+          const declared = new Set(getCurrentTools(messages).map(tool => tool.name))
+          if (!declared.has('group_relay')) {
+            return {
+              content: [{ type: 'text', text: 'This group could not pass the message on: its relay tool is not available. Restart DS Bot; if it keeps happening, report it.' }],
+              stopReason: 'stop',
+            }
+          }
+          return {
+            content: [{ type: 'toolCall', id: `toolu_relay_${randomUUID().replace(/-/g, '')}`, name: 'group_relay', arguments: {} }],
+            stopReason: 'toolUse',
+          }
+        })
+      })
+      relays.set(key, relay)
+      return relay
+    }
+    ctx.effect(() => () => {
+      for (const relay of relays.values()) relay.dispose()
+      relays.clear()
+    }, 'ds-bot: owned group relay')
+    const configureRoomAgent = (sessionId) => {
+      const relay = relayFor(sessionId)
+      return ctx.sessionController.selectModel({ sessionId, provider: relay.provider, model: relay.model })
+    }
+    rt.configureRoomAgent = configureRoomAgent
+    ctx.on('agent/created', async ({ agent }) => {
       await rt.load()
-      const room = rt.roomOf(options.sessionId)
-      if (room === undefined) {
-        yield* next()
-        return
-      }
-      // Plugins append context as user-role messages (time, attachments), so only a
-      // message from the user, a scheduled task, or a Bot's post after the last model or
-      // tool step starts a relay.
-      const opens = message => message.role === 'user'
-        && (message.source?.kind === 'user' || message.source?.kind === 'schedule' || (message.source?.kind === SOURCE_KIND && (message.source.role === 'post' || message.source.role === 'kickoff' || message.source.role === 'goal')))
-      const latest = [...options.messages].reverse()
-        .find(message => message.role === 'assistant' || message.role === 'tool' || opens(message))
-      if (latest?.role !== 'user') {
-        yield { type: 'finish', reason: { kind: 'stop' } }
-        return
-      }
-      const declared = new Set((options.tools ?? []).map(tool => tool.name))
-      // Neither relay path is declared, so a synthesized call could only fail
-      // unseen. The assemble scope keeps this unreachable; if it is reached the
-      // step ends with a line the user can read instead.
-      if (!declared.has('group_relay') && !declared.has('run_code')) {
-        rt.warn('ds-bot: group %s cannot relay: group_relay is not available in its Session', room.name)
-        const text = 'This group could not pass the message on: its relay tool is not available. Restart DS Bot; if it keeps happening, report it.'
-        yield { type: 'block-start', index: 0, blockType: 'text' }
-        yield { type: 'text-delta', index: 0, text }
-        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
-        yield { type: 'finish', reason: { kind: 'stop' } }
-        return
-      }
-      const id = `toolu_relay_${randomUUID().replace(/-/g, '')}`
-      // Only for a group made under the PTC preset, which can call nothing but run_code;
-      // new group Sessions get the standard preset.
-      const [name, args] = declared.has('run_code') && !declared.has('group_relay')
-        ? ['run_code', JSON.stringify({ description: 'Relay the group chat to its Bots', code: 'return await tools.group_relay({})', timeoutMs: 600_000 })]
-        : ['group_relay', '{}']
-      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
-      yield { type: 'tool-call-delta', index: 0, id, name, argumentsDelta: args }
-      yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, name, arguments: args } }
-      yield { type: 'finish', reason: { kind: 'tool-calls' } }
-    })()
-  })
+      if (rt.roomOf(agent.id) === undefined) return
+      await configureRoomAgent(agent.id)
+    })
+  } else {
+    ctx.on('llm/stream', (options, next) => {
+      if (options.sessionId === undefined || options.purpose !== undefined || rt.ownRequest(options)) return next()
+      return (async function* relayOrPass() {
+        const response = await groupModelResponse(options)
+        if (response === undefined) {
+          yield* next()
+          return
+        }
+        const block = response.content[0]
+        if (block?.type === 'text') {
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'text-delta', index: 0, text: block.text }
+          yield { type: 'block-end', index: 0, block }
+        } else if (block?.type === 'toolCall') {
+          const args = JSON.stringify(block.arguments)
+          yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+          yield { type: 'tool-call-delta', index: 0, id: block.id, name: block.name, argumentsDelta: args }
+          yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: block.id, name: block.name, arguments: args } }
+        }
+        yield { type: 'finish', reason: { kind: response.stopReason === 'toolUse' ? 'tool-calls' : 'stop' } }
+      })()
+    })
+  }
 }

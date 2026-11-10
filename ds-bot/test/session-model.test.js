@@ -73,7 +73,7 @@ test('session completion preserves DSH tool-call identity, name, and JSON argume
   }])
 })
 
-test('follow-up assistant tool call and tool result are converted to DSH messages', async () => {
+test('follow-up assistant tool call and tool result are converted to Pi messages', async () => {
   const setup = fixture([
     { type: 'text-delta', index: 0, text: 'Done.' },
     stop,
@@ -102,12 +102,12 @@ test('follow-up assistant tool call and tool result are converted to DSH message
 
   assert.equal(result.choices[0].message.content, 'Done.')
   const request = setup.requests[0]
-  assert.deepEqual(request.messages.map(message => message.role), ['system', 'user', 'assistant', 'tool'])
+  assert.deepEqual(request.messages.map(message => message.role), ['system', 'user', 'assistant', 'toolResult'])
   assert.deepEqual(request.messages[2].content, [{
-    type: 'tool-call',
+    type: 'toolCall',
     id: 'call-browser-2',
     name: 'browser_open',
-    arguments: '{"url":"https://example.com"}',
+    arguments: { url: 'https://example.com' },
   }])
   assert.equal(request.messages[3].toolCallId, 'call-browser-2')
   assert.deepEqual(request.messages[3].content, [{ type: 'text', text: 'Opened https://example.com' }])
@@ -120,6 +120,26 @@ test('follow-up assistant tool call and tool result are converted to DSH message
   assert.equal(request.provider, 'mock-provider')
   assert.equal(request.sessionId, 'session-browser-task')
   assert.deepEqual(setup.tags, [{ sessionId: 'session-browser-task', kind: 'browser-task' }])
+})
+
+test('malformed follow-up tool arguments stay visible as a Pi argument error', async () => {
+  const setup = fixture([stop])
+  await sessionComplete(setup.ctx, setup.exec, setup.rt)({
+    messages: [{
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call-bad-args',
+        type: 'function',
+        function: { name: 'browser_open', arguments: '{"url":' },
+      }],
+    }],
+    tools: [],
+  })
+
+  const call = setup.requests[0].messages[0].content[0]
+  assert.deepEqual(call.arguments, {})
+  assert.match(call.argumentsError, /Received arguments:\n\{"url":/)
 })
 
 test('text-only model metadata omits screenshots before saving attachments', async () => {

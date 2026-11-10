@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { within } from './folders.js'
 import { unquote } from './text.js'
 
-const FILE_TOOLS = { read: 'file_path', write: 'file_path', edit: 'file_path', read_image: 'file_path', str_replace_editor: 'path' }
+const FILE_TOOLS = { read: ['path', 'file_path'], write: ['path', 'file_path'], edit: ['path', 'file_path'], read_image: ['file_path', 'path'], str_replace_editor: ['path'] }
 const WRITE_TOOLS = ['write', 'edit', 'str_replace_editor']
 const SEARCH_TOOLS = ['glob', 'grep']
 const SHELL_TOOLS = ['bash', 'pwsh', 'terminal_open', 'terminal_send']
@@ -245,7 +245,7 @@ export function install(rt) {
     const refuse = (bot) => { throw closed(bot, 'files') }
     const name = exec.name
     if (name in FILE_TOOLS) {
-      const path = args[FILE_TOOLS[name]]
+      const path = FILE_TOOLS[name].map(key => args[key]).find(value => typeof value === 'string' && value !== '')
       if (typeof path !== 'string' || path === '') return
       const bot = await ownerOfPath(path, { self, base: folder() })
       if (bot) refuse(bot)

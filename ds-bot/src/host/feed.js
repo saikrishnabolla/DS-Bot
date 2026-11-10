@@ -64,17 +64,26 @@ export function install(rt) {
   ctx.on('session/event', (session, event) => {
     if (!active()) return
     const botId = rt.chatOwners.get(session.id)
-    if (botId === undefined) return
-    for (const item of rt.displayItems(session.id, [event])) publish('message', { botId, sessionId: session.id, item })
+    const roomId = rt.roomOwners.get(session.id)
+    if (botId === undefined && roomId === undefined) return
+    for (const item of rt.displayItems(session.id, [event])) publish('message', {
+      ...(botId === undefined ? {} : { botId }),
+      ...(roomId === undefined ? {} : { roomId }),
+      sessionId: session.id,
+      item,
+    })
     if (event.type === 'tool/call') live()
   })
 
   ctx.on('agent/assistant-stream', ({ agent, frame }) => {
     if (frame.type === 'start') {
-      const botId = rt.chatOwners.get(agent.id)
+      const group = rt.groupOwners.get(agent.id)
+      const botId = group?.botId ?? rt.chatOwners.get(agent.id)
+      const roomId = group?.roomId
       if (!active() || botId === undefined || (state.exchangeTurns[agent.id] ?? []).includes(frame.turn)) return
-      writing.set(frame.attemptId, { botId, sessionId: agent.id })
-      publish('stream', { botId, sessionId: agent.id, attemptId: frame.attemptId, phase: 'start' })
+      const target = { botId, ...(roomId === undefined ? {} : { roomId }), sessionId: agent.id }
+      writing.set(frame.attemptId, target)
+      publish('stream', { ...target, attemptId: frame.attemptId, phase: 'start' })
       return
     }
     const target = writing.get(frame.attemptId)

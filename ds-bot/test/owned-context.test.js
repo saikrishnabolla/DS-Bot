@@ -119,6 +119,45 @@ test('owned context configures models, routes dispatch, publishes feed, aborts, 
   await ctx.close()
 })
 
+test('owned context exposes approvals through the host middleware', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const seen = []
+  ctx.on('approval/request', async (request, next) => {
+    void next
+    seen.push(request.reason)
+    return 'allowed-once'
+  })
+
+  const outcome = await ctx.get('approval').request({ reason: 'Use the private value?' })
+  assert.equal(outcome, 'allowed-once')
+  assert.deepEqual(seen, ['Use the private value?'])
+})
+
+test('owned context applies legacy model middleware to main Pi generation', async t => {
+  const { ctx } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.on('llm/stream', (options, next) => {
+    if (!options.messages.some(message => message.source?.handoff === true)) return next()
+    return (async function* acknowledge() {
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text: 'Handoff received.' }
+      yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Handoff received.' } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    })()
+  })
+  ctx.resume()
+
+  agent.followup({ content: 'continue', source: { kind: 'bot', handoff: true } })
+  await agent.whenIdle()
+
+  const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+  assert.equal(page.records.find(record => record.event.type === 'assistant/message').event.data.message.content[0].text, 'Handoff received.')
+})
+
 test('owned context accepts the complete DS Bot host tool catalog', async t => {
   const { ctx, dataDir } = await contextFixture(t)
   t.after(() => ctx.close())
@@ -138,4 +177,159 @@ test('owned context accepts the complete DS Bot host tool catalog', async t => {
   await ctx.sessionController.resolveAgent(sessionId)
   assert.equal((await ctx.harness.agent(sessionId)).extensions.some(extension => extension.name === 'ds-bot-system-prompt'), true)
   await ctx.close()
+})
+
+test('owned context mounts Pi MCP tools and skill sections for one Bot', async t => {
+  const { ctx, provider } = await contextFixture(t)
+  t.after(() => ctx.close())
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('mcp__fixture__echo', { text: 'hello' }, { id: 'call-mcp' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('MCP complete'),
+  ])
+  const calls = []
+  const client = {
+    connectionState: 'connected',
+    serverInfo: { name: 'fixture', version: '1' },
+    connect: async () => {},
+    listTools: async () => [{ name: 'echo', description: 'Echo text', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }],
+    callTool: async (name, args) => {
+      calls.push({ name, args })
+      return { content: [{ type: 'text', text: args.text }] }
+    },
+    close: async () => { client.connectionState = 'closed' },
+  }
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  const mcp = await ctx.mountMcp({ name: 'fixture', transport: 'stdio', command: 'unused' }, { agent, client })
+  const skill = ctx.mountSkill(agent, { name: 'guide', content: 'Use the fixture carefully.' })
+  await Promise.all([mcp.await(), skill.await()])
+  ctx.resume()
+
+  agent.followup({ content: 'use the fixture', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  assert.deepEqual(calls, [{ name: 'echo', args: { text: 'hello' } }])
+  assert.ok((await ctx.harness.agent(sessionId)).extensions.some(extension => extension.name === 'ds-bot-skill-capability-guide'))
+  await Promise.all([mcp.dispose(), skill.dispose()])
+  assert.equal(client.connectionState, 'closed')
+})
+
+test('owned context isolates same-named MCP tools between Bot sessions', async t => {
+  const { ctx, provider } = await contextFixture(t)
+  t.after(() => ctx.close())
+  const calls = []
+  const client = label => ({
+    connectionState: 'connected',
+    serverInfo: { name: 'fixture', version: '1' },
+    connect: async () => {},
+    listTools: async () => [{ name: 'echo', description: 'Echo text', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }],
+    callTool: async (name, args) => {
+      calls.push({ label, name, args })
+      return { content: [{ type: 'text', text: `${label}:${args.text}` }] }
+    },
+    close: async () => {},
+  })
+  const sessionA = (await ctx.sessionController.create()).sessionId
+  const sessionB = (await ctx.sessionController.create()).sessionId
+  await Promise.all([
+    ctx.sessionController.selectModel({ sessionId: sessionA, provider: 'faux', model: 'faux-1' }),
+    ctx.sessionController.selectModel({ sessionId: sessionB, provider: 'faux', model: 'faux-1' }),
+  ])
+  const agentA = (await ctx.sessionController.resolveAgent(sessionA)).agent
+  const agentB = (await ctx.sessionController.resolveAgent(sessionB)).agent
+  const mountA = await ctx.mountMcp({ name: 'fixture', transport: 'stdio', command: 'unused' }, { agent: agentA, client: client('A') })
+  const mountB = await ctx.mountMcp({ name: 'fixture', transport: 'stdio', command: 'unused' }, { agent: agentB, client: client('B') })
+  await Promise.all([mountA.await(), mountB.await()])
+  ctx.resume()
+
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('mcp__fixture__echo', { text: 'one' }, { id: 'call-a' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('A complete'),
+  ])
+  agentA.followup({ content: 'call A', source: { kind: 'user' } })
+  await agentA.whenIdle()
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('mcp__fixture__echo', { text: 'two' }, { id: 'call-b' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('B complete'),
+  ])
+  agentB.followup({ content: 'call B', source: { kind: 'user' } })
+  await agentB.whenIdle()
+  await mountA.dispose()
+  provider.setResponses([
+    fauxAssistantMessage(fauxToolCall('mcp__fixture__echo', { text: 'three' }, { id: 'call-b-again' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('B still complete'),
+  ])
+  agentB.followup({ content: 'call B again', source: { kind: 'user' } })
+  await agentB.whenIdle()
+
+  assert.deepEqual(calls, [
+    { label: 'A', name: 'echo', args: { text: 'one' } },
+    { label: 'B', name: 'echo', args: { text: 'two' } },
+    { label: 'B', name: 'echo', args: { text: 'three' } },
+  ])
+  await mountB.dispose()
+})
+
+test('owned context transforms every external model request and bridges scripted models', async t => {
+  const models = createModels()
+  const provider = fauxProvider()
+  models.setProvider(provider.provider)
+  const requests = []
+  const streamSimple = models.streamSimple.bind(models)
+  const completeSimple = models.completeSimple.bind(models)
+  models.streamSimple = (model, context, options) => {
+    requests.push({ kind: 'stream', context, options })
+    return streamSimple(model, context, options)
+  }
+  models.completeSimple = async (model, context, options) => {
+    requests.push({ kind: 'complete', context, options })
+    return completeSimple(model, context, options)
+  }
+  const { ctx } = await contextFixture(t, { models, provider })
+  t.after(() => ctx.close())
+  const transformed = []
+  ctx.llm.beforeRequest((messages, { conversationId }) => {
+    transformed.push(conversationId)
+    return messages.map(message => ({
+      ...message,
+      content: message.content.map(block => block.type === 'text' ? { ...block, text: block.text.replaceAll('TOP_SECRET', '[secret]') } : block),
+    }))
+  })
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  provider.setResponses([fauxAssistantMessage('redacted')])
+  ctx.resume()
+  agent.followup({ content: 'TOP_SECRET in stream', source: { kind: 'user' } })
+  await agent.whenIdle()
+
+  const model = ctx.harness.models.getModel('faux', 'faux-1')
+  provider.setResponses([fauxAssistantMessage('compacted')])
+  await ctx.harness.models.completeSimple(model, {
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'TOP_SECRET in compaction' }], timestamp: Date.now() }],
+  }, { sessionId })
+
+  const relayCalls = []
+  const relay = ctx.llm.script('group-relay-test', ({ context }) => {
+    relayCalls.push(context)
+    return { content: [{ type: 'text', text: 'scripted relay' }], stopReason: 'stop' }
+  })
+  const streamedRelay = await ctx.llm.stream({
+    provider: relay.provider,
+    model: relay.model,
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'TOP_SECRET stays internal' }], timestamp: Date.now() }],
+  }).result()
+  const relayModel = ctx.harness.models.getModel(relay.provider, relay.model)
+  const completedRelay = await ctx.harness.models.completeSimple(relayModel, {
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'complete relay' }], timestamp: Date.now() }],
+  })
+
+  assert.equal(requests[0].context.messages[0].content[0].text, '[secret] in stream')
+  assert.equal(requests[1].context.messages[0].content[0].text, '[secret] in compaction')
+  assert.deepEqual(transformed, [sessionId, undefined])
+  assert.equal(streamedRelay.content[0].text, 'scripted relay')
+  assert.equal(completedRelay.content[0].text, 'scripted relay')
+  assert.equal(relayCalls[0].messages[0].content[0].text, 'TOP_SECRET stays internal')
+  relay.dispose()
 })

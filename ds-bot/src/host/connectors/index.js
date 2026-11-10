@@ -18,7 +18,7 @@ import { output } from '../tools.js'
 
 export const GITHUB = 'github'
 export const GITHUB_SECRET = 'GITHUB_TOKEN'
-const MCP_CLIENT = '@deepseek-ai/dsh-mcp-client'
+const MCP_CLIENT = '@earendil-works/pi-mcp'
 const CHECK_TIMEOUT_MS = 15_000
 const SIGN_IN_TIMEOUT_MS = 10 * 60_000
 const SECRET_REF = /\$DSH_SECRET_([A-Z][A-Z0-9_]*)/g
@@ -183,10 +183,11 @@ export function install(rt) {
     await unmount(id)
     statuses.set(id, { state: 'connecting' })
     try {
-      const plugin = await loadMcpPlugin()
       if (stopped) return
       const config = { ...(await configFor(id)), failOnStartupError: true }
-      const fiber = ctx.plugin(plugin, config)
+      const fiber = typeof ctx.mountMcp === 'function'
+        ? await ctx.mountMcp(config)
+        : ctx.plugin(await loadMcpPlugin(), config)
       const mount = { fp, fiber }
       mounts.set(id, mount)
       await fiber.await()

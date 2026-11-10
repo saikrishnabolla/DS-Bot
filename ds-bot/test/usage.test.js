@@ -165,8 +165,10 @@ test('the usage view counts every Session under its owner, by hour in the asked 
   const chunks = await drain(meter({ sessionId: 's-b1', purpose: 'compaction', provider: 'deepseek', model: 'v4-flash', messages: [] }, async function* () { yield chunk }))
   assert.deepEqual(chunks, [chunk])
   await drain(meter({ sessionId: 's-b1', purpose: 'compaction', provider: 'deepseek', model: 'v4-flash', messages: [] }, async function* () { yield chunk }))
+  const done = { type: 'done', message: { usage: { input: 7, output: 4, cacheRead: 0, cacheWrite: 0 } } }
+  assert.deepEqual(await drain(meter({ sessionId: 's-b1', purpose: 'compaction', provider: 'deepseek', model: 'v4-flash', messages: [] }, async function* () { yield done })), [done])
   const again = (await call('usage', { timeZone: 'Asia/Shanghai' })).value
-  assert.equal(totals(again)['Chief/compaction'], 1100)
+  assert.equal(totals(again)['Chief/compaction'], 1111)
 })
 
 test('a call made in a group chat stays group use after the room is gone', async (t) => {

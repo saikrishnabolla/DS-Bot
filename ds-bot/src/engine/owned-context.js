@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
+import { connectMcpTools } from './mcp-tools.js'
 import { projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
@@ -32,7 +33,7 @@ function eventRecords(entries) {
   let seq = 0
   const push = (entry, type, data, time) => records.push({
     entryId: String(entry.id),
-    event: { seq: seq++, type, data, ...(time === undefined ? {} : { time }) },
+    event: { entryId: String(entry.id), seq: seq++, type, data, ...(time === undefined ? {} : { time }) },
   })
   for (const entry of entries) {
     const message = Array.isArray(entry?.model) ? entry.model[0] : undefined
@@ -45,10 +46,12 @@ function eventRecords(entries) {
     if (entry.kind === 'pi.assistant' && message?.role === 'assistant') {
       const turn = Number(entry.byTaskId ?? entry.id)
       const content = Array.isArray(message.content) ? message.content : []
-      for (const block of content) {
+      for (let index = 0; index < content.length; index += 1) {
+        const block = content[index]
         if (block?.type !== 'toolCall') continue
         push(entry, 'tool/call', {
           turn,
+          block: index,
           callId: String(block.id ?? ''),
           name: String(block.name ?? ''),
           arguments: block.arguments ?? {},
@@ -56,7 +59,7 @@ function eventRecords(entries) {
       }
       const shown = content.filter(block => block?.type === 'text' || block?.type === 'thinking')
       if (shown.length > 0 || message.stopReason === 'error' || message.stopReason === 'aborted') {
-        push(entry, 'assistant/message', { turn, message: { ...message, content: shown } }, timeOf(message))
+        push(entry, 'assistant/message', { turn, message: { ...message, content } }, timeOf(message))
       }
       if (message.stopReason !== 'toolUse') push(entry, 'turn/end', { turn }, timeOf(message))
       continue
@@ -72,8 +75,30 @@ function eventRecords(entries) {
   return records
 }
 
+function messageKey(message) {
+  return JSON.stringify([message?.role, message?.timestamp, message?.content])
+}
+
+function messagesWithSources(messages, entries) {
+  const sources = new Map()
+  for (const entry of entries) {
+    const message = Array.isArray(entry.model) ? entry.model[0] : undefined
+    if (entry.kind !== INPUT_KIND || message?.role !== 'user') continue
+    const key = messageKey(message)
+    const queue = sources.get(key) ?? []
+    queue.push(sourceOf(entry))
+    sources.set(key, queue)
+  }
+  return messages.map(message => {
+    if (message?.role !== 'user') return message
+    const source = sources.get(messageKey(message))?.shift()
+    return source === undefined ? message : { ...message, source }
+  })
+}
+
 function allMessages(entries) {
-  return entries.flatMap(entry => Array.isArray(entry.model) ? entry.model : [])
+  const messages = entries.flatMap(entry => Array.isArray(entry.model) ? entry.model : [])
+  return messagesWithSources(messages, entries)
 }
 
 function legacyParameters(parameters) {
@@ -111,6 +136,11 @@ const modelInfo = model => ({
   defaultMaxTokens: model.maxTokens,
 })
 
+const waitForCancellation = signal => {
+  if (signal?.aborted) return Promise.resolve('cancelled')
+  return new Promise(resolve => signal?.addEventListener('abort', () => resolve('cancelled'), { once: true }))
+}
+
 export class OwnedContext {
   #listeners = new Map()
   #effects = []
@@ -118,20 +148,26 @@ export class OwnedContext {
   #agents = new Map()
   #watches = new Map()
   #pending = new Map()
+  #configureChanges = new Map()
+  #selectedExtensions = new Map()
   #tools = new Map()
   #toolExtensions = new Map()
   #promptSections = new Map()
   #promptExtension
   #removePromptExtension
+  #externalMounts = new Set()
+  #globalMcpMounts = new Set()
   #guards = []
   #routes = new Map()
   #services = new Map()
+  #shellEnvironment = new Set()
   #workspaces = new Map()
   #archived = new Set()
   #titles = new Map()
   #closed = false
   #dispatch
   #hostRuntime
+  #sessionStates = new Map()
 
   constructor(harness, { workspacePath, logger = console } = {}) {
     this.harness = harness
@@ -173,7 +209,49 @@ export class OwnedContext {
       this.#refreshPromptExtension()
       return () => { this.#promptSections.delete(section.name); this.#refreshPromptExtension() }
     } }
+    this.#services.set('approval', {
+      request: request => this.#middleware('approval/request', request, () => waitForCancellation(request.signal)),
+    })
+    this.#services.set('shellEnv', {
+      register: contribution => {
+        this.#shellEnvironment.add(contribution)
+        return () => this.#shellEnvironment.delete(contribution)
+      },
+    })
+    this.harness.setShellEnvironment?.(({ conversationId }) => {
+      const agent = this.#agents.get(String(conversationId))
+      if (agent === undefined) return undefined
+      const values = {}
+      for (const contribution of this.#shellEnvironment) {
+        try { Object.assign(values, contribution.resolve?.({ agent, arguments: {} }) ?? {}) } catch (error) {
+          this.logger.warn?.(`DS Bot shell environment could not be resolved: ${error?.message ?? error}`)
+        }
+      }
+      return values
+    })
+    this.harness.beforeGeneration?.(async (messages, { conversationId }) => {
+      const resolved = await this.#resolveAgent(conversationId)
+      if ('error' in resolved) return messages
+      const state = this.#sessionStates.get(String(conversationId))
+      const sourced = state === undefined ? messages : messagesWithSources(messages, state.view.entries)
+      const signal = new AbortController().signal
+      const decision = await this.#middleware('agent/pre-step', {
+        agent: resolved.agent,
+        messages: sourced,
+        signal,
+      }, async () => ({ kind: 'enter', messages: sourced }))
+      return Array.isArray(decision?.messages) ? decision.messages : sourced
+    })
     this.llm = this.#llmService()
+    this.harness.setStreamInterceptor?.((model, request, options, next, { conversationId } = {}) => this.#llmMiddleware({
+      provider: model.provider,
+      model: model.id,
+      messages: request.messages ?? [],
+      ...(request.systemPrompt === undefined ? {} : { system: request.systemPrompt }),
+      ...(options?.reasoning === undefined ? {} : { reasoningEffort: options.reasoning }),
+      signal: options?.signal,
+      sessionId: conversationId,
+    }, next))
     this.sessionController = {
       create: options => this.#create(options),
       resolveAgent: id => this.#resolveAgent(String(id)),
@@ -221,6 +299,12 @@ export class OwnedContext {
     return run(0)
   }
 
+  #llmMiddleware(options, terminal) {
+    const listeners = (this.#listeners.get('llm/stream') ?? []).filter(listener => listener.length >= 2)
+    const run = index => index < listeners.length ? listeners[index](options, () => run(index + 1)) : terminal()
+    return run(0)
+  }
+
   effect(execute) {
     const dispose = execute()
     if (typeof dispose === 'function') this.#effects.push(dispose)
@@ -250,13 +334,77 @@ export class OwnedContext {
     for (const definition of definitions) this.#registerDefinition(definition)
   }
 
+  async mountMcp(config, { agent, ...options } = {}) {
+    const connection = await connectMcpTools(config, options)
+    const record = { connection, registrations: new Map(), agent }
+    let closed = false
+    const attach = target => {
+      if (record.registrations.has(target.id)) return
+      record.registrations.set(target.id, connection.tools.map(tool => target.ctx.tools.register(tool)))
+    }
+    if (agent === undefined) {
+      this.#globalMcpMounts.add(record)
+      for (const target of this.#agents.values()) attach(target)
+    } else {
+      attach(agent)
+    }
+    const mount = {
+      await: () => agent === undefined
+        ? Promise.all([...record.registrations.keys()].map(id => this.#flush(id)))
+        : this.#flush(agent.id),
+      dispose: async () => {
+        if (closed) return
+        closed = true
+        this.#externalMounts.delete(mount)
+        this.#globalMcpMounts.delete(record)
+        for (const disposers of record.registrations.values()) {
+          for (const dispose of disposers.reverse()) dispose()
+        }
+        record.registrations.clear()
+        await connection.close()
+      },
+    }
+    record.attach = attach
+    this.#externalMounts.add(mount)
+    return mount
+  }
+
+  mountSkill(agent, config) {
+    const section = {
+      key: `capability-${String(config.name).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase()}`,
+      tag: false,
+      render: () => String(config.content ?? ''),
+    }
+    const extension = defineExtension({ name: `ds-bot-skill-${section.key}`, sections: [section] })
+    const uninstall = this.harness.install(extension)
+    this.#selectExtensions(agent.id, { add: [extension] })
+    let closed = false
+    const mount = {
+      await: () => this.#flush(agent.id),
+      dispose: async () => {
+        if (closed) return
+        closed = true
+        this.#externalMounts.delete(mount)
+        await this.#selectExtensions(agent.id, { remove: [extension] }).catch(() => undefined)
+        uninstall()
+      },
+    }
+    this.#externalMounts.add(mount)
+    return mount
+  }
+
   resume() { this.harness.resume() }
 
   async close() {
     if (this.#closed) return
     this.#closed = true
+    for (const agent of this.#agents.values()) this.emit('agent/disposed', { agent })
+    await Promise.allSettled([...this.#externalMounts].map(mount => mount.dispose()))
     for (const watch of this.#watches.values()) await watch.stop()
     this.#watches.clear()
+    for (const state of this.#sessionStates.values()) {
+      await Promise.allSettled(state.effects.splice(0).reverse().map(dispose => dispose()))
+    }
     await Promise.allSettled(this.#effects.splice(0).reverse().map(dispose => dispose()))
     await this.harness.close()
   }
@@ -275,6 +423,32 @@ export class OwnedContext {
     return promise
   }
 
+  #configure(id, change) {
+    if (this.#closed) return Promise.resolve()
+    const key = String(id)
+    const previous = this.#configureChanges.get(key) ?? Promise.resolve()
+    const configure = () => this.#closed ? undefined : this.harness.configure(key, change)
+    const run = previous.then(
+      configure,
+      configure,
+    )
+    const tail = run.catch(() => undefined)
+    this.#configureChanges.set(key, tail)
+    void tail.finally(() => {
+      if (this.#configureChanges.get(key) === tail) this.#configureChanges.delete(key)
+    })
+    return this.#track(key, run)
+  }
+
+  #selectExtensions(id, { add = [], remove = [] }) {
+    const key = String(id)
+    const selected = this.#selectedExtensions.get(key) ?? new Map()
+    for (const extension of remove) selected.delete(extension.name)
+    for (const extension of add) selected.set(extension.name, extension)
+    this.#selectedExtensions.set(key, selected)
+    return this.#configure(key, { extensions: [...selected.values()] })
+  }
+
   async #flush(id) {
     const key = String(id)
     while ((this.#pending.get(key)?.size ?? 0) > 0) await Promise.all([...this.#pending.get(key)])
@@ -285,8 +459,11 @@ export class OwnedContext {
     if (agent !== undefined) return { agent }
     const conversation = await this.harness.conversation(id)
     if (conversation === undefined) return { error: { code: 'session/not-found', message: `Session ${id} does not exist` } }
+    const configuredAgent = await this.harness.agent(id)
+    this.#selectedExtensions.set(id, new Map((configuredAgent?.extensions ?? []).map(extension => [extension.name, extension])))
     const watch = await this.harness.watch(id, { min: 10_000, max: 10_000 })
-    const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), effects: [] }
+    const state = { view: watch.value, events: eventRecords(watch.value.entries), status: 'idle', tools: new Map(), effects: [], eventWaiters: new Set() }
+    this.#sessionStates.set(id, state)
     const session = {
       id,
       get seq() { return state.events.length },
@@ -299,26 +476,59 @@ export class OwnedContext {
     }
     Object.defineProperty(session, 'title', { get: () => this.#titles.get(id) })
     const register = definition => {
-      const registered = this.#registerDefinition(definition)
-      const extension = this.#toolExtensions.get(definition.name)
-      state.tools.set(definition.name, extension)
-      this.#track(id, this.harness.configure(id, { extensions: { add: [extension] } }))
+      const previous = state.tools.get(definition.name)
+      const record = this.#createDefinitionRecord(definition, `ds-bot-session-${id}-${randomUUID()}-${definition.name}`)
+      state.tools.set(definition.name, record)
+      const selected = this.#selectExtensions(id, {
+        ...(previous === undefined ? {} : { remove: [previous.extension] }),
+        add: [record.extension],
+      })
+      if (previous !== undefined) void selected.then(previous.uninstall, previous.uninstall)
       return () => {
-        if (state.tools.get(definition.name) !== extension) return
+        if (state.tools.get(definition.name) !== record) return
         state.tools.delete(definition.name)
-        this.#track(id, this.harness.configure(id, { extensions: { remove: [extension] } }))
-        registered?.()
+        const removed = this.#selectExtensions(id, { remove: [record.extension] })
+        void removed.then(record.uninstall, record.uninstall)
+        return removed
       }
     }
     const toolScope = {
       register,
       restrict: () => () => {},
-      schemas: () => [...state.tools.keys()].map(name => this.tools.schemas().find(schema => schema.name === name)),
+      get: name => state.tools.get(name)?.definition,
+      schemas: () => [...state.tools.values()].map(item => ({ name: item.definition.name, description: item.definition.description, parameters: legacyParameters(item.definition.parameters) })),
     }
     const agentContext = {
       tools: toolScope,
-      on: (name, listener, options) => this.on(name, listener, options),
-      effect: execute => { const dispose = execute(); if (typeof dispose === 'function') state.effects.push(dispose); return dispose },
+      mountMcp: config => this.mountMcp(config, { agent }),
+      mountSkill: config => this.mountSkill(agent, config),
+      on: (name, listener, options) => {
+        const dispose = this.on(name, listener, options)
+        let active = true
+        const wrapped = () => {
+          if (!active) return
+          active = false
+          const at = state.effects.indexOf(wrapped)
+          if (at >= 0) state.effects.splice(at, 1)
+          return dispose()
+        }
+        state.effects.push(wrapped)
+        return wrapped
+      },
+      effect: execute => {
+        const dispose = execute()
+        if (typeof dispose !== 'function') return dispose
+        let active = true
+        const wrapped = () => {
+          if (!active) return
+          active = false
+          const at = state.effects.indexOf(wrapped)
+          if (at >= 0) state.effects.splice(at, 1)
+          return dispose()
+        }
+        state.effects.push(wrapped)
+        return wrapped
+      },
     }
     const inbox = {
       nextStep: [], nextTurn: [],
@@ -345,6 +555,7 @@ export class OwnedContext {
       runMaintenance: async work => work(new AbortController().signal),
     }
     this.#agents.set(id, agent)
+    for (const record of this.#globalMcpMounts) record.attach(agent)
     const update = async next => {
       const previous = state.view
       state.view = next
@@ -355,6 +566,7 @@ export class OwnedContext {
         const owner = this.#hostRuntime?.chatOwners?.get?.(id) ?? id
         for (const item of this.#displayEvent(record.event)) this.publishFeed('message', { botId: owner, sessionId: id, item })
       }
+      for (const wake of state.eventWaiters) wake()
       for (const live of projectLive(previous, next)) {
         const frame = live.phase === 'start' ? { type: 'start', attemptId: live.attemptId }
           : live.phase === 'end' ? { type: 'end', attemptId: live.attemptId }
@@ -371,14 +583,14 @@ export class OwnedContext {
     }
     watch.start(async call => { if (call.kind === 'value') await update(call.value) })
     this.#watches.set(id, watch)
-    const config = await this.harness.agent(id)
-    state.config = config?.model === undefined ? undefined : { provider: config.model.provider, model: config.model.modelId, reasoningEffort: config.thinkingLevel }
-    if (this.#promptExtension !== undefined) await this.harness.configure(id, { extensions: { add: [this.#promptExtension] } })
+    state.config = configuredAgent?.model === undefined ? undefined : { provider: configuredAgent.model.provider, model: configuredAgent.model.modelId, reasoningEffort: configuredAgent.thinkingLevel }
+    if (this.#promptExtension !== undefined) await this.#selectExtensions(id, { add: [this.#promptExtension] })
     await this.emitAsync('agent/created', { agent })
     return { agent }
   }
 
   #enqueue(id, message, whenBusy) {
+    if (this.#closed) return Promise.resolve()
     const source = message?.source ?? { kind: 'user' }
     const requestId = source.requestId ?? message?.id ?? randomUUID()
     const promise = this.harness.submit(id, {
@@ -399,7 +611,7 @@ export class OwnedContext {
   }
 
   async #selectModel({ sessionId, provider, model, reasoningEffort }) {
-    await this.harness.configure(sessionId, {
+    await this.#configure(sessionId, {
       model: { provider, modelId: model },
       ...(reasoningEffort === undefined ? {} : { thinkingLevel: reasoningEffort }),
     })
@@ -463,18 +675,37 @@ export class OwnedContext {
   #registerDefinition(definition) {
     const previous = this.#tools.get(definition.name)
     if (previous?.definition === definition) return () => {}
+    const record = this.#createDefinitionRecord(definition, `ds-bot-${definition.name}`)
+    this.#tools.set(definition.name, record)
+    this.#toolExtensions.set(definition.name, record.extension)
+    this.emit('tools/change')
+    return () => {
+      if (this.#tools.get(definition.name)?.definition !== definition) return
+      this.#tools.delete(definition.name)
+      this.#toolExtensions.delete(definition.name)
+      record.uninstall()
+      this.emit('tools/change')
+    }
+  }
+
+  #createDefinitionRecord(definition, extensionName) {
     const tool = defineTool({
       name: definition.name,
       description: definition.description ?? definition.name,
       parameters: legacyParameters(definition.parameters),
       replay: 'unsafe',
+      ...(definition.prepareArguments === undefined ? {} : { prepareArguments: definition.prepareArguments }),
+      ...(definition.structuredOutputSchema === undefined ? {} : { structuredOutputSchema: definition.structuredOutputSchema }),
+      ...(definition.outputLimits === undefined ? {} : { outputLimits: definition.outputLimits }),
       execute: async (args, api, context) => {
         const resolved = await this.#resolveAgent(String(api.conversationId))
         if ('error' in resolved) throw new Error(resolved.error.message)
+        await this.#waitForToolCall(String(api.conversationId), api.callId, context.abortSignal)
         let terminate = false
         const exec = {
           agent: resolved.agent,
           name: definition.name,
+          ownedNative: definition.ownedNative === true,
           arguments: args,
           callId: api.callId,
           signal: context.abortSignal,
@@ -484,25 +715,43 @@ export class OwnedContext {
           const refusal = await guard(exec)
           if (typeof refusal === 'string' && refusal !== '') return { output: [{ type: 'text', text: refusal }], isError: true }
         }
-        await this.#middleware('tools/pre-execute', exec, async () => undefined)
-        const value = await this.#middleware('tools/execute', exec, () => definition.execute(args, exec))
+        const decision = await this.#middleware('tools/pre-execute', exec, async () => ({ kind: 'allow' }))
+        if (decision?.kind === 'deny') return { output: [{ type: 'text', text: String(decision.reason ?? 'Tool use was denied') }], isError: true }
+        const value = await this.#middleware('tools/execute', exec, () => definition.ownedNative === true
+          ? definition.execute(args, api, context)
+          : definition.execute(args, exec))
         this.emit('tools/result', exec, value)
-        const result = outputOf(definition, args, value)
+        const result = definition.ownedNative === true ? value : outputOf(definition, args, value)
         return terminate ? { ...result, control: { ...result.control, terminate: true } } : result
       },
     })
-    const extension = defineExtension({ name: `ds-bot-${definition.name}`, tools: [tool] })
+    const extension = defineExtension({ name: extensionName, tools: [tool] })
     const uninstall = this.harness.install(extension)
-    this.#tools.set(definition.name, { definition, tool, extension, uninstall })
-    this.#toolExtensions.set(definition.name, extension)
-    this.emit('tools/change')
-    return () => {
-      if (this.#tools.get(definition.name)?.definition !== definition) return
-      this.#tools.delete(definition.name)
-      this.#toolExtensions.delete(definition.name)
-      uninstall()
-      this.emit('tools/change')
-    }
+    return { definition, tool, extension, uninstall }
+  }
+
+  async #waitForToolCall(id, callId, signal) {
+    const state = this.#sessionStates.get(String(id))
+    if (state === undefined) return
+    const seen = () => state.events.some(record => record.event.type === 'tool/call' && record.event.data?.callId === callId)
+    if (seen()) return
+    await new Promise(resolve => {
+      let timer
+      const finish = () => {
+        clearTimeout(timer)
+        state.eventWaiters.delete(wake)
+        signal?.removeEventListener('abort', finish)
+        resolve()
+      }
+      const wake = () => { if (seen()) finish() }
+      timer = setTimeout(() => {
+        this.logger.warn?.(`DS Bot tool ${String(callId)} ran before its transcript event arrived`)
+        finish()
+      }, 2_000)
+      state.eventWaiters.add(wake)
+      signal?.addEventListener('abort', finish, { once: true })
+      wake()
+    })
   }
 
   #refreshPromptExtension() {
@@ -536,6 +785,27 @@ export class OwnedContext {
 
   #llmService() {
     const models = this.harness.models
+    const rawStream = options => {
+      const model = models.getModel?.(options.provider, options.model)
+      if (model === undefined) throw new Error(`Unknown model ${options.provider}/${options.model}`)
+      const {
+        provider: _provider,
+        model: _model,
+        messages = [],
+        tools,
+        system,
+        reasoningEffort,
+        signal,
+        sessionId,
+        ...streamOptions
+      } = options
+      return models.streamSimple(model, { systemPrompt: system, messages, tools }, {
+        ...streamOptions,
+        ...(reasoningEffort === undefined ? {} : { reasoning: reasoningEffort }),
+        signal,
+        sessionId,
+      })
+    }
     return {
       listProviders: () => models.getProviders?.().map(provider => ({ id: provider.id, name: provider.name })) ?? [],
       listModels: async provider => (models.getModels?.(provider) ?? []).map(modelInfo),
@@ -547,11 +817,10 @@ export class OwnedContext {
       listConfigurableProviders: () => models.getProviders?.().map(provider => ({ provider: provider.id, name: provider.name })) ?? [],
       discoverModels: async (_kind, request) => (models.getModels?.(request?.provider) ?? []).map(modelInfo),
       registerAdapter: () => { const handle = () => {}; handle.replace = () => {}; return handle },
-      stream: options => {
-        const model = models.getModel?.(options.provider, options.model)
-        if (model === undefined) throw new Error(`Unknown model ${options.provider}/${options.model}`)
-        return models.stream(model, { systemPrompt: options.system, messages: options.messages ?? [] }, { signal: options.signal, sessionId: options.sessionId })
-      },
+      script: (id, respond) => this.harness.scriptModel(id, respond),
+      beforeRequest: transform => this.harness.beforeRequest(transform),
+      stream: options => this.#llmMiddleware(options, () => rawStream(options)),
     }
   }
+
 }
