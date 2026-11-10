@@ -399,28 +399,90 @@ export class OwnedContext {
       serviceFor: (_agent, name) => name === 'compaction' ? this.#services.get('compaction') : undefined,
     })
     const jobs = new Map()
+    const jobWaiters = new Map()
+    const checkedJob = (id, sessionId) => {
+      const job = jobs.get(String(id))
+      if (job === undefined || (sessionId !== undefined && job.sessionId !== String(sessionId))) throw serviceError('job/not-found', `Unknown job ${id}`)
+      return job
+    }
+    const publicJob = job => {
+      const { cancel: _cancel, chunks: _chunks, readIndex: _readIndex, ...value } = job
+      return value
+    }
+    const wakeJob = id => {
+      const waiters = jobWaiters.get(String(id))
+      if (waiters === undefined) return
+      jobWaiters.delete(String(id))
+      for (const wake of waiters) wake()
+    }
     this.#services.set('jobs', {
       register: ({ id = randomUUID(), sessionId, chunks = [], ...job }) => {
-        const record = { ...job, id, sessionId: String(sessionId), status: job.status ?? 'running', chunks: [...chunks] }
-        jobs.set(id, record)
+        const record = { ...job, id: String(id), sessionId: String(sessionId), status: job.status ?? 'running', chunks: [...chunks], readIndex: 0 }
+        jobs.set(record.id, record)
         const session = this.#agents.get(record.sessionId)?.session
-        if (session !== undefined) this.emit('session/event', session, { type: 'job/registered', data: { jobId: id, toolCall: job.toolCall } })
-        return id
+        if (session !== undefined) this.emit('session/event', session, { type: 'job/registered', data: { jobId: record.id, toolCall: job.toolCall } })
+        return record.id
       },
-      append: (id, chunk) => { const job = jobs.get(id); if (job === undefined) throw serviceError('job/not-found', `Unknown job ${id}`); job.chunks.push(chunk) },
+      append: (id, chunk) => { checkedJob(id).chunks.push(chunk) },
+      get: (id, sessionId) => publicJob(checkedJob(id, sessionId)),
       read: (id, sessionId) => {
-        const job = jobs.get(id)
-        if (job === undefined || job.sessionId !== String(sessionId)) throw serviceError('job/not-found', `Unknown job ${id}`)
-        return { job: { ...job, chunks: undefined }, chunks: [...job.chunks], lossy: false }
+        const job = checkedJob(id, sessionId)
+        return { job: publicJob(job), chunks: [...job.chunks], lossy: false }
       },
-      settle: (id, status = 'completed') => {
-        const job = jobs.get(id)
-        if (job === undefined) throw serviceError('job/not-found', `Unknown job ${id}`)
+      consume: (id, sessionId) => {
+        const job = checkedJob(id, sessionId)
+        const chunks = job.chunks.slice(job.readIndex)
+        job.readIndex = job.chunks.length
+        return { job: publicJob(job), chunks, lossy: false }
+      },
+      list: sessionId => [...jobs.values()].filter(job => job.sessionId === String(sessionId)).map(publicJob),
+      settle: (id, status = 'completed', detail) => {
+        const job = checkedJob(id)
         job.status = status
+        if (detail !== undefined) job.detail = String(detail)
+        const awaited = jobWaiters.has(job.id)
+        wakeJob(job.id)
         const session = this.#agents.get(job.sessionId)?.session
-        if (session !== undefined) this.emit('session/event', session, { type: 'job/settled', data: { jobId: id, toolCall: job.toolCall, status } })
+        if (session !== undefined) this.emit('session/event', session, { type: 'job/settled', data: { jobId: job.id, toolCall: job.toolCall, status } })
+        return { awaited }
       },
-      kill: id => { const job = jobs.get(id); if (job === undefined) return false; job.status = 'killed'; return true },
+      kill: (id, sessionId, reason) => {
+        const job = checkedJob(id, sessionId)
+        if (job.status === 'completed' || job.status === 'failed' || job.status === 'killed') return 'already-finished'
+        job.status = 'stopping'
+        if (reason !== undefined && String(reason).trim() !== '') job.detail = String(reason).trim()
+        job.cancel?.(reason)
+        return 'requested'
+      },
+      async wait(id, timeoutMs, sessionId, signal) {
+        const job = checkedJob(id, sessionId)
+        if (job.status !== 'running' && job.status !== 'stopping') return publicJob(job)
+        signal?.throwIfAborted?.()
+        await new Promise((resolveWait, reject) => {
+          let timer
+          const finish = () => {
+            clearTimeout(timer)
+            signal?.removeEventListener('abort', abort)
+            const waiters = jobWaiters.get(job.id)
+            waiters?.delete(finish)
+            if (waiters?.size === 0) jobWaiters.delete(job.id)
+            resolveWait()
+          }
+          const abort = () => {
+            clearTimeout(timer)
+            const waiters = jobWaiters.get(job.id)
+            waiters?.delete(finish)
+            if (waiters?.size === 0) jobWaiters.delete(job.id)
+            reject(signal.reason ?? new Error('wait aborted'))
+          }
+          const waiters = jobWaiters.get(job.id) ?? new Set()
+          waiters.add(finish)
+          jobWaiters.set(job.id, waiters)
+          timer = setTimeout(finish, timeoutMs)
+          signal?.addEventListener('abort', abort, { once: true })
+        })
+        return publicJob(checkedJob(id, sessionId))
+      },
     })
     const goals = new OwnedGoalStore(dataDir)
     const goalKey = agent => String(agent?.id ?? agent?.session?.id ?? agent)
@@ -484,14 +546,7 @@ export class OwnedContext {
     this.#compactionExtension = compactionExtension
     this.harness.setShellEnvironment?.(({ conversationId }) => {
       const agent = this.#agents.get(String(conversationId))
-      if (agent === undefined) return undefined
-      const values = {}
-      for (const contribution of this.#shellEnvironment) {
-        try { Object.assign(values, contribution.resolve?.({ agent, arguments: {} }) ?? {}) } catch (error) {
-          this.logger.warn?.(`DS Bot shell environment could not be resolved: ${error?.message ?? error}`)
-        }
-      }
-      return values
+      return agent === undefined ? undefined : this.resolveShellEnvironment(agent, {})
     })
     this.harness.beforeGeneration?.(async (messages, { conversationId }) => {
       const resolved = await this.#resolveAgent(conversationId)
@@ -643,6 +698,16 @@ export class OwnedContext {
   }
 
   setDispatch(dispatch) { this.#dispatch = dispatch }
+
+  resolveShellEnvironment(agent, args = {}) {
+    const values = {}
+    for (const contribution of this.#shellEnvironment) {
+      try { Object.assign(values, contribution.resolve?.({ agent, arguments: args }) ?? {}) } catch (error) {
+        this.logger.warn?.(`DS Bot shell environment could not be resolved: ${error?.message ?? error}`)
+      }
+    }
+    return values
+  }
 
   async dispatch(endpoint, payload, signal) {
     if (this.#dispatch !== undefined) return this.#dispatch(endpoint, payload, signal)
@@ -1458,8 +1523,13 @@ export class OwnedContext {
   }
 
   #refreshPromptExtension() {
+    const previous = this.#promptExtension
+    const removePrevious = this.#removePromptExtension
     if (this.#promptSections.size === 0) {
-      this.#removePromptExtension?.()
+      removePrevious?.()
+      if (previous !== undefined) for (const [id, selected] of this.#selectedExtensions) {
+        if (selected.has(previous.name)) void this.#selectExtensions(id, { remove: [previous] })
+      }
       this.#removePromptExtension = undefined
       this.#promptExtension = undefined
       return
@@ -1476,8 +1546,13 @@ export class OwnedContext {
           return typeof text === 'string' && text !== '' ? text : undefined
         },
       }))
-    this.#promptExtension = defineExtension({ name: 'ds-bot-system-prompt', sections })
-    this.#removePromptExtension = this.harness.install(this.#promptExtension)
+    const next = defineExtension({ name: 'ds-bot-system-prompt', sections })
+    removePrevious?.()
+    this.#promptExtension = next
+    this.#removePromptExtension = this.harness.install(next)
+    if (previous !== undefined) for (const [id, selected] of this.#selectedExtensions) {
+      if (selected.has(previous.name)) void this.#selectExtensions(id, { remove: [previous], add: [next] })
+    }
   }
 
   #displayEvent(event) {

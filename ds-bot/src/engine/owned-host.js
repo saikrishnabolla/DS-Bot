@@ -1,20 +1,18 @@
 import { join } from 'node:path'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createRegistry } from '@earendil-works/pi-durable'
-import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createRuntime } from '../../index.js'
 import { installOwnedApprovals } from './owned-approvals.js'
 import { OwnedContext } from './owned-context.js'
 import { installOwnedComputerUse } from './owned-computer.js'
 import { migrateLegacyTeam } from './legacy-import.js'
+import { installOwnedDesktopTools } from './owned-desktop-tools.js'
 import { OwnedModels } from './owned-models.js'
 import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
 import { startOwnedServer } from '../server/owned-server.js'
 
 const GUARDED_CODING_TOOLS = new Set(['bash', 'powershell', 'write', 'edit'])
-const REPLAY_SAFE_CODING_TOOLS = new Set(['read'])
-
 function installCodingApprovals(context, runtime) {
   context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
     if (exec.ownedNative !== true || !GUARDED_CODING_TOOLS.has(exec.name)) return next()
@@ -62,7 +60,7 @@ export class OwnedHost {
     this.#server = server
   }
 
-  static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse } = {}) {
+  static async open({ dataDir, uiDir, workspacePath, host, port, settings, env, models: suppliedModels, registry = createRegistry(), computerUse, platform = process.platform, web } = {}) {
     if (typeof dataDir !== 'string' || dataDir === '') throw new TypeError('dataDir must be a directory')
     if (typeof uiDir !== 'string' || uiDir === '') throw new TypeError('uiDir must be a directory')
     const modelRuntime = suppliedModels ?? await ModelRuntime.create({
@@ -79,13 +77,15 @@ export class OwnedHost {
       await installOwnedStorage(context, { dataDir })
       installOwnedComputerUse(context, computerUse)
       await installOwnedSchedules(context)
-      const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
+      const ownedWorkspace = context.workspaceRegistry.get('default').path
+      const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot'), workspace: ownedWorkspace })
       installModelBoundary(runtime, models)
-      runtime.teamTools.push(...CodingTools.tools.map(tool => ({
-        ...tool,
-        ownedNative: true,
-        replay: tool.replay ?? (REPLAY_SAFE_CODING_TOOLS.has(tool.name) ? 'safe' : 'unsafe'),
-      })))
+      runtime.teamTools.push(...installOwnedDesktopTools(context, runtime, {
+        platform,
+        workspacePath: ownedWorkspace,
+        models,
+        web,
+      }))
       installCodingApprovals(context, runtime)
       context.setDispatch(runtime.handle)
       context.installTools(runtime.teamTools, runtime)
