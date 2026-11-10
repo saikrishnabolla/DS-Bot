@@ -108,16 +108,17 @@ function checkFiles(app) {
   console.log(result.stdout.trim())
 }
 
-function packagedWindow(app, bounds, expectedPid) {
+function packagedWindow(app, expectedPid, expectedWindowId) {
   const resources = process.platform === 'darwin' ? resolve(app, '..', '..', 'Resources') : join(dirname(app), 'resources')
   const unpackedRoot = process.platform === 'linux' ? join(resources, 'app') : join(resources, 'app.asar.unpacked')
+  const request = JSON.stringify(process.platform === 'win32' ? { pid: expectedPid } : { on_screen_only: true })
   const script = `
     const { join } = require('node:path')
     const { pathToFileURL } = require('node:url')
     ;(async () => {
       const module = await import(pathToFileURL(join(${JSON.stringify(unpackedRoot)}, 'node_modules', '@trycua', 'cua-driver', 'dist', 'index.js')).href)
       const driver = module.CuaDriver.create({ embedded: true })
-      try { console.log((await driver.callTool('list_windows', '{"on_screen_only":true}')).structuredJson) }
+      try { console.log((await driver.callTool('list_windows', ${JSON.stringify(request)})).structuredJson) }
       finally { await driver.shutdown(); driver.uniffiDestroy?.() }
     })().catch(error => { console.error(error); process.exitCode = 1 })
   `
@@ -132,13 +133,11 @@ function packagedWindow(app, bounds, expectedPid) {
     && Number.isFinite(window.bounds?.width) && window.bounds.width > 0
     && Number.isFinite(window.bounds?.height) && window.bounds.height > 0)
   if (process.platform === 'win32') {
-    const distance = window => Math.abs(window.bounds.x - bounds.x) + Math.abs(window.bounds.y - bounds.y)
-      + Math.abs(window.bounds.width - bounds.width) + Math.abs(window.bounds.height - bounds.height)
-    candidates.sort((left, right) => distance(left) - distance(right))
-    if (candidates[0] === undefined || distance(candidates[0]) > 8) {
-      throw new Error(`the packaged computer driver could not match the team window bounds ${JSON.stringify(bounds)}: ${JSON.stringify(candidates)}`)
+    const exact = candidates.filter(window => window.pid === expectedPid && (window.window_id ?? window.windowId) === expectedWindowId)
+    if (exact.length !== 1) {
+      throw new Error(`the packaged computer driver did not return Electron's window ${String(expectedWindowId)} for pid ${String(expectedPid)}: ${JSON.stringify(candidates)}`)
     }
-    return candidates[0]
+    return exact[0]
   }
   const exactPid = candidates.filter(window => window.pid === expectedPid)
   exactPid.sort((left, right) => right.bounds.width * right.bounds.height - left.bounds.width * left.bounds.height)
@@ -354,8 +353,14 @@ try {
     await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
     await sleep(300)
     if (process.platform !== 'linux') {
-      const cursorTarget = await windowState('({ bounds: win.getBounds(), pid: process.pid })')
-      const nativeWindow = packagedWindow(packedApp, cursorTarget.bounds, cursorTarget.pid)
+      const cursorTarget = await windowState(process.platform === 'win32'
+        ? `(() => {
+          const handle = win.getNativeWindowHandle()
+          const value = handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0))
+          return { bounds: win.getBounds(), pid: process.pid, windowId: Number(value & 0xFFFFFFFFn) }
+        })()`
+        : '({ bounds: win.getBounds(), pid: process.pid })')
+      const nativeWindow = packagedWindow(packedApp, cursorTarget.pid, cursorTarget.windowId)
       const nativeWindowId = nativeWindow.window_id ?? nativeWindow.windowId
       if (!Number.isSafeInteger(nativeWindowId) || nativeWindowId <= 0) throw new Error('the packaged computer driver returned no native window ID')
       await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(nativeWindow.pid)}, windowId: ${String(nativeWindowId)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
