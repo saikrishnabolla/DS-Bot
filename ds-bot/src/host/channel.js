@@ -4,6 +4,7 @@ import { createUserMessage } from '../engine/messages.js'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
+import { textOf } from './text.js'
 import { validateViewAnswer } from '../view/core/index.js'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
 
@@ -19,6 +20,57 @@ const MEMORY_LIMIT_SCOPES = new Set(['group', 'bot', 'team'])
 const MEMORY_LIMIT_MIN = 1_000
 const MEMORY_LIMIT_MAX = 200_000
 const MAX_MESSAGE_ATTACHMENTS = 10
+const MAX_CHAT_REFERENCES = 8
+const MAX_REFERENCE_LABEL = 120
+const MAX_REFERENCE_ID = 256
+const MAX_REFERENCE_LIST = 128
+const MAX_REFERENCE_EVENTS = 80
+const MAX_REFERENCE_TEXT = 48_000
+const SESSION_REFERENCE = /^@\[((?:\\[\\\]]|[^\]]){1,240})\]\(dsh-session:([A-Za-z0-9_-]{1,512})\)$/u
+
+function sessionReference(value) {
+  if (typeof value !== 'string') return undefined
+  const match = SESSION_REFERENCE.exec(value)
+  if (match === null) return undefined
+  let sessionId
+  try { sessionId = JSON.parse(Buffer.from(match[2], 'base64url').toString('utf8')) } catch { return undefined }
+  if (typeof sessionId !== 'string' || sessionId === '' || sessionId.length > MAX_REFERENCE_ID) return undefined
+  const label = match[1].replace(/\\([\\\]])/g, '$1')
+  return label === '' || label.length > MAX_REFERENCE_LABEL ? undefined : { sessionId, label }
+}
+
+function referenceInput(value) {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > MAX_CHAT_REFERENCES) throw invalid(`A message can reference at most ${MAX_CHAT_REFERENCES} chats`)
+  const seen = new Set()
+  return value.map((entry) => {
+    const decoded = sessionReference(entry?.ref)
+    if (decoded === undefined || decoded.sessionId !== entry?.sessionId || decoded.label !== entry?.label) throw invalid('Chat reference is invalid')
+    if (seen.has(decoded.sessionId)) throw invalid('A chat can be referenced only once in a message')
+    seen.add(decoded.sessionId)
+    return decoded
+  })
+}
+
+function referenceSnapshot(label, records) {
+  const lines = []
+  let size = 0
+  const add = (role, value) => {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+    if (text === '' || size >= MAX_REFERENCE_TEXT) return
+    const line = `${role}: ${text.slice(0, 8_000)}`
+    const kept = line.slice(0, Math.max(0, MAX_REFERENCE_TEXT - size))
+    if (kept !== '') { lines.push(kept); size += kept.length + 1 }
+  }
+  for (const record of records) {
+    const event = record?.event
+    if (event?.type === 'user/message' && event.data?.source?.kind !== 'session-reference') add('User', textOf(event.data?.content))
+    else if (event?.type === 'assistant/message') add('Assistant', textOf(event.data?.message?.content))
+    else if (event?.type === 'tool/call') add('Tool call', `${event.data?.name ?? 'tool'} ${JSON.stringify(event.data?.arguments ?? {})}`)
+    else if (event?.type === 'tool/result') add('Tool result', textOf(event.data?.message?.content))
+  }
+  return `## Referenced sessions\n\n### ${label}\n${lines.length === 0 ? '(No messages yet.)' : lines.join('\n')}`
+}
 
 async function sentContent(ctx, body) {
   const supplied = Array.isArray(body?.content) ? body.content : undefined
@@ -171,7 +223,62 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models'])
+  const READS = new Set(['state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'reference-chats', 'run-stats', 'room-progress', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models'])
+
+  const currentSession = (ref) => {
+    const past = rt.pastOwners.get(ref)
+    const room = rt.roomOf(ref)
+    return rt.botOf(ref) ? rt.chatOf(ref)
+      : room !== undefined ? rt.sessionOfRoom(room)
+        : past?.roomId === undefined && past !== undefined ? rt.chatOf(past.botId)
+          : past !== undefined ? rt.sessionOfRoom(rt.roomOf(past.roomId)) : ref
+  }
+  const teamSessions = () => {
+    const ids = new Set()
+    for (const bot of Object.values(state.bots)) {
+      ids.add(bot.id)
+      ids.add(rt.chatOf(bot.id))
+      for (const segment of bot.segments ?? []) ids.add(segment.sessionId)
+    }
+    for (const room of Object.values(state.rooms)) {
+      ids.add(room.id)
+      ids.add(rt.sessionOfRoom(room))
+      for (const segment of room.parts ?? []) ids.add(segment.sessionId)
+      for (const id of Object.values(room.sessions ?? {})) ids.add(id)
+      for (const segments of Object.values(room.segments ?? {})) for (const segment of segments ?? []) ids.add(segment.sessionId)
+    }
+    ids.delete(undefined)
+    return ids
+  }
+  const listedSessions = async () => {
+    const listed = await ctx.sessionController.list({ limit: MAX_REFERENCE_LIST, order: 'descending', includeActivity: true })
+    const items = listed.items.map(item => ({
+      id: String(item.sessionId), title: item.title, displayTitle: item.title, origin: item.origin,
+      blank: item.blank === true, ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
+    }))
+    return { ids: items.map(item => item.id), byId: Object.fromEntries(items.map(item => [item.id, item])) }
+  }
+  const resolveReferences = async (source, input) => {
+    const references = referenceInput(input)
+    if (references.length === 0) return []
+    const destination = currentSession(source)
+    const team = teamSessions()
+    const listed = await listedSessions()
+    const currentBots = new Map(Object.values(state.bots).map(bot => [rt.chatOf(bot.id), bot]))
+    const sourceBot = rt.chatOwners.get(destination)
+    const resolved = []
+    for (const reference of references) {
+      if (reference.sessionId === destination || (sourceBot !== undefined && currentBots.get(reference.sessionId)?.id === sourceBot)) throw invalid('A chat cannot reference itself')
+      const otherBot = currentBots.get(reference.sessionId)
+      const plain = listed.byId[reference.sessionId]
+      const eligibleBot = otherBot !== undefined && (sourceBot === undefined || otherBot.id !== sourceBot)
+      const eligiblePlain = plain !== undefined && plain.origin !== 'subagent' && plain.blank !== true && !team.has(reference.sessionId)
+      if (!eligibleBot && !eligiblePlain) throw Object.assign(new Error('This chat is no longer available to reference'), { code: 'bot/stale' })
+      const page = await ctx.sessionController.page({ sessionId: reference.sessionId, maxMessages: MAX_REFERENCE_EVENTS })
+      resolved.push({ ...reference, text: referenceSnapshot(reference.label, page.records) })
+    }
+    return resolved
+  }
 
   async function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -311,6 +418,12 @@ export function install(rt) {
           return ok(body.roomId === undefined
             ? await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined)
             : await rt.roomChatPage(String(body.roomId ?? ''), body.cursor ?? undefined))
+        case 'reference-chats': {
+          if (typeof body.sessionId !== 'string' || body.sessionId === '') return fail('No chat to reference from', 'bot/invalid')
+          await rt.load()
+          if (!teamSessions().has(currentSession(body.sessionId))) return fail('No chat to reference from', 'bot/invalid')
+          return ok(await listedSessions())
+        }
         // DSH's own whole-log figures for the current part of a Bot's chat, the ones its
         // status bar shows; a window without that bar shows them in the Bot's details.
         case 'run-stats': {
@@ -585,7 +698,8 @@ export function install(rt) {
           try { content = await sentContent(ctx, body) } catch (error) { return fail(error.message, errorCode(error)) }
           if (content.length === 0) return fail('Nothing to send', 'bot/invalid')
           await rt.load()
-          await rt.sendUser({ sessionId: body.sessionId, content })
+          const references = await resolveReferences(body.sessionId, body.references)
+          await rt.sendUser({ sessionId: body.sessionId, content, references })
           return ok(true)
         }
         case 'btw-delete': {
@@ -751,19 +865,15 @@ export function install(rt) {
   // How a user message reaches a Session: a Bot id, a group chat's id, or an earlier
   // part of either resolves to its current part. `content` is the prompt blocks DSH
   // takes (text, image, file receipts); `requestId` lands on the message's source.
-  async function sendUser({ sessionId: ref, content, requestId = randomUUID() }) {
-    const past = rt.pastOwners.get(ref)
-    const room = rt.roomOf(ref)
-    const sessionId = rt.botOf(ref) ? rt.chatOf(ref)
-      : room !== undefined ? rt.sessionOfRoom(room)
-        : past?.roomId === undefined && past !== undefined ? rt.chatOf(past.botId)
-          : past !== undefined ? rt.sessionOfRoom(rt.roomOf(past.roomId)) : ref
+  async function sendUser({ sessionId: ref, content, references = [], requestId = randomUUID() }) {
+    const sessionId = currentSession(ref)
     await rt.ensureCapabilities(sessionId)
     await ctx.sessionController.prompt({
       requestId,
       sessionId,
       mode: 'queue',
       content,
+      references,
     }, AbortSignal.timeout(30_000))
   }
 

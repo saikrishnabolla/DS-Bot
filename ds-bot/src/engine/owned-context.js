@@ -67,7 +67,23 @@ function eventRecords(entries, startSeq = 0) {
     if ((entry.kind === 'pi.user' || entry.kind === INPUT_KIND) && message?.role === 'user') {
       const time = timeOf(message)
       const receipt = entry.kind === INPUT_KIND && Array.isArray(entry.data?.content) ? entry.data.content : textContent(message.content)
-      push(entry, 'user/message', { content: receipt, source: sourceOf(entry) }, time)
+      const references = entry.kind === INPUT_KIND && Array.isArray(entry.data?.references) ? entry.data.references : []
+      const referenceLabels = references.map(reference => reference?.label).filter(label => typeof label === 'string' && label !== '')
+      push(entry, 'user/message', {
+        content: receipt,
+        source: sourceOf(entry),
+        ...(referenceLabels.length === 0 ? {} : { referenceLabels }),
+      }, time)
+      if (references.length > 0) {
+        const text = references.map(reference => reference?.text).filter(value => typeof value === 'string' && value !== '').join('\n\n')
+        if (text !== '') push(entry, 'user/message', {
+          content: [{ type: 'text', text }],
+          source: {
+            kind: 'session-reference',
+            references: references.map(reference => ({ sessionId: String(reference.sessionId), label: String(reference.label) })),
+          },
+        }, time)
+      }
       push(entry, 'turn/start', { turn: Number(entry.byTaskId ?? entry.id) }, time)
       continue
     }
@@ -1145,13 +1161,29 @@ export class OwnedContext {
     return { kind: 'summary', summary }
   }
 
-  async #prompt({ sessionId, requestId = randomUUID(), mode, content }) {
+  async #prompt({ sessionId, requestId = randomUUID(), mode, content, references = [] }) {
     const whenBusy = mode === 'steer' ? 'steer' : 'followUp'
     const configured = this.#sessionStates.get(String(sessionId))?.config
     const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
+    const receipt = textContent(content)
+    const keptReferences = Array.isArray(references) ? references.map(reference => ({
+      sessionId: String(reference.sessionId),
+      label: String(reference.label),
+      text: String(reference.text),
+    })) : []
+    const referenceText = keptReferences.map(reference => reference.text).filter(Boolean).join('\n\n')
+    const modelContent = await inputContent({ content }, this.get('attachments'), model === undefined || (model.input ?? []).includes('image'))
     const submission = await this.harness.submit(sessionId, {
-      content: await inputContent({ content }, this.get('attachments'), model === undefined || (model.input ?? []).includes('image')), requestId, whenBusy,
-      entry: { kind: INPUT_KIND, data: { source: { kind: 'user', requestId }, requestId, content: textContent(content) } },
+      content: referenceText === '' ? modelContent : [...modelContent, { type: 'text', text: referenceText }],
+      requestId,
+      whenBusy,
+      entry: {
+        kind: INPUT_KIND,
+        data: {
+          source: { kind: 'user', requestId }, requestId, content: receipt,
+          ...(keptReferences.length === 0 ? {} : { references: keptReferences }),
+        },
+      },
     })
     return { submissionId: submission.id }
   }
@@ -1250,19 +1282,33 @@ export class OwnedContext {
     return { asOfSeq: current.asOfSeq, values }
   }
 
-  async #list() {
+  async #list({ limit, order = 'ascending', includeActivity = false } = {}) {
     const items = []
     let cursor
+    const maximum = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 1_000) : Number.MAX_SAFE_INTEGER
     do {
-      const page = await this.harness.scanConversations({}, 256, cursor)
+      const page = await this.harness.scanConversations({ order }, Math.min(256, maximum - items.length), cursor)
       for (const conversation of page.items) {
         const sessionId = String(conversation.id)
         if (this.#archived.has(sessionId)) continue
         const projections = await this.#projections({ sessionId })
-        items.push({ sessionId, title: this.#titles.get(sessionId), origin: 'session', projections: { kind: 'sequenced', ...projections } })
+        let activity
+        if (includeActivity) {
+          const page = await this.#page({ sessionId, maxMessages: 1 })
+          const event = page.records.at(-1)?.event
+          activity = { blank: event === undefined, ...(event?.time === undefined ? {} : { updatedAt: event.time }) }
+        }
+        items.push({
+          sessionId,
+          title: this.#titles.get(sessionId),
+          origin: conversation.owner === undefined ? 'session' : 'subagent',
+          projections: { kind: 'sequenced', ...projections },
+          ...activity,
+        })
+        if (items.length >= maximum) break
       }
       cursor = page.next
-    } while (cursor !== undefined)
+    } while (cursor !== undefined && items.length < maximum)
     return { items }
   }
 
@@ -1433,6 +1479,7 @@ export class OwnedContext {
         kind: 'user',
         text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
         ...(attachments.length === 0 ? {} : { attachments, images: attachments.filter(block => block.type === 'image').length }),
+        ...(Array.isArray(event.data.referenceLabels) && event.data.referenceLabels.length > 0 ? { referenceLabels: event.data.referenceLabels } : {}),
         time: event.time,
         seq: event.seq,
       }]

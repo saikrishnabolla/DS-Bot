@@ -125,12 +125,13 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     setPrefs: prefs => after(call('set-prefs', prefs)),
     setMain: (id, main = true, options = {}) => after(call('set-main', { id, main, ...options })),
     updateRoom: (id, patch) => after(call('update-room', { id, ...patch })),
-    send: (sessionId, text, attachments = []) => after(call('send', {
+    send: (sessionId, text, attachments = [], references = []) => after(call('send', {
       sessionId: partFor(sessionId),
       content: [
         ...(String(text ?? '').trim() === '' ? [] : [{ type: 'text', text: String(text).trim() }]),
         ...attachments.map(item => ({ type: item.type, attachment: item.attachment })),
       ],
+      ...(references.length > 0 ? { references } : {}),
     })),
     answerQuestion: (sessionId, questionId, answer) => after(call('answer-question', { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: sessionId => after(call('dismiss-question', { sessionId })),

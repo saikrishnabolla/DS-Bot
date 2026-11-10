@@ -41,6 +41,17 @@ test('Retry after a failed turn asks the host to resume the Bot, with nothing bu
   assert.equal(pulls(), 1)
 })
 
+test('send keeps canonical chat references separate from visible text', async () => {
+  const { actions, sent } = bench()
+  const reference = { sessionId: 'research', label: 'Chat with Researcher', ref: '@[Chat with Researcher](dsh-session:InJlc2VhcmNoIg)' }
+  await actions.send('chief', 'Use @Chat with Researcher', [], [reference])
+  assert.deepEqual(sent, [['send', {
+    sessionId: 'chief',
+    content: [{ type: 'text', text: 'Use @Chat with Researcher' }],
+    references: [reference],
+  }]])
+})
+
 test('openModels opens DS Bot settings on the Models page and closes the menus', () => {
   const { actions, ui } = bench()
   actions.openModels()

@@ -1718,7 +1718,15 @@ export function install(rt) {
         const attachments = content.filter(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)
         const images = attachments.filter(block => block.type === 'image').length
         const via = viaOf(source)
-        stamp(event, { kind: 'user', text: textOf(content), ...(attachments.length > 0 ? { attachments } : {}), ...(images > 0 ? { images } : {}), ...(via ? { via } : {}), time: event.time })
+        stamp(event, {
+          kind: 'user',
+          text: textOf(content),
+          ...(attachments.length > 0 ? { attachments } : {}),
+          ...(images > 0 ? { images } : {}),
+          ...(Array.isArray(event.data.referenceLabels) && event.data.referenceLabels.length > 0 ? { referenceLabels: event.data.referenceLabels } : {}),
+          ...(via ? { via } : {}),
+          time: event.time,
+        })
       } else if (source?.kind === REPLY_KIND) {
         const text = textOf(event.data.content)
         const reply = readReply(text)

@@ -2180,12 +2180,13 @@ function teamActions({ call: call2, after, partFor, roster, ui, live, cards, hel
     setPrefs: (prefs) => after(call2("set-prefs", prefs)),
     setMain: (id, main = true, options = {}) => after(call2("set-main", { id, main, ...options })),
     updateRoom: (id, patch) => after(call2("update-room", { id, ...patch })),
-    send: (sessionId, text, attachments = []) => after(call2("send", {
+    send: (sessionId, text, attachments = [], references = []) => after(call2("send", {
       sessionId: partFor(sessionId),
       content: [
         ...String(text ?? "").trim() === "" ? [] : [{ type: "text", text: String(text).trim() }],
         ...attachments.map((item) => ({ type: item.type, attachment: item.attachment }))
-      ]
+      ],
+      ...references.length > 0 ? { references } : {}
     })),
     answerQuestion: (sessionId, questionId, answer) => after(call2("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
     dismissQuestion: (sessionId) => after(call2("dismiss-question", { sessionId })),

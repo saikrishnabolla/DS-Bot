@@ -1,5 +1,7 @@
 import { createElement as h, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { call } from '../../../ds-bot/src/client/api.js'
+import { sessionMention } from '../../../ds-bot/src/client/at-menu.js'
 import { Bubbles, ChatRows, Shimmer } from '../../../ds-bot/src/client/cells.js'
 import { ComposerPlus, ComposerVoice } from '../../../ds-bot/src/client/composer.js'
 import { ConnectorDock, MailDock } from '../../../ds-bot/src/client/connectors.js'
@@ -13,6 +15,7 @@ import { PendingQuestion } from '../../../ds-bot/src/client/questions.js'
 import { SecretDock } from '../../../ds-bot/src/client/secret-card.js'
 import { MarkdownText } from '../../../ds-bot/src/client/dsh-primitives.js'
 import { thinkingShown } from '../../../ds-bot/src/client/themes.js'
+import { relativeShort } from '../../../ds-bot/src/client/text.js'
 import { WidgetDock } from '../../../ds-bot/src/client/widget-cell.js'
 import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
@@ -86,12 +89,16 @@ function useChat(botId, roomId, part, feed) {
   }), [feed, botId, roomId, load])
 
   // Shown at once: the message can come back on the feed before the request returns.
-  const send = async (text, attachments, actions, sessionId) => {
-    const entry = { kind: 'user', text, attachments, images: attachments.filter(item => item.type === 'image').length, time: Date.now() }
+  const send = async (text, attachments, references, actions, sessionId) => {
+    const entry = {
+      kind: 'user', text, attachments, images: attachments.filter(item => item.type === 'image').length,
+      ...(references.length > 0 ? { referenceLabels: references.map(reference => reference.label) } : {}),
+      time: Date.now(),
+    }
     setPending(list => [...list, entry])
     actions.noteSent(sessionId)
     try {
-      await actions.send(sessionId, text, attachments)
+      await actions.send(sessionId, text, attachments, references)
     } catch (error) {
       setPending(list => list.filter(item => item !== entry))
       throw error
@@ -112,14 +119,65 @@ function useInput(field, setText) {
   }), [field, setText])
 }
 
+const draftChange = (before, after) => {
+  let start = 0
+  while (start < before.length && start < after.length && before[start] === after[start]) start += 1
+  let oldEnd = before.length
+  let newEnd = after.length
+  while (oldEnd > start && newEnd > start && before[oldEnd - 1] === after[newEnd - 1]) { oldEnd -= 1; newEnd -= 1 }
+  return { start, oldEnd, delta: newEnd - oldEnd }
+}
+
+export function rebaseChatReferences(before, after, references) {
+  const change = draftChange(before, after)
+  return references.flatMap(reference => {
+    if (reference.end <= change.start) return [reference]
+    if (reference.start >= change.oldEnd) return [{ ...reference, start: reference.start + change.delta, end: reference.end + change.delta }]
+    return []
+  })
+}
+
+function ChatReferencePicker({ sessionId, request, actions, onPick }) {
+  const [state, setState] = useState({ loading: true, rows: [], error: null })
+  const first = useRef(null)
+  const load = useCallback(() => {
+    let active = true
+    setState({ loading: true, rows: [], error: null })
+    void Promise.resolve(actions.referenceChats(sessionId)).then(
+      rows => { if (active) setState({ loading: false, rows, error: null }) },
+      error => { if (active) setState({ loading: false, rows: [], error: error?.message ?? String(error) }) },
+    )
+    return () => { active = false }
+  }, [actions, sessionId, request?.token])
+  useEffect(load, [load])
+  useEffect(() => { if (!state.loading) first.current?.focus?.() }, [state.loading])
+  const card = document.querySelector?.('[data-composer-card]')
+  const rect = card?.querySelector?.('.bt-plus')?.getBoundingClientRect?.()
+  const style = rect ? { left: rect.left, bottom: window.innerHeight - rect.top + 8 } : { left: 20, bottom: 80 }
+  const close = () => actions.closeReferenceChat()
+  const choose = row => { onPick(row, request.span); close() }
+  return createPortal(h('div', {
+    className: 'bt-menu bt-menu-up', role: 'listbox', 'aria-label': t('Reference a chat'), style,
+    onKeyDown: event => { if (event.key === 'Escape') { event.preventDefault(); close() } },
+  },
+  state.loading ? h('button', { type: 'button', disabled: true, role: 'option' }, t('Loading…'))
+    : state.error ? h('button', { type: 'button', role: 'option', onClick: load }, `${state.error} · ${t('Retry')}`)
+      : state.rows.length === 0 ? h('button', { type: 'button', disabled: true, role: 'option' }, t('No conversations'))
+        : state.rows.map((row, index) => h('button', {
+          ref: index === 0 ? first : undefined, key: row.sessionId, type: 'button', role: 'option', onClick: () => choose(row),
+        }, h('span', { className: 'bt-menu-label' }, row.label), row.updatedAt ? h('span', { className: 'bt-menu-hint' }, relativeShort(row.updatedAt)) : null))), document.body)
+}
+
 function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
+  const [references, setReferences] = useState([])
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
   const [stopping, setStopping] = useState(false)
   const field = useRef(null)
   const inputActions = useInput(field, setText)
+  const referenceRequest = useUi(state => state.referenceChat?.sessionId === sessionId ? state.referenceChat : null)
   const enterToSend = useRoster(state => sendsOnEnter(state.prefs))
   useLayoutEffect(() => {
     const node = field.current
@@ -150,20 +208,45 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
     if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
     return current.filter(item => item.id !== id)
   })
+  const changeText = value => {
+    setReferences(current => rebaseChatReferences(text, value, current))
+    setText(value)
+  }
+  const insertReference = (row, at) => {
+    const start = Math.min(at?.start ?? text.length, text.length)
+    const end = Math.max(start, Math.min(at?.end ?? start, text.length))
+    const visible = `@${row.label}`
+    const next = `${text.slice(0, start)}${visible} ${text.slice(end)}`
+    const kept = rebaseChatReferences(text, next, references)
+    const reference = { sessionId: row.sessionId, label: row.label, ref: sessionMention(row.sessionId, row.label), start, end: start + visible.length }
+    setText(next)
+    setReferences([...kept, reference])
+    requestAnimationFrame(() => {
+      const caret = reference.end + 1
+      field.current?.focus?.()
+      field.current?.setSelectionRange?.(caret, caret)
+    })
+  }
   const submit = async () => {
     const value = text.trim()
     const files = attachments
+    const leading = text.length - text.trimStart().length
+    const sentReferences = references
+      .filter(reference => text.slice(reference.start, reference.end) === `@${reference.label}`)
+      .map(({ sessionId: referencedSessionId, label, ref }) => ({ sessionId: referencedSessionId, label, ref }))
     if ((value === '' && files.length === 0) || disabled || sending) return
     setError(null)
     setText('')
+    setReferences([])
     setSending(true)
     try {
       const uploaded = await Promise.all(files.map(async item => ({ type: item.type, attachment: await uploadAttachment(item.file) })))
-      await onSend(value, uploaded)
+      await onSend(value, uploaded, sentReferences)
       for (const item of files) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
       setAttachments(current => current.filter(item => !files.includes(item)))
     } catch (failure) {
       setText(current => (current === '' ? value : current))
+      setReferences(current => (current.length === 0 ? references.map(reference => ({ ...reference, start: Math.max(0, reference.start - leading), end: Math.max(0, reference.end - leading) })) : current))
       setError(failure.message)
     } finally { setSending(false) }
   }
@@ -197,7 +280,7 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
           placeholder,
           'aria-label': placeholder,
           'data-composer-input': '',
-          onChange: event => setText(event.target.value),
+          onChange: event => changeText(event.target.value),
           onPaste: event => { if (event.clipboardData?.files?.length) { event.preventDefault(); addFiles(event.clipboardData.files) } },
           onKeyDown: (event) => {
             if (event.key === 'Enter' && enterToSend && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -209,7 +292,8 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
       h('div', { className: 'dsb-composer-trailing' },
         running ? h('button', { type: 'button', className: 'dsb-stop', disabled: stopping, onClick: () => { void stop() } }, stopping ? t('Stopping…') : t('Stop')) : null,
         h(ComposerVoice, { sessionId, inputActions, actions, useUi, useRoster }),
-        h('button', { type: 'button', className: 'dsb-send', disabled: disabled || sending || (text.trim() === '' && attachments.length === 0), 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))))
+        h('button', { type: 'button', className: 'dsb-send', disabled: disabled || sending || (text.trim() === '' && attachments.length === 0), 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))),
+    referenceRequest ? h(ChatReferencePicker, { sessionId, request: referenceRequest, actions, onPick: insertReference }) : null)
 }
 
 function ToolRow({ row }) {
@@ -341,7 +425,7 @@ export function Chat({ sessionId, team }) {
         disabled: waiting,
         running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),
-        onSend: (text, attachments) => send(text, attachments, actions, sessionId),
+        onSend: (text, attachments, references) => send(text, attachments, references, actions, sessionId),
         onStop: stop,
         actions,
         useUi: hooks.useUi,

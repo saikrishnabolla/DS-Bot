@@ -899,3 +899,47 @@ test('owned context registers local-agent adapters as Pi model routes', async t 
   assert.equal(ctx.llm.listProviders().some(provider => provider.id === 'local-fixture'), false)
   assert.equal(ctx.harness.models.getModel('local-fixture', 'default'), undefined)
 })
+
+test('owned context keeps chat reference metadata and model snapshot across restart', async t => {
+  const requests = []
+  const provider = fauxProvider()
+  provider.setResponses([async context => {
+    requests.push(context)
+    return fauxAssistantMessage('reference received')
+  }])
+  const { ctx, dataDir, models } = await contextFixture(t, { provider })
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const references = [{
+    sessionId: 'target-session',
+    label: 'Chat with Researcher',
+    text: '## Referenced sessions\n\n### Chat with Researcher\nUser: durable target fact',
+  }]
+  ctx.resume()
+  await ctx.sessionController.prompt({
+    sessionId,
+    requestId: 'reference-request',
+    mode: 'queue',
+    content: [{ type: 'text', text: 'Use @Chat with Researcher' }],
+    references,
+  })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  await agent.whenIdle()
+
+  assert.equal(requests.length, 1)
+  assert.ok(requests[0].messages.some(message => message.content.some(block => block.type === 'text' && block.text.includes('durable target fact'))))
+  const before = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+  const sent = before.records.find(record => record.event.type === 'user/message' && record.event.data.source?.kind === 'user')
+  assert.deepEqual(sent.event.data.referenceLabels, ['Chat with Researcher'])
+  const reference = before.records.find(record => record.event.type === 'user/message' && record.event.data.source?.kind === 'session-reference')
+  assert.deepEqual(reference.event.data.source.references, [{ sessionId: 'target-session', label: 'Chat with Researcher' }])
+  assert.match(reference.event.data.content[0].text, /durable target fact/)
+  await ctx.close()
+
+  const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir })
+  t.after(() => restarted.close())
+  const after = await restarted.sessionController.page({ sessionId, maxMessages: 20 })
+  assert.deepEqual(after.records, before.records)
+  const active = await restarted.harness.context(sessionId)
+  assert.ok(active.messages.some(message => message.content.some(block => block.type === 'text' && block.text.includes('durable target fact'))))
+})

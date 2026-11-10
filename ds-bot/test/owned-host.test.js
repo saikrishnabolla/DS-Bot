@@ -6,6 +6,7 @@ import test from 'node:test'
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { OwnedHost } from '../src/engine/owned-host.js'
+import { sessionMention } from '../src/client/at-menu.js'
 
 const waitFor = async (check, timeout = 5_000) => {
   const started = Date.now()
@@ -135,6 +136,79 @@ test('owned Host preserves the desktop API, feed and transcript across restart',
   const restoredChat = await after('chat', { botId: bot.id })
   assert.ok(restoredChat.value.items.some(item => item.kind === 'bot' && item.text === 'One durable answer.'))
   assert.equal(restoredChat.value.items.filter(item => item.kind === 'user' && item.text === 'idempotent').length, 1)
+})
+
+test('owned Host references private and group chats from bounded durable snapshots', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-references-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>DS Bot</title>')
+
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  let privateRequest
+  let groupRequest
+  const response = async context => {
+    const text = JSON.stringify(context)
+    if (text.includes('private-reference-question')) privateRequest = context
+    if (text.includes('group-reference-question')) groupRequest = context
+    return fauxAssistantMessage('Ready.')
+  }
+  faux.setResponses(Array.from({ length: 40 }, () => response))
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  let host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  let cookie = await authenticate(host)
+  let call = api(host, cookie)
+  const chief = (await call('state', { locale: 'en' })).value.bots[0]
+  assert.equal((await call('update-bot', { id: chief.id, model: 'faux/faux-1' })).ok, true)
+  const researcher = (await call('create-bot', { name: 'Researcher', model: 'faux/faux-1' })).value
+  await waitFor(() => faux.state.callCount >= 2)
+  assert.equal((await call('send', { sessionId: researcher.id, text: 'durable target fact 4815' })).ok, true)
+  await waitFor(async () => (await call('chat', { botId: researcher.id })).value.items.some(item => item.kind === 'user' && item.text === 'durable target fact 4815'))
+
+  const outside = await host.runtime.ctx.sessionController.create()
+  await host.runtime.ctx.sessionTitle.rename(outside.sessionId, 'Outside notes')
+  await host.runtime.ctx.sessionController.selectModel({ sessionId: outside.sessionId, provider: 'faux', model: 'faux-1' })
+  await host.runtime.ctx.sessionController.prompt({ sessionId: outside.sessionId, mode: 'queue', content: [{ type: 'text', text: 'outside owned conversation' }] })
+  const outsideAgent = await host.runtime.ctx.sessionController.resolveAgent(outside.sessionId)
+  await outsideAgent.agent.whenIdle()
+  const candidates = await call('reference-chats', { sessionId: chief.id })
+  assert.equal(candidates.ok, true)
+  assert.equal(candidates.value.byId[outside.sessionId].title, 'Outside notes')
+  assert.equal(candidates.value.byId[outside.sessionId].blank, false)
+
+  const targetSession = host.runtime.chatOf(researcher.id)
+  const reference = { sessionId: targetSession, label: 'Chat with Researcher', ref: sessionMention(targetSession, 'Chat with Researcher') }
+  assert.equal((await call('send', { sessionId: chief.id, text: 'private-reference-question @Chat with Researcher', references: [reference] })).ok, true)
+  await waitFor(() => privateRequest)
+  assert.match(JSON.stringify(privateRequest), /durable target fact 4815/)
+  const privateChat = await waitFor(async () => {
+    const value = await call('chat', { botId: chief.id })
+    return value.value.items.some(item => item.kind === 'user' && item.referenceLabels?.includes('Chat with Researcher')) ? value.value : undefined
+  })
+  assert.ok(privateChat.items.some(item => item.kind === 'user' && item.text.includes('private-reference-question') && item.referenceLabels?.includes('Chat with Researcher')))
+
+  const selfSession = host.runtime.chatOf(chief.id)
+  const self = { sessionId: selfSession, label: 'This chat', ref: sessionMention(selfSession, 'This chat') }
+  assert.equal((await call('send', { sessionId: chief.id, text: 'self', references: [self] })).error.code, 'bot/invalid')
+  const missing = { sessionId: 'missing-session', label: 'Missing', ref: sessionMention('missing-session', 'Missing') }
+  assert.equal((await call('send', { sessionId: chief.id, text: 'stale', references: [missing] })).error.code, 'bot/stale')
+
+  const room = (await call('create-room', { name: 'Reference room', members: [chief.id, researcher.id], admin: chief.id })).value
+  assert.equal((await call('send', { sessionId: room.id, text: 'group-reference-question @Chat with Researcher', references: [reference] })).ok, true)
+  await waitFor(() => groupRequest)
+  assert.match(JSON.stringify(groupRequest), /durable target fact 4815/)
+
+  await host.close()
+  host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  t.after(() => host.close())
+  cookie = await authenticate(host)
+  call = api(host, cookie)
+  const restored = await call('chat', { botId: chief.id })
+  assert.ok(restored.value.items.some(item => item.kind === 'user' && item.referenceLabels?.includes('Chat with Researcher')))
 })
 
 test('owned Host lets Pi persist DS Bot checkpoints without losing earlier chat', async t => {

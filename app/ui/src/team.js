@@ -3,6 +3,7 @@
 // DSH keeps for them in the plugin; here the window keeps those as well.
 import { useRef, useSyncExternalStore } from 'react'
 import { call } from '../../../ds-bot/src/client/api.js'
+import { chatRows } from '../../../ds-bot/src/client/at-menu.js'
 import { createBotBrowsers, serveBrowserReads } from '../../../ds-bot/src/client/bot-browsers.js'
 import { workPhrase } from '../../../ds-bot/src/client/cells.js'
 import { language } from '../../../ds-bot/src/client/i18n.js'
@@ -193,7 +194,10 @@ export function createTeam() {
     noteChat: (sessionId, items, running, since) => conversations.noteChat(sessionId, items, running, since),
     openModels: () => actions.openSettings('models'),
     hasRightSidebar: () => true,
-    canReferenceChat: () => false,
+    canReferenceChat: () => true,
+    referenceChat: (sessionId, span) => ui.set(state => ({ ...state, referenceChat: { sessionId, span, token: Date.now() } })),
+    closeReferenceChat: () => ui.set(state => (state.referenceChat ? { ...state, referenceChat: null } : state)),
+    referenceChats: async (sessionId) => chatRows(roster.getSnapshot(), await call('reference-chats', { sessionId: partFor(sessionId) }), sessionId),
     speech: voice.speech,
     voiceSetup: voice.voiceSetup,
     noteSent: (sessionId) => {

@@ -47,6 +47,8 @@ const effect = (make, deps) => {
 const field = {
   style: {}, scrollHeight: 0, selectionStart: 0, selectionEnd: 0,
   focus() {}, closest: () => null, contains: () => false,
+  getBoundingClientRect: () => ({ left: 20, top: 700 }),
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end },
   addEventListener() {}, removeEventListener() {}, abort() {},
 }
 const react = {
@@ -74,6 +76,7 @@ runInNewContext(outputFiles[0].text, {
   window: { addEventListener() {}, removeEventListener() {}, innerHeight: 800 },
   document: { querySelector: () => null, body: {}, activeElement: null, addEventListener() {}, removeEventListener() {}, documentElement: { addEventListener() {}, removeEventListener() {} } },
   navigator: { language: 'en' },
+  TextEncoder, btoa,
   setTimeout: () => 0, clearTimeout() {},
   requestAnimationFrame: () => 0, cancelAnimationFrame() {}, performance: { now: () => 0 },
   fetch: () => { throw new Error('no fetch in test') },
@@ -112,6 +115,8 @@ const all = (node, check) => {
 const textarea = node => all(node, child => child.type === 'textarea' && child.props?.['data-composer-input'] !== undefined)[0]
 const sendButton = node => all(node, child => child.type === 'button' && child.props?.className === 'dsb-send')[0]
 const answerField = node => all(node, child => child.props?.className === 'bt-q-input')[0]
+const button = (node, label) => all(node, child => child.type === 'button' && child.props?.children?.some?.(item => item?.props?.children?.includes?.(label) || item === label))[0]
+const option = node => all(node, child => child.type === 'button' && child.props?.role === 'option')[0]
 const enter = (extra = {}) => ({
   key: 'Enter', shiftKey: false, nativeEvent: { isComposing: false }, prevented: false,
   preventDefault() { this.prevented = true }, ...extra,
@@ -121,24 +126,30 @@ const plain = value => JSON.parse(JSON.stringify(value))
 
 // Mounts a Bot's chat with `prefs` in the roster, types a draft, and returns the
 // send log plus the rendered tree accessor.
-const view = (prefs, ready = true, question) => {
+const view = (prefs, ready = true, question, referenceRows = []) => {
   const sent = []
   const answered = []
-  const roster = { ready, prefs, byId: { b1: { id: 'b1', name: 'Bot' } }, roomsById: {}, questions: question ? { b1: question } : {} }
+  const roster = { ready, prefs, bots: [{ id: 'b1', name: 'Bot', sessionId: 'b1' }], rooms: [], byId: { b1: { id: 'b1', name: 'Bot' } }, roomsById: {}, questions: question ? { b1: question } : {} }
+  let ui = {}
   const team = {
     actions: {
       noteSent() {},
-      send: async (sessionId, text) => { sent.push([sessionId, text]) },
+      send: async (sessionId, text, attachments, references) => {
+        sent.push(references?.length ? [sessionId, text, attachments, references] : [sessionId, text])
+      },
       speech: () => undefined,
       openVoice() {},
       clearQuote() {},
-      canReferenceChat: () => false,
+      canReferenceChat: () => referenceRows.length > 0,
+      referenceChat: (sessionId, span) => { ui = { ...ui, referenceChat: { sessionId, span } } },
+      closeReferenceChat: () => { ui = { ...ui, referenceChat: null } },
+      referenceChats: async () => referenceRows,
       answerQuestion: async (sessionId, id, answer) => { answered.push([sessionId, id, answer]) },
       dismissQuestion() {},
     },
     hooks: {
       useRoster: select => select(roster),
-      useUi: select => select({}),
+      useUi: select => select(ui),
       useSessionStatus: select => select(new Map()),
     },
     chat: { on: () => () => {} },
@@ -211,4 +222,27 @@ test('Shift+Enter and IME confirmation keep their default behavior', async () =>
     assert.equal(event.prevented, false)
     assert.deepEqual(plain(sent), [])
   }
+})
+
+test('Reference a chat picks a candidate at the captured caret and sends its durable reference', async () => {
+  const row = { sessionId: 'other-session', label: 'Chat with Other', bot: { id: 'b2', name: 'Other' } }
+  const { sent, tree } = view({ enterToSend: true }, true, undefined, [row])
+  textarea(tree()).props.onChange({ target: { value: 'before after' } })
+  field.selectionStart = 7
+  field.selectionEnd = 7
+
+  all(tree(), child => child.type === 'button' && child.props?.className === 'bt-plus')[0].props.onClick()
+  button(tree(), 'Reference a chat').props.onClick()
+  tree()
+  await tick()
+  option(tree()).props.onClick()
+
+  assert.equal(textarea(tree()).props.value, 'before @Chat with Other after')
+  sendButton(tree()).props.onClick()
+  await tick()
+  assert.equal(sent.length, 1)
+  assert.deepEqual(plain(sent[0].slice(0, 3)), ['b1', 'before @Chat with Other after', []])
+  assert.equal(sent[0][3][0].sessionId, 'other-session')
+  assert.equal(sent[0][3][0].label, 'Chat with Other')
+  assert.match(sent[0][3][0].ref, /^@\[Chat with Other\]\(dsh-session:[A-Za-z0-9_-]+\)$/)
 })
