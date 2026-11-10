@@ -363,7 +363,7 @@ try {
   if (await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html'))") === true) throw new Error('the packaged computer indicator did not close')
   try {
     if (process.platform === 'darwin') await windowState("win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); true")
-    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(true); true')
+    if (process.platform === 'win32') await windowState('win.setAlwaysOnTop(true); true')
     await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
     await sleep(300)
     if (process.platform !== 'linux') {
@@ -377,6 +377,7 @@ try {
       const nativeWindow = packagedWindow(packedApp, cursorTarget.pid, cursorTarget.windowId)
       const nativeWindowId = nativeWindow.window_id ?? nativeWindow.windowId
       if (!Number.isSafeInteger(nativeWindowId) || nativeWindowId <= 0) throw new Error('the packaged computer driver returned no native window ID')
+      console.log(`check-packed: cursor target Electron ${JSON.stringify(cursorTarget.bounds)}, CUA ${JSON.stringify(nativeWindow.bounds)}, pid ${String(nativeWindow.pid)}, window ${String(nativeWindowId)}`)
       await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(nativeWindow.pid)}, windowId: ${String(nativeWindowId)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
       const cursorDeadline = Date.now() + 10_000
       let cursorVisible = false
@@ -388,7 +389,7 @@ try {
       if (!cursorVisible) throw new Error('the packaged computer cursor did not appear')
     }
   } finally {
-    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); true')
+    if (process.platform === 'win32') await windowState('win.setAlwaysOnTop(false); true')
     if (process.platform === 'darwin') await windowState('win.setVisibleOnAllWorkspaces(false); true')
   }
   console.log('check-packed: packaged computer indicator, action and cursor flow passed')

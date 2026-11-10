@@ -171,9 +171,9 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
           buffer = buffer.slice(nl + 1)
           if (line === 'r' && child === startedChild) { diagnostic('helper ready'); runningStartup.resolve(true) }
           else {
-            const [id, answer, actualPid, actualWindowId, expectedRootWindowId, expectedValid, expectedPid, expectedClass, expectedRootClass, actualRootClass] = line.split(/\s+/u)
+            const [id, answer, actualPid, actualWindowId, expectedRootWindowId, expectedValid, expectedPid, expectedClass, expectedRootClass, actualRootClass, targetLayer, targetBounds] = line.split(/\s+/u)
             if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) {
-              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; expected window pid ${expectedPid ?? 'unknown'}; actual pid ${actualPid ?? 'unknown'}; expected window ${String(pending.windowId)}; expected root window ${expectedRootWindowId ?? 'unknown'}; actual root window ${actualWindowId ?? 'unknown'}; expected window valid ${expectedValid ?? 'unknown'}; classes ${expectedClass ?? 'unknown'}/${expectedRootClass ?? 'unknown'}/${actualRootClass ?? 'unknown'}; visible ${answer}`)
+              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; expected window pid ${expectedPid ?? 'unknown'}; actual pid ${actualPid ?? 'unknown'}; expected window ${String(pending.windowId)}; expected root window ${expectedRootWindowId ?? 'unknown'}; actual root window ${actualWindowId ?? 'unknown'}; expected window valid ${expectedValid ?? 'unknown'}; classes ${expectedClass ?? 'unknown'}/${expectedRootClass ?? 'unknown'}/${actualRootClass ?? 'unknown'}; target layer ${targetLayer ?? 'unknown'}; target bounds ${targetBounds ?? 'unknown'}; visible ${answer}`)
               pending.resolve(answer === 'y')
               pending = null
             }
@@ -238,29 +238,45 @@ while (true) {
     var line = buf.slice(0, nl); buf = buf.slice(nl + 1)
     var parts = line.trim().split(/\s+/)
     var id = parts[0], x = Number(parts[1]), y = Number(parts[2]), pid = Number(parts[3]), windowId = Number(parts[4])
-    var yes = false, found = 0, foundWindow = 0
+    var yes = false, pointFound = false, targetFound = false, found = 0, foundWindow = 0, targetPid = 0, targetLayer = '-', targetBounds = '-'
     try {
       var ref = $.CGWindowListCopyWindowInfo(1, 0)
       var list = ObjC.castRefToObject(ref)
       var count = list ? list.count : 0
-      for (var i = 0; i < count && !yes; i++) {
+      for (var i = 0; i < count; i++) {
         var win = list.objectAtIndex(i)
         var owner = ObjC.unwrap(win.objectForKey('kCGWindowOwnerPID'))
         var layer = ObjC.unwrap(win.objectForKey('kCGWindowLayer'))
-        if (Number(layer) !== 0) continue
+        var number = Number(ObjC.unwrap(win.objectForKey('kCGWindowNumber')))
+        var isTarget = number === windowId
+        if (isTarget) {
+          targetFound = true
+          targetPid = Number(owner)
+          targetLayer = String(Number(layer))
+        }
+        if (Number(layer) !== 0 && !isTarget) continue
         var b = win.objectForKey('kCGWindowBounds')
-        if (!b) continue
+        if (!b) {
+          if (pointFound && targetFound) break
+          continue
+        }
         var bx = Number(ObjC.unwrap(b.objectForKey('X'))), by = Number(ObjC.unwrap(b.objectForKey('Y')))
         var bw = Number(ObjC.unwrap(b.objectForKey('Width'))), bh = Number(ObjC.unwrap(b.objectForKey('Height')))
-        if (x >= bx && x < bx + bw && y >= by && y < by + bh) {
-          found = Number(owner)
-          foundWindow = Number(ObjC.unwrap(win.objectForKey('kCGWindowNumber')))
-          yes = windowId > 0 ? foundWindow === windowId : found === pid
-          break
+        if (isTarget) targetBounds = [bx, by, bw, bh].join(',')
+        if (Number(layer) !== 0) {
+          if (pointFound && targetFound) break
+          continue
         }
+        if (!pointFound && x >= bx && x < bx + bw && y >= by && y < by + bh) {
+          found = Number(owner)
+          foundWindow = number
+          yes = windowId > 0 ? foundWindow === windowId : found === pid
+          pointFound = true
+        }
+        if (yes || (pointFound && targetFound)) break
       }
     } catch (e) {}
-    answer(id + (yes ? ' y ' : ' n ') + found + ' ' + foundWindow + '\n')
+    answer(id + (yes ? ' y ' : ' n ') + found + ' ' + foundWindow + ' 0 ' + (targetFound ? '1' : '0') + ' ' + targetPid + ' - - - ' + targetLayer + ' ' + targetBounds + '\n')
   }
 }
 `
