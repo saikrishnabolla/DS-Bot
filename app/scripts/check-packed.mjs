@@ -159,6 +159,47 @@ function packagedWindow(app, expectedPid, expectedWindowId) {
   return target
 }
 
+function packagedNativeClick(app, pid, windowId, label) {
+  const resources = process.platform === 'darwin' ? resolve(app, '..', '..', 'Resources') : join(dirname(app), 'resources')
+  const unpackedRoot = process.platform === 'linux' ? join(resources, 'app') : join(resources, 'app.asar.unpacked')
+  const script = `
+    const { join } = require('node:path')
+    const { pathToFileURL } = require('node:url')
+    ;(async () => {
+      const module = await import(pathToFileURL(join(${JSON.stringify(unpackedRoot)}, 'node_modules', '@trycua', 'cua-driver', 'dist', 'index.js')).href)
+      const driver = module.CuaDriver.create({ embedded: true })
+      try {
+        const stateResult = await driver.callTool('get_window_state', ${JSON.stringify(JSON.stringify({
+          pid,
+          window_id: windowId,
+          include_screenshot: false,
+          tree_format: 'elements',
+          query: label,
+          timeout_ms: 5_000,
+        }))})
+        const state = JSON.parse(stateResult.structuredJson)
+        const target = state.elements?.find(element => /button$/iu.test(element.role)
+          && [element.label, element.value, element.value_description].includes(${JSON.stringify(label)}))
+        if (!target?.element_token) throw new Error('the native accessibility tree did not expose the click canary: ' + stateResult.structuredJson)
+        const click = await driver.callTool('click', JSON.stringify({
+          element_token: target.element_token,
+          delivery_mode: 'foreground',
+          post_action_wait: 'none',
+        }))
+        console.log(JSON.stringify({ state, click: JSON.parse(click.structuredJson) }))
+      } finally {
+        await driver.shutdown()
+        driver.uniffiDestroy?.()
+      }
+    })().catch(error => { console.error(error); process.exitCode = 1 })
+  `
+  const result = spawnSync(app, ['-e', script], {
+    cwd: work, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: '' }, encoding: 'utf8', timeout: 60_000,
+  })
+  if (result.error || result.status !== 0) throw new Error(`packaged native click failed: ${result.error?.message ?? result.stderr}`)
+  return JSON.parse(result.stdout.trim())
+}
+
 async function freePort() {
   const server = createServer()
   await new Promise((done, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', done) })
@@ -378,6 +419,30 @@ try {
       const nativeWindowId = nativeWindow.window_id ?? nativeWindow.windowId
       if (!Number.isSafeInteger(nativeWindowId) || nativeWindowId <= 0) throw new Error('the packaged computer driver returned no native window ID')
       console.log(`check-packed: cursor target Electron ${JSON.stringify(cursorTarget.bounds)}, CUA ${JSON.stringify(nativeWindow.bounds)}, pid ${String(nativeWindow.pid)}, window ${String(nativeWindowId)}`)
+      if (process.env.DS_BOT_CHECK_NATIVE_CLICK === '1') {
+        const label = 'Packed native click canary'
+        await rendererValue(cdp, `(() => {
+          document.getElementById('__packed_native_click')?.remove()
+          window.__packedNativeClick = 0
+          const button = document.createElement('button')
+          button.id = '__packed_native_click'
+          button.type = 'button'
+          button.setAttribute('aria-label', ${JSON.stringify(label)})
+          button.textContent = ${JSON.stringify(label)}
+          Object.assign(button.style, { position: 'fixed', inset: '80px auto auto 80px', zIndex: '2147483647' })
+          button.addEventListener('click', () => { window.__packedNativeClick += 1 })
+          document.body.append(button)
+          return true
+        })()`)
+        const nativeClick = packagedNativeClick(packedApp, nativeWindow.pid, nativeWindowId, label)
+        const clickDeadline = Date.now() + 10_000
+        while (Date.now() < clickDeadline && await rendererValue(cdp, 'window.__packedNativeClick') !== 1) await sleep(100)
+        if (await rendererValue(cdp, 'window.__packedNativeClick') !== 1) {
+          throw new Error(`the packaged native click did not reach the renderer: ${JSON.stringify(nativeClick.click)}`)
+        }
+        await rendererValue(cdp, "document.getElementById('__packed_native_click')?.remove(); true")
+        console.log(`check-packed: native computer click reached the packaged renderer through ${String(nativeClick.click.route)}`)
+      }
       await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(nativeWindow.pid)}, windowId: ${String(nativeWindowId)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
       const cursorDeadline = Date.now() + 10_000
       let cursorVisible = false
