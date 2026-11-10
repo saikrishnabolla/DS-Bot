@@ -1,7 +1,7 @@
 // A file: dependency is copied by npm, so edits made after npm install otherwise leave
 // the Electron Host older than the renderer built from this checkout.
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -16,8 +16,8 @@ await mkdir(target, { recursive: true })
 for (const entry of ['package.json', 'LICENSE', ...manifest.files]) {
   const from = resolve(source, entry)
   const to = resolve(target, entry)
-  if (from !== source && !from.startsWith(`${source}/`)) throw new Error(`Invalid ds-bot package entry: ${entry}`)
-  if (to !== target && !to.startsWith(`${target}/`)) throw new Error(`Invalid installed ds-bot package entry: ${entry}`)
+  if (from !== source && !from.startsWith(`${source}${sep}`)) throw new Error(`Invalid ds-bot package entry: ${entry}`)
+  if (to !== target && !to.startsWith(`${target}${sep}`)) throw new Error(`Invalid installed ds-bot package entry: ${entry}`)
   await rm(to, { recursive: true, force: true })
   await mkdir(dirname(to), { recursive: true })
   await cp(from, to, { recursive: true, force: true })
