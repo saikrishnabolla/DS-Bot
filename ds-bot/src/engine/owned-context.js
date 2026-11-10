@@ -218,6 +218,7 @@ export class OwnedContext {
         return () => this.#shellEnvironment.delete(contribution)
       },
     })
+    this.#services.set('agents', { list: () => [...this.#agents.values()] })
     this.harness.setShellEnvironment?.(({ conversationId }) => {
       const agent = this.#agents.get(String(conversationId))
       if (agent === undefined) return undefined

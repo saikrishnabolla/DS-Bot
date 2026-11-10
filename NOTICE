@@ -186,6 +186,11 @@ affiliates), and react-markdown and remark-gfm with the packages they use
 (MIT, most of them Copyright (c) Titus Wormer; @ungap/structured-clone is ISC,
 Copyright (c) Andrea Giammarchi). Vite is a build tool only.
 
+The owned desktop host includes @trycua/cua-driver
+(https://github.com/trycua/cua), MIT, and its native packages. The native
+packages and their @ubjs runtime include MPL-2.0 components. Their license
+files and notices remain in the npm packages.
+
 ==============================================================================
 Projects that gave us ideas (no code copied)
 ==============================================================================

@@ -4,6 +4,7 @@ import { createRegistry } from '@earendil-works/pi-durable'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createRuntime } from '../../index.js'
 import { OwnedContext } from './owned-context.js'
+import { installOwnedComputerUse } from './owned-computer.js'
 import { OwnedModels } from './owned-models.js'
 import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
@@ -64,6 +65,7 @@ export class OwnedHost {
     let server
     try {
       await installOwnedStorage(context, { dataDir })
+      installOwnedComputerUse(context)
       await installOwnedSchedules(context)
       const runtime = createRuntime(context, { dataDir, home: join(dataDir, 'bot') })
       installModelBoundary(runtime, models)

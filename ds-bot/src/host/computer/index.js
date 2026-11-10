@@ -132,9 +132,8 @@ function installUnsupported(rt) {
 
 export function install(rt) {
   const { ctx, state } = rt
-  // The owned Pi context deliberately has no legacy dynamic-service reflector, so
-  // it cannot mount the DSH registry or provider packages this integration needs.
-  if (typeof ctx.reflect?.get !== 'function') {
+  const ownedProvider = ctx.get?.('ownedComputerUse')
+  if (typeof ctx.reflect?.get !== 'function' && ownedProvider === undefined) {
     installUnsupported(rt)
     return
   }
@@ -196,7 +195,7 @@ export function install(rt) {
   // ---- Provider mount ----
   // Optional services resolve through reflect: ctx.get throws on an
   // uninjected name, but these services mount only when enabled.
-  const service = name => ctx.reflect?.get(name)
+  const service = name => ctx.reflect?.get(name) ?? ctx.get?.(name)
   const loaderOf = () => service('loader')
   const importPackage = async (name) => {
     const loader = loaderOf()
@@ -221,6 +220,24 @@ export function install(rt) {
       if (!enabled()) {
         await unmountProvider()
         setProviderStatus({ state: 'off' })
+        return
+      }
+      if (ownedProvider !== undefined) {
+        setProviderStatus({ state: 'loading' })
+        try {
+          const definitions = await ownedProvider.start()
+          if (stopped || !enabled()) {
+            await ownedProvider.stop()
+            return
+          }
+          for (const definition of definitions) rt.addTeamTool?.(definition)
+          mountedByUs = true
+          setProviderStatus({ state: 'ready', name: ownedProvider.providerName })
+          refreshComputer()
+        } catch (error) {
+          await ownedProvider.stop().catch(() => undefined)
+          setProviderStatus({ state: 'error', message: rt.redactSecrets?.(String(error?.message ?? error)) ?? String(error) })
+        }
         return
       }
       const name = PROVIDER_PACKAGES[process.platform]
@@ -269,6 +286,10 @@ export function install(rt) {
     return ensuring
   }
   async function unmountProvider() {
+    if (ownedProvider !== undefined) {
+      for (const definition of [...rt.teamTools].filter(definition => isComputerTool(definition.name))) rt.removeTeamTool?.(definition.name)
+      await ownedProvider.stop()
+    }
     const fiber = providerFiber
     providerFiber = undefined
     mountedByUs = false
