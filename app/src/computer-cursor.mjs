@@ -32,6 +32,7 @@ function warn(log, message) {
  */
 export function createComputerCursor({ BrowserWindow, screen, platform, ownPid = process.pid, spawn = realSpawn, log = console }) {
   const windows = new Map()
+  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `DS Bot: cursor diagnostic: ${message}`) }
   const checker = createPointChecker({ platform, ownPid, spawn, log, screen })
   const destroy = (botId) => {
     const held = windows.get(botId)
@@ -51,6 +52,7 @@ export function createComputerCursor({ BrowserWindow, screen, platform, ownPid =
       skipTaskbar: true, hasShadow: false, show: false,
       webPreferences: { sandbox: true },
     })
+    diagnostic(`overlay created for ${botId}`)
     // Floats over full-screen apps too, not just the regular window level.
     try { win.setAlwaysOnTop(true, 'screen-saver') } catch {}
     try { win.setIgnoreMouseEvents(true, { forward: true }) } catch {}
@@ -124,6 +126,7 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
   let pending = null
   let nextId = 1
   let queue = Promise.resolve()
+  const diagnostic = message => { if (process.env.DS_BOT_CURSOR_DIAGNOSTICS === '1') warn(log, `DS Bot: cursor diagnostic: ${message}`) }
   const ensure = () => {
     if (child !== null) return { child, ready: startup.promise }
     const script = platform === 'darwin' ? JXA_CHECKER : PS_CHECKER
@@ -157,7 +160,7 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
         runningStartup.resolve(false)
         if (pending?.child === startedChild) { pending.resolve(false); pending = null }
       }
-      startupTimer = setTimeout(() => { reset(); try { startedChild.kill() } catch {} }, startMs)
+      startupTimer = setTimeout(() => { diagnostic(`helper startup timed out after ${String(startMs)} ms`); reset(); try { startedChild.kill() } catch {} }, startMs)
       let buffer = ''
       child.stdout.on('data', (chunk) => {
         buffer += chunk
@@ -165,10 +168,14 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
         while ((nl = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, nl).trim()
           buffer = buffer.slice(nl + 1)
-          if (line === 'r' && child === startedChild) runningStartup.resolve(true)
+          if (line === 'r' && child === startedChild) { diagnostic('helper ready'); runningStartup.resolve(true) }
           else {
-            const [id, answer] = line.split(/\s+/u)
-            if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) { pending.resolve(answer === 'y'); pending = null }
+            const [id, answer, actualPid] = line.split(/\s+/u)
+            if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) {
+              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; actual pid ${actualPid ?? 'unknown'}; visible ${answer}`)
+              pending.resolve(answer === 'y')
+              pending = null
+            }
           }
         }
       })
@@ -187,8 +194,14 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
         : { x: Math.round(x), y: Math.round(y) }
       const id = String(nextId++)
       return new Promise((resolve) => {
-        const timer = setTimeout(() => { if (pending?.id === id) pending = null; resolve(false) }, checkMs)
-        pending = { child: running.child, id, resolve: (value) => { clearTimeout(timer); resolve(value) } }
+        const timer = setTimeout(() => {
+          if (pending?.id === id) {
+            diagnostic(`reply ${id} timed out: logical ${String(x)},${String(y)}; physical ${String(point.x)},${String(point.y)}; expected pid ${String(pid)}`)
+            pending = null
+          }
+          resolve(false)
+        }, checkMs)
+        pending = { child: running.child, id, logical: { x, y }, physical: point, pid, resolve: (value) => { clearTimeout(timer); resolve(value) } }
         try { running.child.stdin.write(`${id} ${Math.round(point.x)} ${Math.round(point.y)} ${pid}\n`) } catch { clearTimeout(timer); pending = null; resolve(false) }
       })
     })
@@ -221,7 +234,7 @@ while (true) {
     var line = buf.slice(0, nl); buf = buf.slice(nl + 1)
     var parts = line.trim().split(/\s+/)
     var id = parts[0], x = Number(parts[1]), y = Number(parts[2]), pid = Number(parts[3])
-    var yes = false
+    var yes = false, found = 0
     try {
       var ref = $.CGWindowListCopyWindowInfo(1, 0)
       var list = ObjC.castRefToObject(ref)
@@ -235,10 +248,10 @@ while (true) {
         if (!b) continue
         var bx = Number(ObjC.unwrap(b.objectForKey('X'))), by = Number(ObjC.unwrap(b.objectForKey('Y')))
         var bw = Number(ObjC.unwrap(b.objectForKey('Width'))), bh = Number(ObjC.unwrap(b.objectForKey('Height')))
-        if (x >= bx && x < bx + bw && y >= by && y < by + bh) { yes = (Number(owner) === pid); break }
+        if (x >= bx && x < bx + bw && y >= by && y < by + bh) { found = Number(owner); yes = (found === pid); break }
       }
     } catch (e) {}
-    answer(id + (yes ? ' y\n' : ' n\n'))
+    answer(id + (yes ? ' y ' : ' n ') + found + '\n')
   }
 }
 `
@@ -269,6 +282,6 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
   $root = [PointCheck]::GetAncestor($h, 2)
   [uint32]$pid2 = 0
   [void][PointCheck]::GetWindowThreadProcessId($root, [ref]$pid2)
-  if ($pid2 -eq [uint32]$parts[3]) { [Console]::Out.WriteLine($parts[0] + ' y') } else { [Console]::Out.WriteLine($parts[0] + ' n') }
+  if ($pid2 -eq [uint32]$parts[3]) { [Console]::Out.WriteLine($parts[0] + ' y ' + $pid2) } else { [Console]::Out.WriteLine($parts[0] + ' n ' + $pid2) }
 }
 `

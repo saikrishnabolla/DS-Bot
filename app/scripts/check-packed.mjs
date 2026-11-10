@@ -40,6 +40,14 @@ function stopChildren() {
   }
 }
 
+function printCursorDiagnostics() {
+  try {
+    const lines = readFileSync(join(work, 'shell', 'logs', 'main.log'), 'utf8')
+      .split(/\r?\n/u).filter(line => line.includes('cursor diagnostic')).slice(-20)
+    if (lines.length > 0) console.error(`check-packed: cursor diagnostics:\n${lines.join('\n')}`)
+  } catch {}
+}
+
 setTimeout(() => {
   console.error('check-packed: FAILED: gave up after 5 minutes')
   stopChildren()
@@ -263,7 +271,7 @@ try {
   const port = await freePort()
   const mainPort = await freePort()
   const { ELECTRON_RUN_AS_NODE: _runAsNode, ...env } = process.env
-  Object.assign(env, { DS_BOT_HOME: join(work, 'home'), DS_BOT_SHELL_DATA: join(work, 'shell') })
+  Object.assign(env, { DS_BOT_HOME: join(work, 'home'), DS_BOT_SHELL_DATA: join(work, 'shell'), DS_BOT_CURSOR_DIAGNOSTICS: '1' })
   if (process.env.DS_BOT_SPEECH_E2E_ROOT) Object.assign(env, {
     DS_BOT_SPEECH_MODEL_DIRECTORY: join(process.env.DS_BOT_SPEECH_E2E_ROOT, 'models', 'sensevoice-onnx'),
     DS_BOT_SPEECH_VAD_MODEL: join(process.env.DS_BOT_SPEECH_E2E_ROOT, 'models', 'silero', 'silero_vad.onnx'),
@@ -361,6 +369,7 @@ try {
 } catch (error) {
   failed = true
   console.error(`check-packed: FAILED: ${error instanceof Error ? error.message : String(error)}`)
+  printCursorDiagnostics()
 }
 stopChildren()
 await sleep(500)
