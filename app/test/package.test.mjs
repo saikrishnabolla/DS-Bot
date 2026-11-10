@@ -27,6 +27,13 @@ test('the app has the version of ds-bot', () => {
   assert.equal(version('../package.json'), version('../../ds-bot/package.json'))
 })
 
+test('every app entry point builds the UI and sandboxed preload first', () => {
+  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts
+  assert.match(scripts.build, /vite build/u)
+  assert.match(scripts.build, /build-preload/u)
+  for (const name of ['start', 'pack', 'dist']) assert.match(scripts[name], /^npm run build && /u)
+})
+
 // Tool processes (bash, scripts a Bot runs) connect to devices on the local network;
 // macOS blocks them outright when Info.plist has no NSLocalNetworkUsageDescription.
 test('the mac package asks macOS for local network access', () => {

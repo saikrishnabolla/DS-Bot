@@ -12,9 +12,9 @@
   "main": "src/main.mjs",
   "scripts": {
     "build": "vite build && node scripts/build-preload.mjs",
-    "start": "node scripts/build-preload.mjs && electron .",
-    "pack": "node scripts/build-preload.mjs && electron-builder --dir --publish never",
-    "dist": "node scripts/build-preload.mjs && electron-builder --publish never",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir --publish never",
+    "dist": "npm run build && electron-builder --publish never",
     "check-packed": "node scripts/check-packed.mjs",
     "check-speech": "node scripts/check-speech.mjs",
     "check-lifecycle": "node scripts/check-lifecycle.mjs",
