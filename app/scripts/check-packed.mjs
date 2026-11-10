@@ -288,15 +288,15 @@ try {
   }
   const windowState = async expression => {
     const answer = await main.call('Runtime.evaluate', {
-      expression: `(() => { const { app, BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron'); const win = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().startsWith('http://127.0.0.1:')); return ${expression} })()`,
+      expression: `(() => { const { app, BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron'); const windows = BrowserWindow.getAllWindows().filter(item => !item.isDestroyed() && !item.webContents.isDestroyed()); const win = windows.find(item => item.webContents.getURL().startsWith('http://127.0.0.1:')); return ${expression} })()`,
       returnByValue: true, awaitPromise: true,
     })
     if (answer.exceptionDetails) throw new Error(answer.exceptionDetails.exception?.description ?? answer.exceptionDetails.text)
     return answer.result?.value
   }
   const handoffDeadline = Date.now() + 10_000
-  while (Date.now() < handoffDeadline && await windowState('BrowserWindow.getAllWindows().length !== 1 || !win.isVisible()')) await sleep(100)
-  if (await windowState('BrowserWindow.getAllWindows().length === 1 && win.isVisible()') !== true) throw new Error('the team window did not finish its handoff')
+  while (Date.now() < handoffDeadline && await windowState('windows.length !== 1 || !win.isVisible()')) await sleep(100)
+  if (await windowState('windows.length === 1 && win.isVisible()') !== true) throw new Error('the team window did not finish its handoff')
   await checkPackedSpeech(cdp)
   await rendererValue(cdp, `(() => {
     window.__packedComputerAction = null
@@ -305,9 +305,9 @@ try {
     return true
   })()`)
   const indicatorDeadline = Date.now() + 10_000
-  while (Date.now() < indicatorDeadline && await windowState("BrowserWindow.getAllWindows().filter(item => item.webContents.getURL().startsWith('data:text/html')).length") !== 1) await sleep(100)
+  while (Date.now() < indicatorDeadline && await windowState("windows.filter(item => item.webContents.getURL().startsWith('data:text/html')).length") !== 1) await sleep(100)
   const indicatorActed = await windowState(`(async () => {
-    const indicator = BrowserWindow.getAllWindows().find(item => item.webContents.getURL().startsWith('data:text/html'))
+    const indicator = windows.find(item => item.webContents.getURL().startsWith('data:text/html'))
     if (!indicator) return false
     return await indicator.webContents.executeJavaScript("document.querySelector('[data-act^=\\\"stop:\\\"]')?.click(); true")
   })()`)
@@ -330,7 +330,7 @@ try {
     const cursorDeadline = Date.now() + 10_000
     let cursorVisible = false
     while (Date.now() < cursorDeadline) {
-      cursorVisible = await windowState("BrowserWindow.getAllWindows().some(item => item.webContents.getURL().startsWith('data:text/html') && decodeURIComponent(item.webContents.getURL()).includes('<svg'))")
+      cursorVisible = await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html') && decodeURIComponent(item.webContents.getURL()).includes('<svg'))")
       if (cursorVisible) break
       await sleep(100)
     }
