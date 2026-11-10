@@ -171,9 +171,9 @@ export function createPointChecker({ platform, ownPid = process.pid, spawn = rea
           buffer = buffer.slice(nl + 1)
           if (line === 'r' && child === startedChild) { diagnostic('helper ready'); runningStartup.resolve(true) }
           else {
-            const [id, answer, actualPid, actualWindowId] = line.split(/\s+/u)
+            const [id, answer, actualPid, actualWindowId, expectedRootWindowId, expectedValid, expectedPid, expectedClass, expectedRootClass, actualRootClass] = line.split(/\s+/u)
             if (pending?.child === startedChild && pending.id === id && (answer === 'y' || answer === 'n')) {
-              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; actual pid ${actualPid ?? 'unknown'}; expected window ${String(pending.windowId)}; actual window ${actualWindowId ?? 'unknown'}; visible ${answer}`)
+              diagnostic(`reply ${id}: logical ${String(pending.logical.x)},${String(pending.logical.y)}; physical ${String(pending.physical.x)},${String(pending.physical.y)}; expected pid ${String(pending.pid)}; expected window pid ${expectedPid ?? 'unknown'}; actual pid ${actualPid ?? 'unknown'}; expected window ${String(pending.windowId)}; expected root window ${expectedRootWindowId ?? 'unknown'}; actual root window ${actualWindowId ?? 'unknown'}; expected window valid ${expectedValid ?? 'unknown'}; classes ${expectedClass ?? 'unknown'}/${expectedRootClass ?? 'unknown'}/${actualRootClass ?? 'unknown'}; visible ${answer}`)
               pending.resolve(answer === 'y')
               pending = null
             }
@@ -267,7 +267,8 @@ while (true) {
 
 // Windows: the top-most root HWND at the point decides visibility; the
 // click-through overlays are skipped by their own process id. CUA window IDs
-// are HWNDs, so exact identity wins over the process fallback.
+// may name an Electron child HWND, so both HWNDs are canonicalized to their
+// root before exact identity wins over the process fallback.
 const PS_CHECKER = String.raw`
 Add-Type @"
 using System;
@@ -276,10 +277,23 @@ public class PointCheck {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 }
 "@
+function WindowId([IntPtr]$hwnd) {
+  return [uint64]($hwnd.ToInt64() -band 0xFFFFFFFFL)
+}
+function WindowClass([IntPtr]$hwnd) {
+  if ($hwnd -eq [IntPtr]::Zero) { return '-' }
+  $text = New-Object System.Text.StringBuilder 256
+  [void][PointCheck]::GetClassName($hwnd, $text, $text.Capacity)
+  $name = $text.ToString() -replace '\s+', '_'
+  if ($name.Length -eq 0) { return '-' }
+  return $name
+}
 [void][PointCheck]::SetProcessDPIAware()
 [Console]::Out.WriteLine('r')
 # WindowFromPoint already skips our click-through (WS_EX_TRANSPARENT) overlays.
@@ -293,8 +307,25 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
   [uint32]$pid2 = 0
   [void][PointCheck]::GetWindowThreadProcessId($root, [ref]$pid2)
   [uint64]$windowId = [uint64]$parts[4]
-  [uint64]$rootId = [uint64]($root.ToInt64())
-  $yes = if ($windowId -gt 0) { $rootId -eq $windowId } else { $pid2 -eq [uint32]$parts[3] }
-  if ($yes) { [Console]::Out.WriteLine($parts[0] + ' y ' + $pid2 + ' ' + $rootId) } else { [Console]::Out.WriteLine($parts[0] + ' n ' + $pid2 + ' ' + $rootId) }
+  [uint64]$rootId = WindowId($root)
+  [uint64]$targetRootId = 0
+  [uint32]$targetPid = 0
+  $target = [IntPtr]::Zero
+  $targetRoot = [IntPtr]::Zero
+  $targetValid = $false
+  if ($windowId -gt 0) {
+    $target = [IntPtr]::new([int64]($windowId -band 0xFFFFFFFFL))
+    $targetValid = [PointCheck]::IsWindow($target)
+    if ($targetValid) {
+      [void][PointCheck]::GetWindowThreadProcessId($target, [ref]$targetPid)
+      $targetRoot = [PointCheck]::GetAncestor($target, 2)
+      $targetRootId = WindowId($targetRoot)
+    }
+  }
+  [uint32]$requestedPid = [uint32]$parts[3]
+  $pidMatches = $requestedPid -eq 0 -or $targetPid -eq $requestedPid
+  $yes = if ($windowId -gt 0) { $targetValid -and $pidMatches -and $targetRootId -gt 0 -and $rootId -gt 0 -and $rootId -eq $targetRootId } else { $requestedPid -gt 0 -and $pid2 -eq $requestedPid }
+  $fields = ' ' + $pid2 + ' ' + $rootId + ' ' + $targetRootId + ' ' + ([int]$targetValid) + ' ' + $targetPid + ' ' + (WindowClass($target)) + ' ' + (WindowClass($targetRoot)) + ' ' + (WindowClass($root))
+  if ($yes) { [Console]::Out.WriteLine($parts[0] + ' y' + $fields) } else { [Console]::Out.WriteLine($parts[0] + ' n' + $fields) }
 }
 `

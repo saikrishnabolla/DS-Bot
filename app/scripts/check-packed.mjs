@@ -117,7 +117,7 @@ function packagedWindow(app, bounds, expectedPid) {
     ;(async () => {
       const module = await import(pathToFileURL(join(${JSON.stringify(unpackedRoot)}, 'node_modules', '@trycua', 'cua-driver', 'dist', 'index.js')).href)
       const driver = module.CuaDriver.create({ embedded: true })
-      try { console.log((await driver.callTool('list_windows', '{}')).structuredJson) }
+      try { console.log((await driver.callTool('list_windows', '{"on_screen_only":true}')).structuredJson) }
       finally { await driver.shutdown(); driver.uniffiDestroy?.() }
     })().catch(error => { console.error(error); process.exitCode = 1 })
   `
@@ -126,16 +126,35 @@ function packagedWindow(app, bounds, expectedPid) {
   })
   if (result.error || result.status !== 0) throw new Error(`packaged native window lookup failed: ${result.error?.message ?? result.stderr}`)
   const windows = JSON.parse(result.stdout.trim()).windows
-  const candidates = windows.filter(window => Number.isInteger(window.pid) && window.bounds)
-  const distance = window => Math.abs(window.bounds.x - bounds.x) + Math.abs(window.bounds.y - bounds.y)
-    + Math.abs(window.bounds.width - bounds.width) + Math.abs(window.bounds.height - bounds.height)
-  candidates.sort((left, right) => {
-    const byGeometry = distance(left) - distance(right)
-    if (byGeometry !== 0) return byGeometry
-    return Number(right.pid === expectedPid) - Number(left.pid === expectedPid)
-  })
-  const target = candidates[0]
-  if (target === undefined || distance(target) > 8) throw new Error('the packaged computer driver could not identify the team window')
+  if (!Array.isArray(windows)) throw new Error('the packaged computer driver did not list native windows')
+  const candidates = windows.filter(window => Number.isInteger(window.pid)
+    && Number.isSafeInteger(window.window_id ?? window.windowId) && (window.window_id ?? window.windowId) > 0
+    && Number.isFinite(window.bounds?.width) && window.bounds.width > 0
+    && Number.isFinite(window.bounds?.height) && window.bounds.height > 0)
+  if (process.platform === 'win32') {
+    const distance = window => Math.abs(window.bounds.x - bounds.x) + Math.abs(window.bounds.y - bounds.y)
+      + Math.abs(window.bounds.width - bounds.width) + Math.abs(window.bounds.height - bounds.height)
+    candidates.sort((left, right) => distance(left) - distance(right))
+    if (candidates[0] === undefined || distance(candidates[0]) > 8) {
+      throw new Error(`the packaged computer driver could not match the team window bounds ${JSON.stringify(bounds)}: ${JSON.stringify(candidates)}`)
+    }
+    return candidates[0]
+  }
+  const exactPid = candidates.filter(window => window.pid === expectedPid)
+  exactPid.sort((left, right) => right.bounds.width * right.bounds.height - left.bounds.width * left.bounds.height)
+  const target = exactPid[0]
+  const ambiguous = target !== undefined && exactPid[1] !== undefined
+    && target.bounds.width * target.bounds.height === exactPid[1].bounds.width * exactPid[1].bounds.height
+  if (target === undefined || ambiguous) {
+    const evidence = candidates.map(window => ({
+      pid: window.pid,
+      windowId: window.window_id ?? window.windowId,
+      title: window.title,
+      name: window.name ?? window.app_name,
+      bounds: window.bounds,
+    }))
+    throw new Error(`the packaged computer driver could not identify one largest on-screen team surface for pid ${String(expectedPid)}: ${JSON.stringify(evidence)}`)
+  }
   return target
 }
 
@@ -327,13 +346,16 @@ try {
   }
   if (action?.kind !== 'stop' || action?.botId !== 'packed-bot') throw new Error('the packaged computer indicator action did not reach the team window')
   await rendererValue(cdp, 'window.dsBotApp.computer({ rows: [], labels: {} }); true')
-  if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(true); true')
+  const indicatorCloseDeadline = Date.now() + 10_000
+  while (Date.now() < indicatorCloseDeadline && await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html'))")) await sleep(100)
+  if (await windowState("windows.some(item => item.webContents.getURL().startsWith('data:text/html'))") === true) throw new Error('the packaged computer indicator did not close')
   try {
+    if (process.platform !== 'linux') await windowState("win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); win.setAlwaysOnTop(true); true")
     await windowState('app.focus({ steal: true }); win.show(); win.moveTop(); win.focus(); true')
     await sleep(300)
     if (process.platform !== 'linux') {
-      const cursorTarget = await windowState('({ bounds: win.getBounds() })')
-      const nativeWindow = packagedWindow(packedApp, cursorTarget.bounds, app.pid)
+      const cursorTarget = await windowState('({ bounds: win.getBounds(), pid: process.pid })')
+      const nativeWindow = packagedWindow(packedApp, cursorTarget.bounds, cursorTarget.pid)
       const nativeWindowId = nativeWindow.window_id ?? nativeWindow.windowId
       if (!Number.isSafeInteger(nativeWindowId) || nativeWindowId <= 0) throw new Error('the packaged computer driver returned no native window ID')
       await rendererValue(cdp, `window.dsBotApp.computerCursor({ botId: 'packed-bot', pid: ${String(nativeWindow.pid)}, windowId: ${String(nativeWindowId)}, x: ${String(cursorTarget.bounds.x + 100)}, y: ${String(cursorTarget.bounds.y + 100)}, ripple: true, color: '#3b82f6' }); true`)
@@ -347,7 +369,7 @@ try {
       if (!cursorVisible) throw new Error('the packaged computer cursor did not appear')
     }
   } finally {
-    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); true')
+    if (process.platform !== 'linux') await windowState('win.setAlwaysOnTop(false); win.setVisibleOnAllWorkspaces(false); true')
   }
   console.log('check-packed: packaged computer indicator, action and cursor flow passed')
   await windowState('win.close()')

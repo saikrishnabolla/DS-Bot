@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawn as spawnChild } from 'node:child_process'
 import { test } from 'node:test'
 import { createComputerCursor, cursorHtml, createPointChecker } from '../src/computer-cursor.mjs'
 import { EventEmitter } from 'node:events'
@@ -244,4 +245,68 @@ test('cursorHtml paints the arrow in the Bot color with the avatar and a ripple'
   assert.match(plain, /fill="#4d6bfe"/)
   assert.doesNotMatch(plain, /class="ring"/)
   assert.match(plain, /background:transparent/)
+})
+
+test('the Windows helper compares root HWND identity and fails closed on stale handles', { skip: process.platform !== 'win32', timeout: 20_000 }, async (t) => {
+  const fixtureScript = String.raw`
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System.Runtime.InteropServices;
+public class FixtureDpi {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+}
+"@
+[void][FixtureDpi]::SetProcessDPIAware()
+function WindowId([IntPtr]$hwnd) { return [uint64]($hwnd.ToInt64() -band 0xFFFFFFFFL) }
+$form = New-Object System.Windows.Forms.Form
+$form.StartPosition = 'Manual'
+$form.Location = New-Object System.Drawing.Point(100, 100)
+$form.Size = New-Object System.Drawing.Size(300, 200)
+$form.TopMost = $true
+$button = New-Object System.Windows.Forms.Button
+$button.Location = New-Object System.Drawing.Point(30, 30)
+$button.Size = New-Object System.Drawing.Size(120, 60)
+$button.Text = 'target'
+$form.Controls.Add($button)
+$other = New-Object System.Windows.Forms.Form
+$other.StartPosition = 'Manual'
+$other.Location = New-Object System.Drawing.Point(500, 100)
+$other.Size = New-Object System.Drawing.Size(200, 150)
+$other.TopMost = $true
+$form.Show()
+$other.Show()
+[System.Windows.Forms.Application]::DoEvents()
+$point = $button.PointToScreen((New-Object System.Drawing.Point(10, 10)))
+[Console]::Out.WriteLine($PID.ToString() + ' ' + (WindowId $form.Handle) + ' ' + (WindowId $button.Handle) + ' ' + $point.X + ' ' + $point.Y + ' ' + (WindowId $other.Handle))
+$deadline = [DateTime]::UtcNow.AddSeconds(30)
+while ([DateTime]::UtcNow -lt $deadline) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 20 }
+$other.Close()
+$form.Close()
+`
+  const fixture = spawnChild('powershell', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(fixtureScript, 'utf16le').toString('base64')], { stdio: ['pipe', 'pipe', 'inherit'] })
+  const firstLine = await new Promise((resolve, reject) => {
+    let buffer = ''
+    const onData = chunk => {
+      buffer += chunk
+      const newline = buffer.indexOf('\n')
+      if (newline < 0) return
+      fixture.stdout.off('data', onData)
+      resolve(buffer.slice(0, newline).trim())
+    }
+    fixture.stdout.on('data', onData)
+    fixture.once('error', reject)
+    fixture.once('exit', code => reject(new Error(`the HWND fixture exited before it was ready (${String(code)})`)))
+  })
+  const [pid, _formId, childId, x, y, otherId] = firstLine.split(/\s+/u).map(Number)
+  assert.ok([pid, childId, x, y, otherId].every(Number.isSafeInteger), firstLine)
+  const checker = createPointChecker({ platform: 'win32', screen, startMs: 10_000, checkMs: 3_000, log: { warn: () => {} } })
+  t.after(() => {
+    checker.dispose()
+    try { fixture.kill() } catch {}
+  })
+  assert.equal(await checker.check(x, y, pid, childId), true, 'a child HWND resolves to the root window at the point')
+  assert.equal(await checker.check(x, y, pid, otherId), false, 'another top-level HWND from the same process stays distinct')
+  assert.equal(await checker.check(x, y, pid, 0x7ffffff0), false, 'a stale HWND never widens to the matching PID')
+  assert.equal(await checker.check(x, y, pid, 0), true, 'PID fallback remains available only when no HWND was supplied')
 })

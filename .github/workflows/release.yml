@@ -122,6 +122,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci --no-fund --no-audit
+      - name: Check native cursor window identity
+        run: node --test test/computer-cursor.test.mjs
       - run: node scripts/seed-electron-checksums.mjs
       - run: npm run dist
       - name: Check local speech with known audio
