@@ -533,6 +533,56 @@ test('owned context accepts the complete DS Bot host tool catalog', async t => {
   await ctx.close()
 })
 
+test('owned context provides host services and Pi-formatted bundled skills', async t => {
+  const { ctx, dataDir, provider } = await contextFixture(t)
+  t.after(() => ctx.close())
+  createRuntime(ctx, {
+    home: join(dataDir, 'bot'),
+    github: false,
+    diagnosticsFile: false,
+    browser: false,
+    computer: false,
+  })
+
+  const permission = ctx.get('permissionPresets')
+  assert.deepEqual(permission.catalog().options.map(option => option.value), ['read-only', 'workspace-write', 'danger-full-access'])
+  assert.throws(() => permission.resolve('unknown'), /unknown preset/)
+  const meter = ctx.get('tokenMeter')
+  assert.ok(meter.estimateMessage({ role: 'user', content: [{ type: 'text', text: 'count me' }] }) > 0)
+  assert.deepEqual(await ctx.get('agentPresets').list(), [{ id: 'standard', name: 'Standard' }])
+
+  const skills = await ctx.get('skills').list()
+  assert.deepEqual(skills.map(skill => skill.name).sort(), ['goal-grill', 'office', 'office-tools'])
+  const skillPrompt = await ctx.get('skills').prompt()
+  assert.match(skillPrompt, /<available_skills>/)
+  assert.match(skillPrompt, /<name>office<\/name>/)
+  assert.match(skillPrompt, /<name>goal-grill<\/name>/)
+
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  let modelContext
+  provider.setResponses([async context => { modelContext = context; return fauxAssistantMessage('skills loaded') }])
+  ctx.resume()
+  agent.followup({ content: 'use the available skills', source: { kind: 'user' } })
+  await agent.whenIdle()
+  assert.match(JSON.stringify(modelContext), /available_skills/)
+  assert.match(JSON.stringify(modelContext), /goal-grill/)
+
+  const jobs = ctx.get('jobs')
+  const jobId = jobs.register({ sessionId, toolCall: { callId: 'call-1' } })
+  jobs.append(jobId, { channel: 'stdout', text: 'working' })
+  assert.equal(jobs.read(jobId, sessionId).chunks[0].text, 'working')
+  jobs.settle(jobId)
+  assert.equal(jobs.read(jobId, sessionId).job.status, 'completed')
+
+  const goals = ctx.get('goals')
+  const goal = goals.start(agent, { objective: 'finish' })
+  const blocked = goals.block(agent, goal, { code: 'paused', message: 'wait' })
+  assert.equal(blocked.phase, 'blocked')
+  assert.equal(goals.get(agent).error.code, 'paused')
+})
+
 test('owned context mounts Pi MCP tools and skill sections for one Bot', async t => {
   const { ctx, provider } = await contextFixture(t)
   t.after(() => ctx.close())

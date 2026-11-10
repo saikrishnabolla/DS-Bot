@@ -17,12 +17,19 @@ const REPLAY_SAFE_CODING_TOOLS = new Set(['read'])
 function installCodingApprovals(context, runtime) {
   context.effect(() => context.on('tools/pre-execute', async function ownedCodingApproval(exec, next) {
     if (exec.ownedNative !== true || !GUARDED_CODING_TOOLS.has(exec.name)) return next()
+    const presets = context.get('permissionPresets')
+    const botId = runtime.selfOf(exec.agent?.id)
+    const bot = runtime.botOf(botId)
+    const group = runtime.groupOwners.get(exec.agent?.id)
+    const room = group === undefined ? undefined : runtime.roomOf(group.roomId)
+    const preset = room?.permission ?? bot?.permission ?? presets?.get(exec.agent?.session) ?? presets?.catalog().defaultPreset
+    if (preset === 'read-only') return { kind: 'deny', reason: 'This conversation has read-only permissions.' }
+    if (preset === 'danger-full-access') return next()
     const approval = context.get('approval')
     if (approval === undefined || exec.agent?.session === undefined) {
       return { kind: 'deny', reason: 'This action needs your approval, but approval is not available.' }
     }
-    const botId = runtime.selfOf(exec.agent.id)
-    const name = runtime.botOf(botId)?.name ?? 'this Bot'
+    const name = bot?.name ?? 'this Bot'
     const shell = exec.name === 'bash' || exec.name === 'powershell'
     const reason = shell ? `Allow ${name} to run this shell command?` : `Allow ${name} to change this file?`
     const outcome = await approval.request({

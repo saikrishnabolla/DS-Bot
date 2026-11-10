@@ -488,6 +488,29 @@ test('owned Host runs Pi coding tools with a Bot-scoped saved secret', async t =
     return value.value.items.some(item => item.kind === 'bot' && item.text === 'The write was refused.')
   })
   await assert.rejects(readFile(refusedPath, 'utf8'))
+
+  const readOnlyPath = join(host.runtime.teamFolder() ?? dataDir, 'read-only.txt')
+  assert.equal((await call('update-bot', { id: bot.id, permission: 'read-only' })).ok, true)
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('write', { path: readOnlyPath, content: 'blocked' }, { id: 'call-read-only' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Read-only was enforced.'),
+  ])
+  assert.equal((await call('send', { sessionId: bot.id, text: 'Try writing under read-only.' })).ok, true)
+  await waitFor(async () => (await call('chat', { botId: bot.id })).value.items.some(item => item.kind === 'bot' && item.text === 'Read-only was enforced.'))
+  await assert.rejects(readFile(readOnlyPath, 'utf8'))
+  assert.equal((await call('state', { locale: 'en' })).value.work.approvals.length, 0)
+
+  const fullAccessPath = join(host.runtime.teamFolder() ?? dataDir, 'full-access.txt')
+  assert.equal((await call('update-bot', { id: bot.id, permission: 'danger-full-access' })).ok, true)
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('write', { path: fullAccessPath, content: 'allowed' }, { id: 'call-full-access' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('Full access was enforced.'),
+  ])
+  assert.equal((await call('send', { sessionId: bot.id, text: 'Write under full access.' })).ok, true)
+  await waitFor(async () => {
+    try { return await readFile(fullAccessPath, 'utf8') === 'allowed' } catch { return false }
+  })
+  assert.equal((await call('state', { locale: 'en' })).value.work.approvals.length, 0)
 })
 
 test('owned Host relays room work, stops it, and restores the room transcript', async t => {

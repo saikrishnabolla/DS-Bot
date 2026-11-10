@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
+import { formatSkillsForPrompt } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
@@ -189,6 +190,75 @@ const waitForCancellation = signal => {
 
 const serviceError = (code, message) => Object.assign(new Error(message), { code })
 
+const OWNED_PERMISSION_PRESETS = [
+  { value: 'read-only', name: 'Read only' },
+  { value: 'workspace-write', name: 'Workspace write' },
+  { value: 'danger-full-access', name: 'Full access' },
+]
+
+function permissionPresets() {
+  const selected = new Map()
+  const values = new Set(OWNED_PERMISSION_PRESETS.map(option => option.value))
+  return {
+    catalog: () => ({ options: OWNED_PERMISSION_PRESETS.map(option => ({ ...option })), defaultOptions: [], defaultPreset: 'workspace-write' }),
+    resolve(name) {
+      if (!values.has(name)) throw new Error(`permission: unknown preset ${JSON.stringify(name)}`)
+      return { id: name }
+    },
+    set(session, name) {
+      this.resolve(name)
+      selected.set(String(session?.id ?? session), name)
+    },
+    get: session => selected.get(String(session?.id ?? session)),
+  }
+}
+
+function tokenMeter() {
+  const estimateMessage = message => estimateContextTokens([message]).tokens
+  return {
+    estimateMessage,
+    measure(session) {
+      const messages = session?.deriveMessages?.() ?? []
+      return { totalTokens: estimateContextTokens(messages).tokens }
+    },
+  }
+}
+
+function skillCatalog(onChange) {
+  const providers = new Set()
+  const list = async () => {
+    const candidates = []
+    for (const create of providers) candidates.push(...await create().list())
+    return candidates.sort((left, right) => Number(right.rank ?? 0) - Number(left.rank ?? 0) || left.name.localeCompare(right.name))
+  }
+  return {
+    registerProvider(create) {
+      providers.add(create)
+      onChange()
+      return () => { providers.delete(create); onChange() }
+    },
+    list,
+    async get(candidate) {
+      for (const create of providers) {
+        const provider = create()
+        if (provider.name === candidate?.provider) return provider.get(candidate)
+      }
+      throw new Error(`Unknown skill provider ${String(candidate?.provider)}`)
+    },
+    async prompt() {
+      const skills = (await list()).map(candidate => ({
+        name: candidate.name,
+        description: candidate.description,
+        filePath: candidate.locator,
+        baseDir: dirname(candidate.locator),
+        sourceInfo: { source: candidate.source ?? 'bundled' },
+        disableModelInvocation: candidate.invocation?.modelInvocable === false,
+      }))
+      return formatSkillsForPrompt(skills, 'read').trim()
+    },
+  }
+}
+
 function compactionSummary(value) {
   if (typeof value?.summary === 'string') return value.summary.trim()
   if (!Array.isArray(value?.summary)) return ''
@@ -244,6 +314,7 @@ export class OwnedContext {
   #guards = []
   #routes = new Map()
   #services = new Map()
+  #injections = new Set()
   #shellEnvironment = new Set()
   #workspaces = new Map()
   #archived = new Set()
@@ -296,6 +367,68 @@ export class OwnedContext {
       this.#refreshPromptExtension()
       return () => { this.#promptSections.delete(section.name); this.#refreshPromptExtension() }
     } }
+    const skills = skillCatalog(() => this.#refreshPromptExtension())
+    this.#promptSections.set('skills', { name: 'skills', order: 900, text: () => skills.prompt() })
+    this.#services.set('skills', skills)
+    this.#services.set('tokenMeter', tokenMeter())
+    this.#services.set('permissionPresets', permissionPresets())
+    this.#services.set('agentPresets', {
+      list: async () => [{ id: 'standard', name: 'Standard' }],
+      serviceFor: (_agent, name) => name === 'compaction' ? this.#services.get('compaction') : undefined,
+    })
+    const jobs = new Map()
+    this.#services.set('jobs', {
+      register: ({ id = randomUUID(), sessionId, chunks = [], ...job }) => {
+        const record = { ...job, id, sessionId: String(sessionId), status: job.status ?? 'running', chunks: [...chunks] }
+        jobs.set(id, record)
+        const session = this.#agents.get(record.sessionId)?.session
+        if (session !== undefined) this.emit('session/event', session, { type: 'job/registered', data: { jobId: id, toolCall: job.toolCall } })
+        return id
+      },
+      append: (id, chunk) => { const job = jobs.get(id); if (job === undefined) throw serviceError('job/not-found', `Unknown job ${id}`); job.chunks.push(chunk) },
+      read: (id, sessionId) => {
+        const job = jobs.get(id)
+        if (job === undefined || job.sessionId !== String(sessionId)) throw serviceError('job/not-found', `Unknown job ${id}`)
+        return { job: { ...job, chunks: undefined }, chunks: [...job.chunks], lossy: false }
+      },
+      settle: (id, status = 'completed') => {
+        const job = jobs.get(id)
+        if (job === undefined) throw serviceError('job/not-found', `Unknown job ${id}`)
+        job.status = status
+        const session = this.#agents.get(job.sessionId)?.session
+        if (session !== undefined) this.emit('session/event', session, { type: 'job/settled', data: { jobId: id, toolCall: job.toolCall, status } })
+      },
+      kill: id => { const job = jobs.get(id); if (job === undefined) return false; job.status = 'killed'; return true },
+    })
+    const goals = new Map()
+    const goalKey = agent => String(agent?.id ?? agent?.session?.id ?? agent)
+    const publishGoal = (agent, goal) => {
+      const session = agent?.session
+      if (session !== undefined) this.emit('session/event', session, { type: 'goal/change', data: { goal: structuredClone(goal) } })
+      return goal
+    }
+    this.#services.set('goals', {
+      get: agent => goals.get(goalKey(agent)),
+      start: (agent, input = {}) => {
+        const goal = { id: input.id ?? randomUUID(), revision: 1, phase: 'active', ...input }
+        goals.set(goalKey(agent), goal)
+        return publishGoal(agent, goal)
+      },
+      block: (agent, expected, error) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision) return undefined
+        const next = { ...goal, revision: goal.revision + 1, phase: 'blocked', error }
+        goals.set(goalKey(agent), next)
+        return publishGoal(agent, next)
+      },
+      complete: (agent, expected) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision) return undefined
+        const next = { ...goal, revision: goal.revision + 1, phase: 'complete' }
+        goals.set(goalKey(agent), next)
+        return publishGoal(agent, next)
+      },
+    })
     this.#services.set('approval', {
       request: request => this.#middleware('approval/request', request, () => waitForCancellation(request.signal)),
     })
@@ -305,7 +438,7 @@ export class OwnedContext {
         return () => this.#shellEnvironment.delete(contribution)
       },
     })
-    this.#services.set('agents', { list: () => [...this.#agents.values()] })
+    this.#services.set('agents', { list: () => [...this.#agents.values()], get: id => this.#agents.get(String(id)) })
     this.#services.set('sessionProjections', {
       register: definition => {
         this.#projectionDefinitions.set(definition.key, definition)
@@ -325,6 +458,7 @@ export class OwnedContext {
       compactRegion: (start, end, target, signal) => this.#compactRegion(start, end, target, signal),
     }
     this.#services.set('compaction', compaction)
+    this.#refreshPromptExtension()
     this.#compactionExtension = compactionExtension
     this.harness.setShellEnvironment?.(({ conversationId }) => {
       const agent = this.#agents.get(String(conversationId))
@@ -402,7 +536,55 @@ export class OwnedContext {
   }
 
   get(name) { return this.#services.get(name) }
-  provide(name, value) { this.#services.set(name, value); return () => this.#services.delete(name) }
+  provide(name, value) {
+    this.#services.set(name, value)
+    this.#refreshInjections()
+    return () => {
+      if (this.#services.get(name) !== value) return
+      this.#services.delete(name)
+      this.#refreshInjections()
+    }
+  }
+
+  inject(requirements, attach) {
+    const keys = Array.isArray(requirements) ? requirements : Object.keys(requirements ?? {})
+    const record = { keys, attach, cleanup: undefined, closed: false }
+    this.#injections.add(record)
+    this.#refreshInjection(record)
+    return () => {
+      if (record.closed) return
+      record.closed = true
+      this.#injections.delete(record)
+      record.cleanup?.()
+      record.cleanup = undefined
+    }
+  }
+
+  #refreshInjections() {
+    for (const record of this.#injections) this.#refreshInjection(record)
+  }
+
+  #refreshInjection(record) {
+    const available = record.keys.every(key => this.#services.has(key))
+    if (!available || record.closed) {
+      record.cleanup?.()
+      record.cleanup = undefined
+      return
+    }
+    if (record.cleanup !== undefined) return
+    const disposers = []
+    const scope = Object.fromEntries(record.keys.map(key => [key, this.#services.get(key)]))
+    scope.effect = execute => {
+      const dispose = execute()
+      if (typeof dispose === 'function') disposers.push(dispose)
+      return dispose
+    }
+    const returned = record.attach(scope)
+    if (typeof returned === 'function') disposers.push(returned)
+    record.cleanup = () => {
+      for (const dispose of disposers.splice(0).reverse()) dispose()
+    }
+  }
 
   on(name, listener, options) {
     const current = this.#listeners.get(name) ?? []
@@ -532,6 +714,11 @@ export class OwnedContext {
     for (const state of this.#sessionStates.values()) {
       await Promise.allSettled(state.effects.splice(0).reverse().map(dispose => dispose()))
     }
+    for (const injection of this.#injections) {
+      injection.closed = true
+      injection.cleanup?.()
+    }
+    this.#injections.clear()
     await Promise.allSettled(this.#effects.splice(0).reverse().map(dispose => dispose()))
     await this.harness.close()
   }
@@ -1228,9 +1415,9 @@ export class OwnedContext {
       .map(section => ({
         key: String(section.name).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[^a-z]+/, 's-'),
         tag: false,
-        render: input => {
+        render: async input => {
           const text = typeof section.text === 'function'
-            ? section.text({ agent: this.#agents.get(String(input.conversationId)) })
+            ? await section.text({ agent: this.#agents.get(String(input.conversationId)) })
             : section.text
           return typeof text === 'string' && text !== '' ? text : undefined
         },
