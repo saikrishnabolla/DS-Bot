@@ -10,6 +10,7 @@ import { JSDOM } from 'jsdom'
 const peerModules = {
   react: new URL('../../node_modules/react/index.js', import.meta.url).href,
   'react-dom': new URL('../../node_modules/react-dom/index.js', import.meta.url).href,
+  'qrcode-generator': new URL('../../node_modules/qrcode-generator/dist/qrcode.mjs', import.meta.url).href,
 }
 const loader = `const peers = ${JSON.stringify(peerModules)}
 export async function resolve(specifier, context, nextResolve) {
