@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -69,6 +69,28 @@ test('owned context runs a Pi conversation through the session controller and pr
   assert.deepEqual(after.records, page.records)
   const listed = await restarted.sessionController.list({})
   assert.equal(listed.items.some(item => item.sessionId === sessionId), true)
+})
+
+test('owned context preserves Pi turn outcomes in durable turn-end events', async t => {
+  const cases = [
+    { stopReason: 'stop', expected: { kind: 'completed' } },
+    { stopReason: 'length', expected: { kind: 'max-tokens' } },
+    { stopReason: 'aborted', errorMessage: 'Stopped', expected: { kind: 'aborted', reason: { kind: 'user' } } },
+    { stopReason: 'error', errorMessage: 'provider refused the request', expected: { kind: 'error', error: { code: 'UNKNOWN', message: 'provider refused the request' } } },
+  ]
+  for (const item of cases) await t.test(item.stopReason, async t => {
+    const provider = fauxProvider()
+    provider.setResponses([fauxAssistantMessage('answer', { stopReason: item.stopReason, errorMessage: item.errorMessage })])
+    const { ctx } = await contextFixture(t, { provider, settings: { retry: { enabled: false } } })
+    const { sessionId } = await ctx.sessionController.create()
+    await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+    const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+    ctx.resume()
+    agent.followup({ content: 'run', source: { kind: 'user' } })
+    await agent.whenIdle()
+    const page = await ctx.sessionController.page({ sessionId, maxMessages: 20 })
+    assert.deepEqual(page.records.findLast(record => record.event.type === 'turn/end').event.data.reason, item.expected)
+  })
 })
 
 test('owned context exposes a real folder browser', async t => {
@@ -394,7 +416,7 @@ test('owned context adapts legacy tools per conversation and keeps exec.agent co
   const install = ctx.harness.install.bind(ctx.harness)
   ctx.harness.install = extension => { installed.push(extension); return install(extension) }
   provider.setResponses([
-    fauxAssistantMessage(fauxToolCall('echo_legacy', { text: 'hello' }, { id: 'call-1' }), { stopReason: 'toolUse' }),
+    fauxAssistantMessage([{ type: 'text', text: 'working' }, fauxToolCall('echo_legacy', { text: 'hello' }, { id: 'call-1' })], { stopReason: 'toolUse' }),
     fauxAssistantMessage('tool complete'),
   ])
   const executions = []
@@ -425,6 +447,8 @@ test('owned context adapts legacy tools per conversation and keeps exec.agent co
   assert.deepEqual(executions, [{ args: { text: 'hello' }, agentId: sessionId, callId: 'call-1', hasSignal: true }])
   const page = await ctx.sessionController.page({ sessionId, maxMessages: 30 })
   assert.ok(page.records.some(record => record.event.type === 'tool/call' && record.event.data.name === 'echo_legacy'))
+  assert.ok(page.records.some(record => record.event.type === 'assistant/message'
+    && record.event.data.message.content.some(block => block.type === 'tool-call' && block.name === 'echo_legacy')))
   const result = page.records.find(record => record.event.type === 'tool/result').event.data.message
   assert.equal(result.content[0].text, 'rendered hello')
   assert.equal(page.records.findLast(record => record.event.type === 'assistant/message').event.data.message.content[0].text, 'tool complete')
@@ -594,6 +618,38 @@ test('owned context provides host services and Pi-formatted bundled skills', asy
   const blocked = goals.block(agent, goal, { code: 'paused', message: 'wait' })
   assert.equal(blocked.phase, 'blocked')
   assert.equal(goals.get(agent).error.code, 'paused')
+})
+
+test('owned context discovers user and per-session project skills with stable precedence', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-skills-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const projectA = join(dataDir, 'project-a')
+  const projectB = join(dataDir, 'project-b')
+  await Promise.all([
+    mkdir(join(dataDir, 'skills', 'shared'), { recursive: true }),
+    mkdir(join(projectA, '.pi', 'skills', 'shared'), { recursive: true }),
+    mkdir(join(projectA, '.pi', 'skills', 'only-a'), { recursive: true }),
+    mkdir(join(projectB, '.pi', 'skills', 'only-b'), { recursive: true }),
+  ])
+  await Promise.all([
+    writeFile(join(dataDir, 'skills', 'shared', 'SKILL.md'), '---\nname: shared\ndescription: User copy\n---\nUser instructions.\n'),
+    writeFile(join(projectA, '.pi', 'skills', 'shared', 'SKILL.md'), '---\nname: shared\ndescription: Project copy\n---\nProject instructions.\n'),
+    writeFile(join(projectA, '.pi', 'skills', 'only-a', 'SKILL.md'), '---\nname: only-a\ndescription: Project A skill\n---\nA instructions.\n'),
+    writeFile(join(projectB, '.pi', 'skills', 'only-b', 'SKILL.md'), '---\nname: only-b\ndescription: Project B skill\n---\nB instructions.\n'),
+  ])
+  const { ctx } = await contextFixture(t, { dataDir })
+  const sessionA = (await ctx.sessionController.create({ cwd: projectA })).sessionId
+  const sessionB = (await ctx.sessionController.create({ cwd: projectB })).sessionId
+  const agentA = (await ctx.sessionController.resolveAgent(sessionA)).agent
+  const agentB = (await ctx.sessionController.resolveAgent(sessionB)).agent
+
+  const skillsA = await ctx.get('skills').list(agentA)
+  const skillsB = await ctx.get('skills').list(agentB)
+  assert.deepEqual(skillsA.map(skill => skill.name).sort(), ['only-a', 'shared'])
+  assert.deepEqual(skillsB.map(skill => skill.name).sort(), ['only-b', 'shared'])
+  assert.equal(skillsA.find(skill => skill.name === 'shared').description, 'User copy')
+  assert.match(await ctx.get('skills').prompt(agentA), /<name>only-a<\/name>/)
+  assert.doesNotMatch(await ctx.get('skills').prompt(agentA), /<name>only-b<\/name>/)
 })
 
 test('owned context mounts Pi MCP tools and skill sections for one Bot', async t => {

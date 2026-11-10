@@ -51,7 +51,8 @@ const cwdOf = (runtime, agent, workspacePath) => {
 const inside = (path, root) => path === root || path.startsWith(root.endsWith(sep) ? root : `${root}${sep}`)
 
 function codingTools(platform) {
-  const shell = platform === 'win32' ? createPowerShellTool() : CodingTools.tools.find(tool => tool.name === 'bash')
+  const nativeShell = platform === 'win32' ? createPowerShellTool() : CodingTools.tools.find(tool => tool.name === 'bash')
+  const shell = platform === 'win32' ? { ...nativeShell, name: 'pwsh' } : nativeShell
   return [...CodingTools.tools.filter(tool => tool.name !== 'bash'), shell].map(tool => ({
     ...tool,
     ownedNative: true,
@@ -77,6 +78,99 @@ function adaptAgentTool(tool, name, runtime, workspacePath) {
 }
 
 function shellWithBackground(tool, context, runtime, platform, workspacePath) {
+  const isPrivate = sessionId => runtime.chatOwners?.has?.(String(sessionId)) === true
+    && runtime.groupOwners?.has?.(String(sessionId)) !== true
+  const renderedOutput = read => {
+    const chunks = read.chunks ?? []
+    return {
+      text: chunks.filter(chunk => chunk.channel !== 'log').map(chunk => chunk.text ?? '').join(''),
+      truncated: read.lossy === true || chunks.some(chunk => chunk.gapBefore === true),
+    }
+  }
+  const start = async (args, api, detached) => {
+    const agent = context.get('agents')?.get(String(api.conversationId))
+    if (agent === undefined) throw new Error('Background shell requires an owning agent Session')
+    const cwd = cwdOf(runtime, agent, workspacePath)
+    const extraEnv = context.resolveShellEnvironment?.(agent, args) ?? {}
+    const command = String(args.command ?? '')
+    if (command === '') throw new Error('command must be a non-empty string')
+    const timeoutMs = args.timeout === undefined ? undefined : Number(args.timeout) * 1000
+    if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)) {
+      throw new Error('Invalid timeout: must be a positive finite number of seconds within the platform timer limit')
+    }
+    const child = platform === 'win32'
+      ? spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+          cwd, env: { ...process.env, ...extraEnv }, windowsHide: true,
+        })
+      : spawn('bash', ['-lc', command], { cwd, env: { ...process.env, ...extraEnv }, detached: true })
+    const cancel = (_reason, force = false) => {
+      if (!Number.isInteger(child.pid) || child.pid <= 0) return
+      if (platform === 'win32') {
+        const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', ...(force ? ['/f'] : [])], { windowsHide: true, stdio: 'ignore' })
+        killer.on('error', () => child.kill(force ? 'SIGKILL' : 'SIGTERM'))
+        killer.unref()
+        return
+      }
+      try { process.kill(-child.pid, force ? 'SIGKILL' : 'SIGTERM') } catch { child.kill(force ? 'SIGKILL' : 'SIGTERM') }
+    }
+    const jobs = context.get('jobs')
+    const state = { detached }
+    let timedOut = false
+    let resolveCompletion
+    const completion = new Promise(resolve => { resolveCompletion = resolve })
+    const jobId = jobs.register({
+      sessionId: agent.id,
+      kind: tool.name,
+      label: command,
+      toolCall: { callId: api.callId, name: tool.name, arguments: args },
+      cancel,
+    })
+    child.stdout?.on('data', chunk => {
+      const text = chunk.toString()
+      jobs.append(jobId, { channel: 'stdout', text })
+      if (!state.detached) api.output?.(text)
+    })
+    child.stderr?.on('data', chunk => {
+      const text = chunk.toString()
+      jobs.append(jobId, { channel: 'stderr', text })
+      if (!state.detached) api.output?.(text)
+    })
+    const notify = (status, detail, awaited) => {
+      if (!state.detached || awaited || status === 'killed') return
+      const message = {
+        content: [{ type: 'text', text: `Background job ${jobId} (${tool.name}: ${command}) ${status}${detail ? `: ${detail}` : ''}. Use job_output for its output.` }],
+        source: { kind: 'tool-jobs', form: 'notice' },
+      }
+      if (agent.status === 'idle') agent.followup(message)
+      else agent.inject(message)
+    }
+    const settle = (status, detail, exitCode) => {
+      const current = jobs.get(jobId, agent.id)
+      if (TERMINAL_JOB_STATUSES.has(current.status)) return
+      const settled = jobs.settle(jobId, status, detail)
+      notify(status, detail, settled.awaited)
+      resolveCompletion({ status, detail, exitCode })
+    }
+    child.once('error', error => {
+      jobs.append(jobId, { channel: 'stderr', text: `${error.message}\n` })
+      settle('failed', error.message)
+    })
+    child.once('exit', (code, signal) => {
+      const current = jobs.get(jobId, agent.id)
+      if (TERMINAL_JOB_STATUSES.has(current.status)) return
+      const killed = current.status === 'stopping' || signal !== null
+      const status = killed ? 'killed' : code === 0 ? 'completed' : 'failed'
+      const detail = timedOut ? `timed out after ${args.timeout} seconds` : signal === null ? `exit code ${code}` : `signal ${signal}`
+      settle(status, detail, code ?? -1)
+    })
+    if (timeoutMs !== undefined) {
+      const timer = setTimeout(() => { timedOut = true; jobs.kill(jobId, agent.id, 'timeout') }, timeoutMs)
+      timer.unref?.()
+      child.once('exit', () => clearTimeout(timer))
+      child.once('error', () => clearTimeout(timer))
+    }
+    return { agent, command, completion, jobId, jobs, state }
+  }
   return {
     ...tool,
     structuredOutputSchema: tool.structuredOutputSchema === undefined
@@ -91,73 +185,38 @@ function shellWithBackground(tool, context, runtime, platform, workspacePath) {
       },
     },
     async execute(args, api, execution) {
-      if (args.run_in_background !== true) return tool.execute(args, api, execution)
-      const agent = context.get('agents')?.get(String(api.conversationId))
-      if (agent === undefined) throw new Error('Background shell requires an owning agent Session')
-      const cwd = cwdOf(runtime, agent, workspacePath)
-      const extraEnv = context.resolveShellEnvironment?.(agent, args) ?? {}
-      const command = String(args.command ?? '')
-      if (command === '') throw new Error('command must be a non-empty string')
-      const timeoutMs = args.timeout === undefined ? undefined : Number(args.timeout) * 1000
-      if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)) {
-        throw new Error('Invalid timeout: must be a positive finite number of seconds within the platform timer limit')
-      }
-      const child = platform === 'win32'
-        ? spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], {
-            cwd, env: { ...process.env, ...extraEnv }, windowsHide: true,
-          })
-        : spawn('bash', ['-lc', command], { cwd, env: { ...process.env, ...extraEnv }, detached: true })
-      const cancel = (_reason, force = false) => {
-        if (!Number.isInteger(child.pid) || child.pid <= 0) return
-        if (platform === 'win32') {
-          const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', ...(force ? ['/f'] : [])], { windowsHide: true, stdio: 'ignore' })
-          killer.on('error', () => child.kill(force ? 'SIGKILL' : 'SIGTERM'))
-          killer.unref()
-          return
-        }
-        try { process.kill(-child.pid, force ? 'SIGKILL' : 'SIGTERM') } catch { child.kill(force ? 'SIGKILL' : 'SIGTERM') }
-      }
-      const jobs = context.get('jobs')
-      let timedOut = false
-      const jobId = jobs.register({
-        sessionId: agent.id,
-        kind: tool.name,
-        label: command,
-        toolCall: { callId: api.callId, name: tool.name, arguments: args },
-        cancel,
+      if (args.run_in_background !== true && !isPrivate(api.conversationId)) return tool.execute(args, api, execution)
+      const running = await start(args, api, args.run_in_background === true)
+      if (args.run_in_background === true) return textOutput(`Started background job ${running.jobId}.`, { jobId: running.jobId, status: 'running' })
+      let dispose
+      const steered = new Promise(resolveSteer => {
+        dispose = context.on('agent/user-steer', ({ agent }) => {
+          if (String(agent?.id) === String(api.conversationId)) resolveSteer({ steered: true })
+        })
       })
-      child.stdout?.on('data', chunk => jobs.append(jobId, { channel: 'stdout', text: chunk.toString() }))
-      child.stderr?.on('data', chunk => jobs.append(jobId, { channel: 'stderr', text: chunk.toString() }))
-      const notify = (status, detail, awaited) => {
-        if (awaited || status === 'killed') return
-        const message = {
-          content: [{ type: 'text', text: `Background job ${jobId} (${tool.name}: ${command}) ${status}${detail ? `: ${detail}` : ''}. Use job_output for its output.` }],
-          source: { kind: 'tool-jobs', form: 'notice' },
-        }
-        if (agent.status === 'idle') agent.followup(message)
-        else agent.inject(message)
+      const outcome = await Promise.race([running.completion, steered])
+      dispose?.()
+      if (outcome.steered === true) {
+        running.state.detached = true
+        return textOutput(`Command continues as background job ${running.jobId}.`, { jobId: running.jobId, status: 'running' })
       }
-      child.once('error', error => {
-        jobs.append(jobId, { channel: 'stderr', text: `${error.message}\n` })
-        const settled = jobs.settle(jobId, 'failed', error.message)
-        notify('failed', error.message, settled.awaited)
-      })
-      child.once('exit', (code, signal) => {
-        const current = jobs.get(jobId, agent.id)
-        if (TERMINAL_JOB_STATUSES.has(current.status)) return
-        const killed = current.status === 'stopping' || signal !== null
-        const status = killed ? 'killed' : code === 0 ? 'completed' : 'failed'
-        const detail = timedOut ? `timed out after ${args.timeout} seconds` : signal === null ? `exit code ${code}` : `signal ${signal}`
-        const settled = jobs.settle(jobId, status, detail)
-        notify(status, detail, settled.awaited)
-      })
-      if (timeoutMs !== undefined) {
-        const timer = setTimeout(() => { timedOut = true; jobs.kill(jobId, agent.id, 'timeout') }, timeoutMs)
-        timer.unref?.()
-        child.once('exit', () => clearTimeout(timer))
-        child.once('error', () => clearTimeout(timer))
+      const read = running.jobs.read(running.jobId, running.agent.id)
+      const rendered = renderedOutput(read)
+      const retained = api.retainedOutput?.()
+      const structuredOutput = {
+        output: retained?.text ?? rendered.text,
+        truncated: retained?.truncated === true || rendered.truncated,
+        ...(!(retained?.truncated === true || rendered.truncated) || read.job.output?.spillPaths?.[0] === undefined
+          ? {} : { fullOutputPath: read.job.output.spillPaths[0] }),
+        exitCode: outcome.exitCode ?? -1,
       }
-      return textOutput(`Started background job ${jobId}.`, { jobId, status: 'running' })
+      return {
+        structuredOutput,
+        ...(outcome.status === 'completed' ? {} : {
+          isError: true,
+          diagnostics: [{ severity: 'error', code: outcome.status === 'killed' ? 'aborted' : 'exit_code', message: outcome.detail }],
+        }),
+      }
     },
   }
 }
@@ -736,7 +795,7 @@ function installProjectInstructions(context, runtime, workspacePath) {
 
 export function installOwnedDesktopTools(context, runtime, { platform = process.platform, workspacePath, models, web } = {}) {
   const base = codingTools(platform)
-  const shellIndex = base.findIndex(tool => tool.name === (platform === 'win32' ? 'powershell' : 'bash'))
+  const shellIndex = base.findIndex(tool => tool.name === (platform === 'win32' ? 'pwsh' : 'bash'))
   base[shellIndex] = shellWithBackground(base[shellIndex], context, runtime, platform, workspacePath)
   const grep = adaptAgentTool(createGrepTool(workspacePath), 'grep', runtime, workspacePath)
   const glob = adaptAgentTool(createFindTool(workspacePath), 'glob', runtime, workspacePath)

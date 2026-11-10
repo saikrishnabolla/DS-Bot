@@ -37,6 +37,16 @@ const CompactionUsageDoc = defineDoc({
   checkpointWhen: () => true,
 })
 
+const PlanModeDoc = defineDoc({
+  kind: 'ds-bot.plan-mode',
+  version: 1,
+  scope: 'conversation',
+  history: 'latest',
+  fork: 'current',
+  initial: () => ({ active: false, entered: false, pending: null }),
+  checkpointWhen: () => true,
+})
+
 function addUsage(total, usage) {
   for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens']) total[key] += usage[key]
   for (const key of ['cacheWrite1h', 'reasoning']) {
@@ -102,8 +112,9 @@ export class OwnedHarness {
   #generationTransforms
   #environment
   #streamBoundary
+  #compaction
 
-  constructor(harness, models, registry, context, modelBridge, requestTransforms, generationTransforms, environment, streamBoundary) {
+  constructor(harness, models, registry, context, modelBridge, requestTransforms, generationTransforms, environment, streamBoundary, compaction) {
     this.#harness = harness
     this.#models = models
     this.#registry = registry
@@ -113,6 +124,7 @@ export class OwnedHarness {
     this.#generationTransforms = generationTransforms
     this.#environment = environment
     this.#streamBoundary = streamBoundary
+    this.#compaction = compaction
   }
 
   static async open({ dataDir, database = join(dataDir, 'runtime.sqlite'), models, registry = createRegistry(), context = BACKGROUND_CONTEXT, settings, env }) {
@@ -189,7 +201,7 @@ export class OwnedHarness {
         shellEnv: environment.shellEnv?.(target),
       })),
     }, context)
-    return new OwnedHarness(harness, bridge.models, registry, context, bridge, requestTransforms, generationTransforms, env === undefined ? environment : undefined, streamBoundary)
+    return new OwnedHarness(harness, bridge.models, registry, context, bridge, requestTransforms, generationTransforms, env === undefined ? environment : undefined, streamBoundary, compaction)
   }
 
   get models() { return this.#models }
@@ -203,6 +215,16 @@ export class OwnedHarness {
   listAdapterModels(provider) { return this.#modelBridge.listAdapterModels(provider) }
 
   resolveAdapterModel(provider, model) { return this.#modelBridge.resolveAdapterModel(provider, model) }
+
+  async compactionLimit(id) {
+    const agent = await this.agent(id)
+    const ref = agent?.model
+    const model = ref === undefined ? undefined : this.#models.getModel?.(ref.provider, ref.modelId)
+    if (model === undefined || !Number.isInteger(model.contextWindow) || model.contextWindow <= 0) return undefined
+    const override = this.#compaction.modelOverrides?.[`${ref.provider}/${ref.modelId}`]
+    const reserveTokens = override?.reserveTokens ?? this.#compaction.reserveTokens
+    return model.contextWindow - reserveTokens
+  }
 
   beforeRequest(transform) {
     this.#requestTransforms.add(transform)
@@ -308,6 +330,51 @@ export class OwnedHarness {
       else addUsage(total, usage)
       return true
     }, this.#context)
+  }
+
+  planMode(id) {
+    const conversationId = numericId(id)
+    return this.commit(async tx => {
+      const state = await tx.doc(PlanModeDoc, conversationId)
+      return {
+        active: state.active,
+        entered: state.entered,
+        ...(typeof state.pending === 'boolean' ? { pending: state.pending } : {}),
+      }
+    })
+  }
+
+  setPlanMode(id, active) {
+    const conversationId = numericId(id)
+    return this.commit(async tx => {
+      const state = await tx.doc(PlanModeDoc, conversationId)
+      state.active = active === true
+      if (state.active) state.entered = true
+      state.pending = null
+      return { active: state.active, entered: state.entered }
+    })
+  }
+
+  queuePlanMode(id, active) {
+    const conversationId = numericId(id)
+    return this.commit(async tx => {
+      const state = await tx.doc(PlanModeDoc, conversationId)
+      state.pending = active === true
+      return { active: state.active, entered: state.entered, pending: state.pending }
+    })
+  }
+
+  applyPendingPlanMode(id) {
+    const conversationId = numericId(id)
+    return this.commit(async tx => {
+      const state = await tx.doc(PlanModeDoc, conversationId)
+      if (typeof state.pending === 'boolean') {
+        state.active = state.pending
+        if (state.active) state.entered = true
+        state.pending = null
+      }
+      return { active: state.active, entered: state.entered }
+    })
   }
 
   waitForTask(id) { return this.#harness.waitForTask(id, this.#context) }

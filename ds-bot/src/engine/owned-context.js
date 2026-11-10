@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto'
-import { createWriteStream, mkdirSync } from 'node:fs'
+import { createWriteStream, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
-import { formatSkillsForPrompt } from '@earendil-works/pi-coding-agent'
+import { formatSkillsForPrompt, loadSkills } from '@earendil-works/pi-coding-agent'
 import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
 import { createOwnedCompactionExtension } from './owned-range-compaction.js'
 import { OwnedGoalStore } from './owned-goals.js'
 import { ownedDirectoryPicker } from './owned-directory-picker.js'
+import { exitPlanModeDefinition, PLAN_MODE_GUIDANCE } from './owned-plan-mode.js'
+import { createToolResultPruner } from './owned-tool-result-pruner.js'
 import { projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
@@ -20,6 +22,19 @@ const timeOf = message => Number.isFinite(Number(message?.timestamp)) ? Number(m
 const receiptBlock = block => block?.attachment === undefined && block?.receiptId !== null && typeof block?.receiptId === 'object'
   ? { ...block, attachment: block.receiptId }
   : block
+
+function turnReason(message) {
+  if (message?.stopReason === 'length') return { kind: 'max-tokens' }
+  if (message?.stopReason === 'error') return {
+    kind: 'error',
+    error: {
+      code: 'UNKNOWN',
+      message: String(message.errorMessage ?? 'Model request failed').trim().slice(0, 500),
+    },
+  }
+  if (message?.stopReason === 'aborted') return { kind: 'aborted', reason: { kind: 'user' } }
+  return { kind: 'completed' }
+}
 
 async function inputContent(message, attachments, acceptsImages = true) {
   const content = textContent(message?.content ?? message)
@@ -111,9 +126,14 @@ function eventRecords(entries, startSeq = 0) {
       }
       const shown = content.filter(block => block?.type === 'text' || block?.type === 'thinking')
       if (shown.length > 0 || message.stopReason === 'error' || message.stopReason === 'aborted') {
-        push(entry, 'assistant/message', { turn, message: { ...message, content } }, timeOf(message))
+        const legacyContent = content.map(block => block?.type === 'toolCall'
+          ? { ...block, type: 'tool-call' }
+          : block?.type === 'thinking' ? { type: 'reasoning', text: block.thinking } : block)
+        push(entry, 'assistant/message', { turn, message: { ...message, content: legacyContent } }, timeOf(message))
       }
-      if (message.stopReason !== 'toolUse') push(entry, 'turn/end', { turn }, timeOf(message))
+      if (!['toolUse', 'pending', 'deferred'].includes(message.stopReason)) {
+        push(entry, 'turn/end', { turn, reason: turnReason(message) }, timeOf(message))
+      }
       continue
     }
     if (entry.kind === 'pi.tool-result' && message?.role === 'toolResult') {
@@ -248,11 +268,28 @@ function tokenMeter() {
   }
 }
 
-function skillCatalog(onChange) {
+function skillCatalog(onChange, loadFilesystem) {
   const providers = new Set()
-  const list = async () => {
+  const list = async agent => {
     const candidates = []
     for (const create of providers) candidates.push(...await create().list())
+    const names = new Set(candidates.map(candidate => candidate.name))
+    const loaded = await loadFilesystem(agent)
+    for (const skill of loaded.skills) {
+      if (names.has(skill.name)) continue
+      names.add(skill.name)
+      candidates.push({
+        name: skill.name,
+        description: skill.description,
+        invocation: { modelInvocable: !skill.disableModelInvocation, userInvocable: true },
+        provider: 'pi-filesystem',
+        source: skill.sourceInfo?.scope ?? skill.sourceInfo?.source ?? 'local',
+        rank: 0,
+        resourceBase: { kind: 'directory', path: skill.baseDir },
+        locator: skill.filePath,
+        filesystemSkill: skill,
+      })
+    }
     return candidates.sort((left, right) => Number(right.rank ?? 0) - Number(left.rank ?? 0) || left.name.localeCompare(right.name))
   }
   return {
@@ -263,14 +300,15 @@ function skillCatalog(onChange) {
     },
     list,
     async get(candidate) {
+      if (candidate?.provider === 'pi-filesystem') return { ...candidate, content: readFileSync(candidate.locator, 'utf8') }
       for (const create of providers) {
         const provider = create()
         if (provider.name === candidate?.provider) return provider.get(candidate)
       }
       throw new Error(`Unknown skill provider ${String(candidate?.provider)}`)
     },
-    async prompt() {
-      const skills = (await list()).map(candidate => ({
+    async prompt(agent) {
+      const skills = (await list(agent)).map(candidate => candidate.filesystemSkill ?? ({
         name: candidate.name,
         description: candidate.description,
         filePath: candidate.locator,
@@ -349,11 +387,16 @@ export class OwnedContext {
   #sessionStates = new Map()
   #projectionDefinitions = new Map()
   #compactionExtension
+  #planToolRecord
+  #toolResultPruner
+  #prunedConversations = new Set()
 
-  constructor(harness, { dataDir, workspacePath, logger = console, transcriptWindow } = {}, compactionExtension) {
+  constructor(harness, { dataDir, workspacePath, logger = console, transcriptWindow, planMode: planModeConfig, toolResultPruning } = {}, compactionExtension) {
     this.harness = harness
     this.logger = logger
     this.transcriptWindow = transcriptWindow ?? { min: 10_000, max: 10_000 }
+    const planSection = planModeConfig?.section ?? PLAN_MODE_GUIDANCE
+    if (typeof planSection !== 'string' || planSection.trim() === '') throw new Error('PlanModeConfig needs a non-empty string `section`')
     const path = resolve(workspacePath ?? process.cwd())
     const workspace = { id: 'default', name: 'DS Bot', path }
     this.#workspaces.set(workspace.id, workspace)
@@ -391,8 +434,14 @@ export class OwnedContext {
       this.#refreshPromptExtension()
       return () => { this.#promptSections.delete(section.name); this.#refreshPromptExtension() }
     } }
-    const skills = skillCatalog(() => this.#refreshPromptExtension())
-    this.#promptSections.set('skills', { name: 'skills', order: 900, text: () => skills.prompt() })
+    const skills = skillCatalog(() => this.#refreshPromptExtension(), async agent => {
+      let cwd = path
+      if (agent?.id !== undefined) {
+        try { cwd = (await this.harness.agent(String(agent.id)))?.cwd ?? cwd } catch {}
+      }
+      return loadSkills({ cwd, agentDir: resolve(dataDir), skillPaths: [], includeDefaults: true })
+    })
+    this.#promptSections.set('skills', { name: 'skills', order: 900, text: ({ agent }) => skills.prompt(agent) })
     this.#services.set('skills', skills)
     this.#services.set('directoryPicker', ownedDirectoryPicker())
     this.#services.set('tokenMeter', tokenMeter())
@@ -597,6 +646,11 @@ export class OwnedContext {
     this.#services.set('approval', {
       request: request => this.#middleware('approval/request', request, () => waitForCancellation(request.signal)),
     })
+    this.#services.set('userQuestions', {
+      ask: request => this.#middleware('user-questions/request', request, () => {
+        throw new Error('no user-questions channel is available to review the plan; ask the user to switch the session mode instead')
+      }),
+    })
     this.#services.set('shellEnv', {
       register: contribution => {
         this.#shellEnvironment.add(contribution)
@@ -623,6 +677,38 @@ export class OwnedContext {
       compactRegion: (start, end, target, signal) => this.#compactRegion(start, end, target, signal),
     }
     this.#services.set('compaction', compaction)
+    const planMode = {
+      get: agent => this.harness.planMode(String(agent?.session?.id ?? agent?.id ?? agent)),
+      set: async (agent, active) => {
+        const id = String(agent?.session?.id ?? agent?.id ?? agent)
+        const current = await this.harness.planMode(id)
+        if (current.active === (active === true)) return 'noop'
+        if (active === true && !current.entered) await this.#selectExtensions(id, { add: [this.#planToolRecord.extension] })
+        await this.harness.setPlanMode(id, active)
+        return 'committed'
+      },
+      approve: agent => this.harness.queuePlanMode(String(agent?.session?.id ?? agent?.id ?? agent), false),
+    }
+    this.#services.set('planMode', planMode)
+    this.#planToolRecord = this.#createDefinitionRecord(exitPlanModeDefinition({
+      getState: planMode.get,
+      queueExit: planMode.approve,
+      ask: request => this.#services.get('userQuestions').ask(request),
+    }), 'ds-bot-plan-mode')
+    this.#promptSections.set('plan:policy', {
+      name: 'plan:policy',
+      order: 500,
+      text: async ({ agent }) => {
+        if (agent === undefined) return ''
+        const state = await planMode.get(agent)
+        return (state.pending ?? state.active) ? planSection : ''
+      },
+    })
+    this.#toolResultPruner = createToolResultPruner(toolResultPruning)
+    this.harness.beforeRequest?.((messages, { conversationId }) => {
+      if (conversationId === undefined || !this.#prunedConversations.has(String(conversationId))) return messages
+      return this.#toolResultPruner.pruneMessages(messages).messages
+    })
     this.#refreshPromptExtension()
     this.#compactionExtension = compactionExtension
     this.harness.setShellEnvironment?.(({ conversationId }) => {
@@ -632,6 +718,7 @@ export class OwnedContext {
     this.harness.beforeGeneration?.(async (messages, { conversationId }) => {
       const resolved = await this.#resolveAgent(conversationId)
       if ('error' in resolved) return messages
+      await this.harness.applyPendingPlanMode(String(conversationId))
       const state = this.#sessionStates.get(String(conversationId))
       const sourced = state === undefined ? messages : messagesWithSources(messages, state.view.entries)
       const signal = new AbortController().signal
@@ -945,6 +1032,7 @@ export class OwnedContext {
     const configuredAgent = await this.harness.agent(id)
     this.#selectedExtensions.set(id, new Map((configuredAgent?.extensions ?? []).map(extension => [extension.name, extension])))
     await this.#selectExtensions(id, { add: [this.#compactionExtension] })
+    if ((await this.harness.planMode(id)).entered) await this.#selectExtensions(id, { add: [this.#planToolRecord.extension] })
     const watch = await this.harness.watch(id, this.transcriptWindow)
     const entries = await this.#allEntries(id)
     const state = {
@@ -1252,35 +1340,48 @@ export class OwnedContext {
     if (decision === undefined) {
       const resolved = await this.#resolveAgent(String(api.conversationId))
       if ('error' in resolved) return this.#hostRuntime?.isBotSession?.(String(api.conversationId)) === true ? { decline: true } : undefined
-      const service = this.#services.get('compaction')
-      const value = await service.beforeCompact({
-        messages: input.messages,
-        entries: input.entries,
-        firstKept: input.firstKept,
-        reason: input.reason,
-        ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
-      }, resolved.agent, context.abortSignal)
-      const summary = compactionSummary(value)
-      const rawUsages = Array.isArray(value?.usages)
-        ? value.usages
-        : value?.usage === undefined ? [] : [{ provider: value.provider, model: value.model, usage: value.usage }]
-      const usages = rawUsages.flatMap(item => {
-        const usage = piUsage(item?.usage)
-        return usage === undefined || item?.provider === undefined || item?.model === undefined
-          ? []
-          : [{ provider: String(item.provider), model: String(item.model), usage }]
-      })
-      decision = value?.decline === true
-        ? { kind: 'decline', usages }
-        : summary === ''
-          ? { kind: 'delegate', usages }
-          : {
-              kind: 'summary',
-              summary,
-              usages,
-            }
-      decision = await api.memo(memoName, decision, context)
+      const current = await this.harness.context(String(api.conversationId))
+      const prunedContext = this.#toolResultPruner.pruneMessages(current.messages)
+      const prune = prunedContext.changed
+      if (prune) this.#prunedConversations.add(String(api.conversationId))
+      const limit = prune && input.reason !== 'manual' ? await this.harness.compactionLimit(String(api.conversationId)) : undefined
+      const relieved = limit !== undefined && estimateContextTokens(prunedContext.messages).tokens <= limit
+      if (relieved) {
+        decision = await api.memo(memoName, { kind: 'decline', usages: [], prune: true }, context)
+      } else {
+        const service = this.#services.get('compaction')
+        const prunedInput = this.#toolResultPruner.pruneMessages(input.messages)
+        const value = await service.beforeCompact({
+          messages: prunedInput.messages,
+          entries: input.entries,
+          firstKept: input.firstKept,
+          reason: input.reason,
+          ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
+        }, resolved.agent, context.abortSignal)
+        const summary = compactionSummary(value)
+        const rawUsages = Array.isArray(value?.usages)
+          ? value.usages
+          : value?.usage === undefined ? [] : [{ provider: value.provider, model: value.model, usage: value.usage }]
+        const usages = rawUsages.flatMap(item => {
+          const usage = piUsage(item?.usage)
+          return usage === undefined || item?.provider === undefined || item?.model === undefined
+            ? []
+            : [{ provider: String(item.provider), model: String(item.model), usage }]
+        })
+        decision = value?.decline === true
+          ? { kind: 'decline', usages }
+          : summary === ''
+            ? { kind: 'delegate', usages }
+            : {
+                kind: 'summary',
+                summary,
+                usages,
+              }
+        decision.prune = prune
+        decision = await api.memo(memoName, decision, context)
+      }
     }
+    if (decision.prune === true) this.#prunedConversations.add(String(api.conversationId))
     for (const [index, item] of (decision.usages ?? []).entries()) {
       await this.harness.recordCompactionUsage(String(api.conversationId), `${api.taskId}:${index}`, item.provider, item.model, item.usage)
     }
@@ -1315,9 +1416,11 @@ export class OwnedContext {
   }
 
   async #prompt({ sessionId, requestId = randomUUID(), mode, content, references = [] }) {
-    const whenBusy = mode === 'steer' ? 'steer' : 'followUp'
     const resolved = await this.#resolveAgent(String(sessionId))
     if ('error' in resolved) throw serviceError(resolved.error.code ?? 'session/not-found', resolved.error.message)
+    const privateChat = this.#hostRuntime?.chatOwners?.has?.(String(sessionId)) === true
+      && this.#hostRuntime?.groupOwners?.has?.(String(sessionId)) !== true
+    const whenBusy = mode === 'steer' || privateChat ? 'steer' : 'followUp'
     const configured = this.#sessionStates.get(String(sessionId))?.config
     const model = configured?.provider === undefined || configured?.model === undefined ? undefined : this.harness.models.getModel?.(configured.provider, configured.model)
     const receipt = textContent(content)
@@ -1340,6 +1443,9 @@ export class OwnedContext {
         },
       },
     })
+    if (whenBusy === 'steer' && resolved.agent.status === 'running') {
+      this.emit('agent/user-steer', { agent: resolved.agent, requestId })
+    }
     return { submissionId: submission.id }
   }
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { OwnedHost } from '../src/engine/owned-host.js'
 import { htmlToGfm, pinnedLookup, safeWebFetch } from '../src/engine/owned-desktop-tools.js'
@@ -43,7 +43,7 @@ async function fixture(t, options = {}) {
     await host.close()
     await rm(root, { recursive: true, force: true })
   })
-  return { host, workspacePath, requests }
+  return { host, workspacePath, requests, faux }
 }
 
 test('owned Host keeps the standard desktop tool catalog and project instructions', async t => {
@@ -67,7 +67,8 @@ test('owned Host keeps the standard desktop tool catalog and project instruction
 test('owned Host selects PowerShell instead of bash for Windows', async t => {
   const { host } = await fixture(t, { platform: 'win32' })
   const names = new Set(host.runtime.teamTools.map(tool => tool.name))
-  assert.ok(names.has('powershell'))
+  assert.ok(names.has('pwsh'))
+  assert.equal(names.has('powershell'), false)
   assert.equal(names.has('bash'), false)
 })
 
@@ -191,6 +192,33 @@ test('owned background jobs bound memory, retain complete output, and stop proce
   await waitFor(() => {
     try { process.kill(childPid, 0); return false } catch (error) { return error?.code === 'ESRCH' }
   })
+})
+
+test('a private-chat steer promotes a running shell and reaches the next model request', async t => {
+  const { host, faux } = await fixture(t)
+  const state = await host.runtime.handle('state', { locale: 'en' })
+  const bot = state.value.bots[0]
+  assert.equal((await host.runtime.handle('update-bot', { id: bot.id, model: 'faux/faux-1', permission: 'danger-full-access' })).ok, true)
+  const agent = await host.runtime.resolveAgent(bot.id)
+  await agent.whenIdle()
+
+  let steeredAt
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall('bash', { command: 'node -e "setTimeout(() => {}, 4000)"' }, { id: 'call-steer-shell' }), { stopReason: 'toolUse' }),
+    async () => {
+      steeredAt = Date.now()
+      return fauxAssistantMessage('Steer received.')
+    },
+  ])
+  assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Start the long command.' })).ok, true)
+  const jobs = host.runtime.ctx.get('jobs')
+  const running = await waitFor(() => jobs.list(agent.id).find(job => job.status === 'running'))
+  const sentAt = Date.now()
+  assert.equal((await host.runtime.handle('send', { sessionId: bot.id, text: 'Change course now.' })).ok, true)
+  await waitFor(() => steeredAt, 2_500)
+
+  assert.ok(steeredAt - sentAt < 2_000)
+  assert.equal(jobs.get(running.id, agent.id).status, 'running')
 })
 
 test('owned web fetch blocks local network destinations before connecting', async () => {
