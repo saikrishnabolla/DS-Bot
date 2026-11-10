@@ -6,6 +6,7 @@ import { createRuntime } from '../../index.js'
 import { installOwnedApprovals } from './owned-approvals.js'
 import { OwnedContext } from './owned-context.js'
 import { installOwnedComputerUse } from './owned-computer.js'
+import { migrateLegacyTeam } from './legacy-import.js'
 import { OwnedModels } from './owned-models.js'
 import { installOwnedSchedules } from './owned-schedules.js'
 import { installOwnedStorage } from './owned-storage.js'
@@ -73,6 +74,7 @@ export class OwnedHost {
     const context = await OwnedContext.open({ dataDir, models: modelRuntime, registry, settings, env, workspacePath })
     let server
     try {
+      await migrateLegacyTeam({ dataDir, harness: context.harness })
       installOwnedApprovals(context, { dataDir })
       await installOwnedStorage(context, { dataDir })
       installOwnedComputerUse(context, computerUse)

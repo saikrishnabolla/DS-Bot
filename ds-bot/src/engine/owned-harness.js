@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
-import { createRegistry, defineDoc, defineExtension, GenerationTask, Harness, hook, UsageDoc } from '@earendil-works/pi-durable'
+import { AssistantEntry, createRegistry, defineDoc, defineExtension, GenerationTask, Harness, hook, UsageDoc, UserEntry } from '@earendil-works/pi-durable'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { linesFor } from '../host/steward.js'
@@ -240,6 +240,17 @@ export class OwnedHarness {
   async createConversation(agent) {
     const conversation = await this.#harness.createConversation({ ownership: { kind: 'ownerless' }, agent }, this.#context)
     return String(conversation.id)
+  }
+
+  async importConversation({ messages = [] } = {}) {
+    return this.#harness.commit(async tx => {
+      const conversation = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      for (const message of messages) {
+        if (message?.role === 'user') await tx.appendEntry(UserEntry, conversation.id, { model: [message] })
+        else if (message?.role === 'assistant') await tx.appendEntry(AssistantEntry, conversation.id, { model: [message] })
+      }
+      return String(conversation.id)
+    }, this.#context)
   }
 
   async conversation(id) {

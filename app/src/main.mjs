@@ -84,6 +84,7 @@ const frameFile = join(app.getPath('userData'), 'start-frame.json')
 // Loaded once the start window is up (loadModules).
 let BotBrowserGuests, partitionOf, BotViews, isBotId, importFromBrowser, listSources, applyCookies, CookieImports, parseCookieFile
 let downloadSaver, chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx, HostProcess
+let importTeam, teamInUseForImport, teamSizes, userDshHome, ImportFlow
 let copyData, copyReason, moveProblem, teamInUse
 let watchReleases, watchUpdates, RELEASE_PAGE, electronUpdater
 
@@ -114,6 +115,8 @@ let proposed
 let moveTo
 // Takes the answer of the card that askCard() put up.
 let answering
+let importOffer
+let importFlow
 // The new version that the failure page's update banner offers.
 let offered
 // A retry or a start over is stopping the old engine: no second one starts meanwhile.
@@ -225,6 +228,7 @@ if (canonical !== undefined) {
       if (answering !== undefined) { answering(value); return }
       (startWindow.kind === 'later' ? moveAnswer(value) : placeAnswer(value)).catch(fail)
     },
+    onImport: (name, value) => { importFlow?.act(name, value) },
     onUpdate: (name) => { updateAct(name) },
   })
   // A second launch shows the window that is showing: the start window until the hand-off
@@ -308,10 +312,10 @@ async function prepare() {
 }
 
 async function loadModules() {
-  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, moves, updatesModule, updater] = await Promise.all([
+  const [browser, views, sources, cookies, cookieFiles, downloads, firstRun, hostProcess, imports, flows, moves, updatesModule, updater] = await Promise.all([
     import('./bot-browser.mjs'), import('./bot-views.mjs'), import('./browser-sources.mjs'), import('./cookie-import.mjs'),
     import('./cookie-parse.mjs'), import('./downloads.mjs'), import('./first-run.mjs'), import('./host-process.mjs'),
-    import('./move-data.mjs'), import('./updates.mjs'), import('electron-updater'),
+    import('./import.mjs'), import('./import-flow.mjs'), import('./move-data.mjs'), import('./updates.mjs'), import('electron-updater'),
   ])
   ;({ BotBrowserGuests, partitionOf } = browser)
   ;({ BotViews, isBotId } = views)
@@ -321,6 +325,8 @@ async function loadModules() {
   ;({ downloadSaver } = downloads)
   ;({ chooseLocations, defaultPlaces, lang, pickerLabels, pickRoot, programFolder, saveLocations, teamIn, teamsAt, tx } = firstRun)
   ;({ HostProcess } = hostProcess)
+  ;({ importTeam, teamInUse: teamInUseForImport, teamSizes, userDshHome } = imports)
+  ;({ ImportFlow } = flows)
   ;({ copyData, copyReason, moveProblem, teamInUse } = moves)
   ;({ watchReleases, watchUpdates, RELEASE_PAGE } = updatesModule)
   electronUpdater = updater.default
@@ -420,7 +426,8 @@ async function boot(mine) {
     }
     const where = chooseLocations()
     setPlaces({ dataDir: where.dataDir, workspace: where.workspace })
-    if (first) startWindow.explain(explainOf({ team: teamIn(where.dataDir) }))
+    importOffer = where.offer
+    if (first) startWindow.explain(explainOf({ offered: importOffer !== undefined, team: teamIn(where.dataDir) }))
     else tellLowSpace(where.freeAtStart)
   }
   // Also the check that the data folder can be written.
@@ -589,6 +596,10 @@ function newHost() {
 
 /** @returns {Promise<{ url: string }>} the Host's launch URL */
 async function startEngine(mine) {
+  if (importOffer !== undefined) {
+    const outcome = await importStep(mine)
+    if (outcome === undefined || mine !== attempt) return undefined
+  }
   if (!updatesStarted) {
     updatesStarted = true
     updates = startUpdates()
@@ -627,6 +638,38 @@ async function startEngine(mine) {
   const engine = await activeHost.start()
   if (mine === attempt) startWindow.card(undefined)
   return engine
+}
+
+async function importStep(mine) {
+  const offer = importOffer
+  const signal = copyAbort.signal
+  const sizes = await teamSizes(offer.from, offer.team).catch((error) => { console.error(error); return { sessions: 0 } })
+  const flow = new ImportFlow({
+    offer: {
+      from: offer.from, bots: offer.bots, rooms: offer.rooms,
+      names: Object.values(offer.team.bots ?? {}).map(bot => bot?.name).filter(name => typeof name === 'string' && name !== ''),
+      sessions: sizes.sessions, sizes, profiles: [],
+    },
+    ask: (card, options) => askCard(card, { signal, ...options }),
+    show: card => { startWindow.card(card) },
+    inUse: () => teamInUseForImport(offer.from),
+    until,
+    warmed: async () => undefined,
+    copy: options => importTeam({ from: offer.from, to: places.dataDir, workspace: places.workspace, ...options }),
+    reasonOf: copyReason,
+    lang: lang(),
+    signal,
+  })
+  importFlow = flow
+  copying = startWindow.asking(flow.run())
+  let result
+  try { result = await copying } finally { copying = undefined; importFlow = undefined }
+  if (result.outcome === 'gone' || result.outcome === 'pick' || signal.aborted || mine !== attempt) return undefined
+  importOffer = undefined
+  saveLocations(places)
+  if (result.outcome === 'copied') startWindow.done('import')
+  startWindow.card(undefined)
+  return result
 }
 
 function handleIpc() {
