@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { dirname, resolve } from 'node:path'
+import { createWriteStream, mkdirSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
 import { formatSkillsForPrompt } from '@earendil-works/pi-coding-agent'
@@ -12,6 +13,8 @@ import { ownedDirectoryPicker } from './owned-directory-picker.js'
 import { projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
+const JOB_MEMORY_BYTES = 1_048_576
+const JOB_STOP_GRACE_MS = 1_000
 const textContent = value => Array.isArray(value) ? value : [{ type: 'text', text: String(value ?? '') }]
 const timeOf = message => Number.isFinite(Number(message?.timestamp)) ? Number(message.timestamp) : Date.now()
 const receiptBlock = block => block?.attachment === undefined && block?.receiptId !== null && typeof block?.receiptId === 'object'
@@ -400,13 +403,18 @@ export class OwnedContext {
     })
     const jobs = new Map()
     const jobWaiters = new Map()
+    const spillDir = join(resolve(dataDir), 'job-output')
+    mkdirSync(spillDir, { recursive: true, mode: 0o700 })
     const checkedJob = (id, sessionId) => {
       const job = jobs.get(String(id))
       if (job === undefined || (sessionId !== undefined && job.sessionId !== String(sessionId))) throw serviceError('job/not-found', `Unknown job ${id}`)
       return job
     }
     const publicJob = job => {
-      const { cancel: _cancel, chunks: _chunks, readIndex: _readIndex, ...value } = job
+      const {
+        cancel: _cancel, chunks: _chunks, memoryBytes: _memoryBytes, nextChunk: _nextChunk,
+        readChunk: _readChunk, spill: _spill, spillFailed: _spillFailed, ...value
+      } = job
       return value
     }
     const wakeJob = id => {
@@ -415,31 +423,79 @@ export class OwnedContext {
       jobWaiters.delete(String(id))
       for (const wake of waiters) wake()
     }
-    this.#services.set('jobs', {
+    const jobsService = {
       register: ({ id = randomUUID(), sessionId, chunks = [], ...job }) => {
-        const record = { ...job, id: String(id), sessionId: String(sessionId), status: job.status ?? 'running', chunks: [...chunks], readIndex: 0 }
+        const jobId = String(id)
+        const spillPath = join(spillDir, `${jobId}.log`)
+        const spill = createWriteStream(spillPath, { flags: 'wx', mode: 0o600 })
+        const record = {
+          ...job,
+          id: jobId,
+          sessionId: String(sessionId),
+          status: job.status ?? 'running',
+          output: { ...job.output, spillPaths: [spillPath] },
+          chunks: [],
+          memoryBytes: 0,
+          nextChunk: 0,
+          readChunk: 0,
+          spill,
+          spillFailed: false,
+        }
+        spill.on('error', error => {
+          record.spillFailed = true
+          record.output = { ...record.output, spillPaths: [] }
+          this.logger.error?.('DS Bot: could not retain full background job output', error)
+        })
         jobs.set(record.id, record)
+        for (const chunk of chunks) jobsService.append(record.id, chunk)
         const session = this.#agents.get(record.sessionId)?.session
         if (session !== undefined) this.emit('session/event', session, { type: 'job/registered', data: { jobId: record.id, toolCall: job.toolCall } })
         return record.id
       },
-      append: (id, chunk) => { checkedJob(id).chunks.push(chunk) },
+      append: (id, chunk) => {
+        const job = checkedJob(id)
+        const text = String(chunk?.text ?? '')
+        const bytes = Buffer.byteLength(text)
+        if (!job.spillFailed && text !== '') job.spill.write(text)
+        const entry = { ...chunk, text, index: job.nextChunk++, bytes }
+        job.chunks.push(entry)
+        job.memoryBytes += bytes
+        while (job.memoryBytes > JOB_MEMORY_BYTES && job.chunks.length > 1) {
+          const removed = job.chunks.shift()
+          job.memoryBytes -= removed.bytes
+        }
+        if (job.memoryBytes > JOB_MEMORY_BYTES && job.chunks.length === 1) {
+          const held = job.chunks[0]
+          const tail = Buffer.from(held.text).subarray(Math.max(0, held.bytes - JOB_MEMORY_BYTES)).toString('utf8')
+          job.chunks[0] = { ...held, text: tail, bytes: Buffer.byteLength(tail), gapBefore: true }
+          job.memoryBytes = job.chunks[0].bytes
+        }
+        if (job.chunks[0]?.index > job.readChunk) job.chunks[0].gapBefore = true
+      },
       get: (id, sessionId) => publicJob(checkedJob(id, sessionId)),
       read: (id, sessionId) => {
         const job = checkedJob(id, sessionId)
-        return { job: publicJob(job), chunks: [...job.chunks], lossy: false }
+        return {
+          job: publicJob(job),
+          chunks: job.chunks.map(({ index: _index, bytes: _bytes, ...chunk }) => chunk),
+          lossy: job.chunks[0]?.index > 0 || job.chunks[0]?.gapBefore === true,
+        }
       },
       consume: (id, sessionId) => {
         const job = checkedJob(id, sessionId)
-        const chunks = job.chunks.slice(job.readIndex)
-        job.readIndex = job.chunks.length
-        return { job: publicJob(job), chunks, lossy: false }
+        const first = job.chunks[0]?.index ?? job.nextChunk
+        const lossy = job.readChunk < first || (job.chunks[0]?.gapBefore === true && job.readChunk <= first)
+        const chunks = job.chunks.filter(chunk => chunk.index >= job.readChunk)
+          .map(({ index: _index, bytes: _bytes, ...chunk }) => chunk)
+        job.readChunk = job.nextChunk
+        return { job: publicJob(job), chunks, lossy }
       },
       list: sessionId => [...jobs.values()].filter(job => job.sessionId === String(sessionId)).map(publicJob),
       settle: (id, status = 'completed', detail) => {
         const job = checkedJob(id)
         job.status = status
         if (detail !== undefined) job.detail = String(detail)
+        if (!job.spill.destroyed) job.spill.end()
         const awaited = jobWaiters.has(job.id)
         wakeJob(job.id)
         const session = this.#agents.get(job.sessionId)?.session
@@ -451,7 +507,7 @@ export class OwnedContext {
         if (job.status === 'completed' || job.status === 'failed' || job.status === 'killed') return 'already-finished'
         job.status = 'stopping'
         if (reason !== undefined && String(reason).trim() !== '') job.detail = String(reason).trim()
-        job.cancel?.(reason)
+        job.cancel?.(reason, false)
         return 'requested'
       },
       async wait(id, timeoutMs, sessionId, signal) {
@@ -483,7 +539,32 @@ export class OwnedContext {
         })
         return publicJob(checkedJob(id, sessionId))
       },
-    })
+      async close() {
+        const running = [...jobs.values()].filter(job => job.status === 'running' || job.status === 'stopping')
+        for (const job of running) {
+          job.status = 'stopping'
+          job.detail = 'host closed'
+          job.cancel?.('host closed', false)
+        }
+        const until = async deadline => {
+          while (running.some(job => job.status === 'running' || job.status === 'stopping') && Date.now() < deadline) {
+            await new Promise(resolveWait => setTimeout(resolveWait, 10))
+          }
+        }
+        await until(Date.now() + JOB_STOP_GRACE_MS)
+        for (const job of running) {
+          if (job.status !== 'running' && job.status !== 'stopping') continue
+          job.cancel?.('host closed', true)
+        }
+        await until(Date.now() + JOB_STOP_GRACE_MS)
+        for (const job of running) {
+          if (job.status === 'running' || job.status === 'stopping') job.status = 'killed'
+          if (!job.spill.destroyed) job.spill.end()
+          wakeJob(job.id)
+        }
+      },
+    }
+    this.#services.set('jobs', jobsService)
     const goals = new OwnedGoalStore(dataDir)
     const goalKey = agent => String(agent?.id ?? agent?.session?.id ?? agent)
     const publishGoal = (agent, goal) => {
@@ -794,6 +875,7 @@ export class OwnedContext {
   async close() {
     if (this.#closed) return
     this.#closed = true
+    await this.#services.get('jobs')?.close?.()
     for (const agent of this.#agents.values()) this.emit('agent/disposed', { agent })
     await Promise.allSettled([...this.#externalMounts].map(mount => mount.dispose()))
     for (const watch of this.#watches.values()) await watch.stop()

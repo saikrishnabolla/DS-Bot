@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -102,7 +102,9 @@ test('owned desktop tools search files, replace todos, present files, and use th
   ] }, exec), /duplicate content/)
 
   const presented = await toolOf(host, 'present').execute({ files: [{ path: 'notes/parity.txt', description: 'Parity evidence' }] }, exec)
-  assert.deepEqual(presented.structuredOutput.files, [{ path: join(workspacePath, 'notes', 'parity.txt'), description: 'Parity evidence' }])
+  assert.deepEqual(presented.structuredOutput.files, [{ path: await realpath(join(workspacePath, 'notes', 'parity.txt')), description: 'Parity evidence' }])
+  await symlink(tmpdir(), join(workspacePath, 'notes', 'outside'))
+  await assert.rejects(toolOf(host, 'present').execute({ files: [{ path: 'notes/outside' }] }, exec), /outside the Session working directory/)
 
   const searched = await toolOf(host, 'web_search').execute({ queries: ['alpha', 'beta'] }, exec)
   assert.deepEqual(searches.map(request => request.query), ['alpha', 'beta'])
@@ -135,6 +137,40 @@ test('owned background shell registers, streams, consumes, lists, and fences job
   const killed = await toolOf(host, 'job_kill').execute({ job_id: jobId }, exec)
   assert.equal(killed.structuredOutput.outcome, 'already-finished')
   await assert.rejects(toolOf(host, 'job_output').execute({ job_id: jobId }, { ...exec, agent: { ...agent, id: 'other' } }), /Unknown job/)
+})
+
+test('owned background jobs bound memory, retain complete output, and stop process groups on close', async t => {
+  const { host, workspacePath } = await fixture(t)
+  const state = await host.runtime.handle('state', { locale: 'en' })
+  const bot = state.value.bots[0]
+  const agent = { id: bot.id, session: { id: bot.id, header: {} } }
+  const shell = toolOf(host, 'bash')
+  const exec = { agent, callId: 'call-jobs-bounded', signal: new AbortController().signal }
+  const large = await shell.execute({
+    command: "node -e \"process.stdout.write('x'.repeat(3 * 1024 * 1024))\"",
+    run_in_background: true,
+  }, { conversationId: bot.id, callId: 'call-large' }, { abortSignal: exec.signal })
+  const largeId = large.structuredOutput.jobId
+  const retained = await toolOf(host, 'job_output').execute({ job_id: largeId, wait: true, timeout_ms: 5_000 }, exec)
+  assert.match(outputText(retained), /some output was dropped from memory/)
+  assert.ok(Buffer.byteLength(retained.structuredOutput.text) <= 1_048_576)
+  const spillPath = retained.structuredOutput.job.output.spillPaths[0]
+  await waitFor(async () => (await stat(spillPath)).size === 3 * 1024 * 1024)
+  assert.equal((await stat(spillPath)).size, 3 * 1024 * 1024)
+
+  const pidFile = join(workspacePath, 'background-child.pid')
+  const child = await shell.execute({
+    command: `node -e 'require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000)'`,
+    run_in_background: true,
+  }, { conversationId: bot.id, callId: 'call-child' }, { abortSignal: exec.signal })
+  assert.ok(child.structuredOutput.jobId)
+  const childPid = await waitFor(async () => {
+    try { return Number(await readFile(pidFile, 'utf8')) || undefined } catch { return undefined }
+  })
+  await host.close()
+  await waitFor(() => {
+    try { process.kill(childPid, 0); return false } catch (error) { return error?.code === 'ESRCH' }
+  })
 })
 
 test('owned web fetch blocks local network destinations before connecting', async () => {
