@@ -190,6 +190,47 @@ test('owned compaction uses one Pi task while preserving raw history', async t =
   assert.ok(raw.records.some(record => record.event.type === 'session/divider' && record.event.data.reason === 'compaction'))
 })
 
+test('owned range compaction durably replaces an inclusive surface span', async t => {
+  const { ctx, dataDir, models, provider } = await contextFixture(t, {
+    settings: { compaction: { enabled: false } },
+  })
+  provider.setResponses([fauxAssistantMessage('first answer'), fauxAssistantMessage('second answer')])
+  const { sessionId } = await ctx.sessionController.create()
+  await ctx.sessionController.selectModel({ sessionId, provider: 'faux', model: 'faux-1' })
+  const { agent } = await ctx.sessionController.resolveAgent(sessionId)
+  ctx.resume()
+
+  for (const prompt of ['first prompt', 'second prompt']) {
+    agent.followup({ content: prompt, source: { kind: 'user' } })
+    await agent.whenIdle()
+  }
+  const inputs = []
+  ctx.get('compaction').summarize = async input => {
+    inputs.push(input)
+    return { summary: [{ type: 'text', text: 'first turn summary' }] }
+  }
+
+  const result = await ctx.get('compaction').compactRegion(0, 2, agent)
+  await ctx.harness.waitForIdle(sessionId)
+
+  assert.deepEqual(result.shadowedSeqs, [0, 2])
+  assert.deepEqual(inputs[0].messages.filter(message => message.role !== 'system').map(message => message.role), ['user', 'assistant'])
+  const active = await ctx.harness.context(sessionId)
+  assert.deepEqual(active.messages.filter(message => message.role !== 'system').map(message => [message.role, message.content[0].text]), [
+    ['user', 'first turn summary'],
+    ['user', 'second prompt'],
+    ['assistant', 'second answer'],
+  ])
+  const raw = await ctx.sessionController.page({ sessionId, maxMessages: 50 })
+  assert.ok(raw.records.some(record => record.event.type === 'user/message' && record.event.data.content.some(block => block.type === 'text' && block.text === 'first prompt')))
+  await ctx.close()
+
+  const restarted = await OwnedContext.open({ dataDir, models, workspacePath: dataDir, settings: { compaction: { enabled: false } } })
+  t.after(() => restarted.close())
+  const after = await restarted.harness.context(sessionId)
+  assert.deepEqual(after.messages, active.messages)
+})
+
 test('owned compaction refuses a busy conversation without starting a task', async t => {
   let release
   let started

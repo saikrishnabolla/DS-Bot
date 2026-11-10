@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { estimateContextTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { getDeclaredTools } from '@earendil-works/pi-ai/utils/transcript'
-import { CompactionTask, defineExtension, defineTool, hook } from '@earendil-works/pi-durable'
+import { defineExtension, defineTool } from '@earendil-works/pi-durable'
 import { OwnedHarness } from './owned-harness.js'
 import { connectMcpTools } from './mcp-tools.js'
+import { createOwnedCompactionExtension } from './owned-range-compaction.js'
 import { projectLive } from './projection.js'
 
 const INPUT_KIND = 'ds-bot.user'
@@ -223,11 +224,6 @@ function piUsage(value) {
   }
 }
 
-const createOwnedCompactionExtension = beforeCompact => defineExtension({
-  name: 'ds-bot-owned-compaction',
-  hooks: [hook(CompactionTask, { beforeCompact })],
-})
-
 export class OwnedContext {
   #listeners = new Map()
   #effects = []
@@ -326,7 +322,7 @@ export class OwnedContext {
       beforeCompact: (input, agent, signal) => compaction.summarize(input, agent, signal),
       compactIfNeeded: (target, _trigger, signal) => compaction.compactNow(target, signal),
       compactNow: (target, signal) => this.#compact(target, signal),
-      compactRegion: () => Promise.reject(Object.assign(new Error('Pi Durable does not compact an arbitrary entry range'), { code: 'not-supported' })),
+      compactRegion: (start, end, target, signal) => this.#compactRegion(start, end, target, signal),
     }
     this.#services.set('compaction', compaction)
     this.#compactionExtension = compactionExtension
@@ -382,7 +378,10 @@ export class OwnedContext {
 
   static async open(options) {
     let context
-    const compactionExtension = createOwnedCompactionExtension((input, api, hookContext) => context.#beforeCompact(input, api, hookContext))
+    const compactionExtension = createOwnedCompactionExtension({
+      beforeCompact: (input, api, hookContext) => context.#beforeCompact(input, api, hookContext),
+      summarizeRange: (input, api, hookContext) => context.#summarizeRange(input, api, hookContext),
+    })
     const harness = await OwnedHarness.open({
       ...options,
       settings: { ...options.settings, extensions: [...(options.settings?.extensions ?? []), compactionExtension] },
@@ -393,7 +392,10 @@ export class OwnedContext {
 
   static attach(harness, options) {
     let context
-    const compactionExtension = createOwnedCompactionExtension((input, api, hookContext) => context.#beforeCompact(input, api, hookContext))
+    const compactionExtension = createOwnedCompactionExtension({
+      beforeCompact: (input, api, hookContext) => context.#beforeCompact(input, api, hookContext),
+      summarizeRange: (input, api, hookContext) => context.#summarizeRange(input, api, hookContext),
+    })
     harness.install(compactionExtension)
     context = new OwnedContext(harness, options, compactionExtension)
     return context
@@ -803,6 +805,90 @@ export class OwnedContext {
     }
   }
 
+  async #compactRegion(start, end, target, signal) {
+    const id = String(target?.session?.id ?? target?.id ?? target)
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) throw new TypeError('Compaction range must use integer event sequences')
+    if (signal?.aborted) throw serviceError('cancelled', signal.reason?.message ?? 'Compaction cancelled')
+    const resolved = await this.#resolveAgent(id)
+    if ('error' in resolved) throw serviceError('session/not-found', `Conversation ${id} does not exist`)
+    const state = this.#sessionStates.get(id)
+    const surface = state.events
+      .map(record => record.event)
+      .filter(event => event.type === 'user/message' || event.type === 'assistant/message' || event.type === 'tool/call' || event.type === 'tool/result')
+    const startIndex = surface.findIndex(event => event.seq === start)
+    const endIndex = surface.findIndex(event => event.seq === end)
+    if (startIndex < 0) throw new Error(`compactRegion: start seq ${start} not found in surface`)
+    if (endIndex < 0) throw new Error(`compactRegion: end seq ${end} not found in surface`)
+    if (startIndex > endIndex) throw new Error(`compactRegion: start seq ${start} is after end seq ${end} on the surface`)
+    const selected = surface.slice(startIndex, endIndex + 1)
+    const selectedSeqs = new Set(selected.map(event => event.seq))
+    const callOwners = new Map()
+    const results = new Map()
+    for (const event of surface) {
+      if (event.type === 'tool/call') {
+        callOwners.set(String(event.data.callId), event.seq)
+      } else if (event.type === 'assistant/message') {
+        for (const block of event.data.message.content ?? []) if (block.type === 'toolCall') callOwners.set(String(block.id), event.seq)
+      } else if (event.type === 'tool/result') {
+        results.set(String(event.data.message.toolCallId), event.seq)
+      }
+    }
+    for (const event of selected) {
+      if (event.type === 'tool/call' && !selectedSeqs.has(results.get(String(event.data.callId)))) {
+        throw new Error(`compactRegion: end seq ${end} is not a balanced boundary (would split a step, or the step is still open)`)
+      } else if (event.type === 'assistant/message') {
+        for (const block of event.data.message.content ?? []) {
+          if (block.type !== 'toolCall' || selectedSeqs.has(results.get(String(block.id)))) continue
+          throw new Error(`compactRegion: end seq ${end} is not a balanced boundary (would split a step, or the step is still open)`)
+        }
+      } else if (event.type === 'tool/result' && !selectedSeqs.has(callOwners.get(String(event.data.message.toolCallId)))) {
+        throw new Error(`compactRegion: start seq ${start} is not a balanced boundary (would split a step's tool-call/result pair)`)
+      }
+    }
+    const entryIds = [...new Set(selected.map(event => String(event.entryId)))]
+    const view = await this.harness.context(id)
+    const selectedEntries = entryIds.map(entryId => view.entries.find(entry => String(entry.id) === entryId))
+    if (selectedEntries.some(entry => entry === undefined)) throw new Error('compactRegion: selected surface changed before compaction began')
+    const selectedMessages = new Set()
+    for (const entryId of entryIds) {
+      const at = view.entries.findIndex(entry => String(entry.id) === entryId)
+      for (const message of view.contributions[at] ?? []) selectedMessages.add(message)
+    }
+    const messages = view.messages.filter(message => selectedMessages.has(message))
+    const taskId = await this.harness.compactRange(id, {
+      startSeq: start,
+      endSeq: end,
+      shadowedSeqs: selected.map(event => event.seq),
+      shadowedEntryIds: selectedEntries.map(entry => entry.id),
+      tailEntryId: view.entries.at(-1).id,
+      entries: selectedEntries,
+      messages: messages.length > 0 ? messages : selectedEntries.flatMap(entry => entry.model ?? []),
+      firstKept: end + 1,
+      reason: 'manual',
+    })
+    let cancelled
+    const cancellation = signal === undefined ? undefined : new Promise(resolve => {
+      const stop = () => resolve({ cancelled: signal.reason ?? new Error('Compaction cancelled') })
+      signal.addEventListener('abort', stop, { once: true })
+      cancelled = () => signal.removeEventListener('abort', stop)
+    })
+    try {
+      const settled = cancellation === undefined
+        ? await this.harness.waitForTask(taskId)
+        : await Promise.race([this.harness.waitForTask(taskId), cancellation])
+      if (settled?.cancelled !== undefined) {
+        await this.harness.abortTask(taskId)
+        throw serviceError('cancelled', settled.cancelled?.message ?? 'Compaction cancelled')
+      }
+      const outcome = settled.state.outcome
+      if (outcome.status === 'failed') throw new Error(outcome.error.message)
+      if (outcome.status !== 'completed') throw serviceError('cancelled', 'Compaction cancelled')
+      return outcome.result
+    } finally {
+      cancelled?.()
+    }
+  }
+
   async #beforeCompact(input, api, context) {
     const memoName = 'ds-bot-owned-compaction'
     let decision = await api.memo(memoName, context)
@@ -845,6 +931,31 @@ export class OwnedContext {
     if (decision.kind === 'decline') return { decline: true }
     if (decision.kind !== 'summary') return undefined
     return { summary: decision.summary }
+  }
+
+  async #summarizeRange(input, api) {
+    await this.#hostRuntime?.load?.()
+    const resolved = await this.#resolveAgent(String(api.conversationId))
+    if ('error' in resolved) return { kind: 'failed', message: `Conversation ${api.conversationId} does not exist` }
+    const service = this.#services.get('compaction')
+    let value
+    try {
+      value = await service.summarize(input, resolved.agent, api.signal)
+    } catch (error) {
+      return { kind: 'failed', message: error?.message ?? String(error) }
+    }
+    const summary = compactionSummary(value)
+    if (summary === '') return { kind: 'failed', message: 'Range compaction produced no summary' }
+    const rawUsages = Array.isArray(value?.usages)
+      ? value.usages
+      : value?.usage === undefined ? [] : [{ provider: value.provider, model: value.model, usage: value.usage }]
+    for (const [index, item] of rawUsages.entries()) {
+      const usage = piUsage(item?.usage)
+      if (usage !== undefined && item?.provider !== undefined && item?.model !== undefined) {
+        await this.harness.recordCompactionUsage(String(api.conversationId), `${api.taskId}:${index}`, String(item.provider), String(item.model), usage)
+      }
+    }
+    return { kind: 'summary', summary }
   }
 
   async #prompt({ sessionId, requestId = randomUUID(), mode, content }) {

@@ -8,6 +8,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node'
 import { linesFor } from '../host/steward.js'
 import { createModelBridge } from './model-bridge.js'
+import { OwnedRangeCompactionTask } from './owned-range-compaction.js'
 
 const numericId = id => {
   const value = Number(id)
@@ -271,6 +272,13 @@ export class OwnedHarness {
     const conversation = await this.conversation(id)
     if (conversation === undefined) throw new Error(`Conversation ${String(id)} does not exist`)
     return conversation.compact(instructions, this.#context)
+  }
+
+  compactRange(id, input) {
+    return this.commit(tx => tx.createTask(OwnedRangeCompactionTask, input, {
+      ownership: { kind: 'conversation' },
+      conversationId: numericId(id),
+    }))
   }
 
   async recordCompactionUsage(id, taskId, provider, model, usage) {
