@@ -209,6 +209,7 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
   const [sending, setSending] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [permissionMenu, setPermissionMenu] = useState(null)
   const field = useRef(null)
   const inputActions = useInput(field, setText)
   const referenceRequest = useUi(state => state.referenceChat?.sessionId === sessionId ? state.referenceChat : null)
@@ -263,15 +264,21 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
       field.current?.setSelectionRange?.(caret, caret)
     })
   }
-  const runCommand = async (line) => {
+  const runCommand = async (line, files = []) => {
     if (disabled || sending) return
     setError(null)
     setSending(true)
     try {
-      const result = await call('agent-command', { sessionId, line })
+      const content = await Promise.all(files.map(async item => ({ type: item.type, attachment: await uploadAttachment(item.file) })))
+      const result = await call('agent-command', { sessionId, line, content })
       downloadCommandResult(result)
+      if (result?.command === 'permission' && result.permissions) {
+        setPermissionMenu({ catalog: result.permissions, current: result.permission })
+      } else setPermissionMenu(null)
       setText('')
       setReferences([])
+      for (const item of files) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      setAttachments(current => current.filter(item => !files.includes(item)))
     } catch (failure) {
       setText(current => current === '' ? line : current)
       setError(failure.message)
@@ -301,7 +308,7 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
       .map(({ sessionId: referencedSessionId, label, ref }) => ({ sessionId: referencedSessionId, label, ref }))
     if ((value === '' && files.length === 0) || disabled || sending) return
     if (isSlashCommand(value, agentSession)) {
-      await runCommand(value)
+      await runCommand(value, files)
       return
     }
     setError(null)
@@ -384,6 +391,15 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
         h('button', {
           type: 'button', role: 'option', 'aria-selected': index === slashIndex, onMouseDown: event => event.preventDefault(), onClick: () => chooseSlash(command),
         }, h('span', { className: 'bt-menu-label' }, t(command.label)), h('span', { className: 'dsb-slash-description' }, t(command.description)))))) : null,
+    permissionMenu ? h('div', { className: 'bt-menu bt-menu-up dsb-slash-menu dsb-permission-menu', role: 'listbox', 'aria-label': t('Permission presets') },
+      permissionMenu.catalog.options.map(option => h('button', {
+        key: option.value,
+        type: 'button',
+        role: 'option',
+        'aria-selected': option.value === permissionMenu.current,
+        onMouseDown: event => event.preventDefault(),
+        onClick: () => { void runCommand(`/permission ${option.value}`) },
+      }, h('span', { className: 'bt-menu-label' }, option.name ?? option.value), option.description ? h('span', { className: 'dsb-slash-description' }, option.description) : null))) : null,
     referenceRequest ? h(ChatReferencePicker, { sessionId, request: referenceRequest, actions, onPick: insertReference }) : null)
 }
 

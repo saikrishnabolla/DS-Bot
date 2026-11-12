@@ -15,7 +15,7 @@ import { createTeam } from './team.js'
 
 // The team's theme and accent.
 function useTheme(prefs) {
-  useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
+  const revision = useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
   useEffect(() => {
     const theme = allThemes()[prefs?.theme] ?? allThemes().deepseek
     const style = document.createElement('style')
@@ -24,7 +24,7 @@ function useTheme(prefs) {
     if (prefs?.motion) document.body.dataset.btMotion = prefs.motion
     else delete document.body.dataset.btMotion
     return () => { style.remove() }
-  }, [prefs?.theme, prefs?.accent, prefs?.motion])
+  }, [prefs?.theme, prefs?.accent, prefs?.motion, revision])
 }
 
 // A dialog or panel that fails closes, and the failure shows as a toast; the window stays.

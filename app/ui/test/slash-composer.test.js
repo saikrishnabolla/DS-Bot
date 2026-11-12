@@ -39,7 +39,10 @@ test('the Agent composer opens, filters and executes slash commands without send
   globalThis.fetch = async (_url, options) => {
     const request = JSON.parse(options.body)
     requests.push(request)
-    return new Response(JSON.stringify({ ok: true, value: { command: request.payload.line.slice(1) } }))
+    const value = request.payload.line === '/permission'
+      ? { command: 'permission', permission: 'workspace-write', permissions: { options: [{ value: 'read-only', name: 'Read only' }, { value: 'workspace-write', name: 'Workspace write' }] } }
+      : { command: request.payload.line.slice(1) }
+    return new Response(JSON.stringify({ ok: true, value }))
   }
   const root = createRoot(dom.window.document.getElementById('root'))
   t.after(() => {
@@ -76,10 +79,18 @@ test('the Agent composer opens, filters and executes slash commands without send
   await type('/co')
   assert.deepEqual([...dom.window.document.querySelectorAll('[role="option"]')].map(node => node.textContent), ['CompactCompact older conversation history'])
   await act(async () => { dom.window.document.querySelector('[role="option"]').click(); await waitImmediate() })
-  assert.deepEqual(requests, [{ endpoint: 'agent-command', payload: { sessionId: 'agent-session', line: '/compact' } }])
+  assert.deepEqual(requests, [{ endpoint: 'agent-command', payload: { sessionId: 'agent-session', line: '/compact', content: [] } }])
   assert.equal(dom.window.document.querySelector('textarea').value, '')
 
   await type('/mod')
   await act(async () => { dom.window.document.querySelector('[role="option"]').click() })
   assert.equal(dom.window.document.querySelector('textarea').value, '/model ')
+
+  await type('/per')
+  await act(async () => { dom.window.document.querySelector('[role="option"]').click(); await waitImmediate() })
+  assert.deepEqual([...dom.window.document.querySelectorAll('[aria-label="Permission presets"] [role="option"]')].map(node => [node.textContent, node.getAttribute('aria-selected')]), [
+    ['Read only', 'false'], ['Workspace write', 'true'],
+  ])
+  await act(async () => { dom.window.document.querySelector('[aria-label="Permission presets"] [role="option"]').click(); await waitImmediate() })
+  assert.equal(requests.at(-1).payload.line, '/permission read-only')
 })

@@ -4,7 +4,7 @@ export const AGENT_SLASH_COMMANDS = [
   { id: 'plan', group: 'add', label: 'Plan', description: 'Enter or leave plan mode', action: 'run', line: '/plan' },
   { id: 'feedback', group: 'add', label: 'Feedback', description: 'Record feedback about this session', action: 'feedback' },
   { id: 'compact', group: 'commands', label: 'Compact', description: 'Compact older conversation history', action: 'run', line: '/compact' },
-  { id: 'permission', group: 'commands', label: 'Permission', description: 'Switch the permission preset (sandbox mode + approval policy)', action: 'draft', draft: '/permission ' },
+  { id: 'permission', group: 'commands', label: 'Permission', description: 'Switch the permission preset (sandbox mode + approval policy)', action: 'run', line: '/permission' },
   { id: 'model', group: 'commands', label: 'Model', description: 'Switch the model', action: 'draft', draft: '/model ' },
   { id: 'export', group: 'commands', label: 'Export', description: 'Download this Session log as a ZIP archive', action: 'run', line: '/export' },
 ]

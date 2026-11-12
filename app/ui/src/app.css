@@ -77,11 +77,12 @@ html[data-mac] .dsb-frame .dsb-side{padding-top:var(--dsb-band)}
 [data-composer-card]:has(.dsb-send:disabled) .bt-voice{display:inline-grid}
 body[data-bt-room] [data-composer-card]:has(.dsb-send:disabled) .bt-mic:not([aria-pressed=true]){background:var(--bt-accent);color:var(--bt-accent-ink,#fff)}
 .dsb-composer-error{margin:0 0 6px 4px;font-size:12px;line-height:16px;color:var(--bt-danger)}
-.dsb-slash-menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);max-height:320px;overflow-y:auto}
+.dsb-composer-wrap>.dsb-slash-menu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);max-height:320px;overflow-y:auto}
 .dsb-slash-menu button{align-items:flex-start;flex-direction:column;gap:0}
 .dsb-slash-menu button[aria-selected=true]{background:var(--bt-hover)}
 .dsb-slash-heading{padding:4px 8px 2px;color:var(--bt-ink-3);font-size:11px;font-weight:600;line-height:16px}
 .dsb-slash-description{color:var(--bt-ink-3);font-size:11px;line-height:16px;white-space:normal}
+.dsb-permission-menu button{align-items:flex-start;flex-direction:column;gap:0}
 
 .dsb-reasoning,.dsb-tool-row{margin:4px 0;padding:7px 10px;border:1px solid var(--bt-line-2);border-radius:10px;background:color-mix(in srgb,var(--bt-card) 80%,transparent);color:var(--bt-ink-2);font-size:13px;line-height:19px}
 .dsb-reasoning summary,.dsb-tool-row summary{cursor:pointer;font-weight:500;color:var(--bt-ink-2)}

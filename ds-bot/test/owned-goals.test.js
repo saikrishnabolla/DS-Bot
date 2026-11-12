@@ -36,12 +36,22 @@ test('owned goals persist each session independently through restart', async t =
   assert.equal(first.phase, 'active')
   assert.deepEqual(goals.get(firstAgent), first)
   assert.deepEqual(goals.get(secondAgent), blocked)
+  const edited = goals.edit(firstAgent, first, { objective: 'edited objective' })
+  const paused = goals.pause(firstAgent, edited)
+  const resumed = goals.resume(firstAgent, paused)
+  assert.equal(edited.id, first.id)
+  assert.equal(edited.objective, 'edited objective')
+  assert.equal(paused.phase, 'paused')
+  assert.equal(resumed.phase, 'active')
+  assert.equal(goals.clear(firstAgent, resumed), true)
+  assert.equal(goals.get(firstAgent), undefined)
+  const recreated = goals.start(firstAgent, { objective: 'recreated objective' })
   await context.close()
 
   context = await open(dataDir, models)
   const restoredFirst = (await context.sessionController.resolveAgent(firstId)).agent
   const restoredSecond = (await context.sessionController.resolveAgent(secondId)).agent
-  assert.deepEqual(context.get('goals').get(restoredFirst), first)
+  assert.deepEqual(context.get('goals').get(restoredFirst), recreated)
   assert.deepEqual(context.get('goals').get(restoredSecond), blocked)
   assert.equal(context.get('goals').block(restoredSecond, second, { code: 'stale', message: 'must not replace the restored goal' }), undefined)
   assert.deepEqual(context.get('goals').get(restoredSecond), blocked)
@@ -50,7 +60,7 @@ test('owned goals persist each session independently through restart', async t =
 
   context = await open(dataDir, models)
   t.after(() => context.close())
-  assert.deepEqual(context.get('goals').get((await context.sessionController.resolveAgent(firstId)).agent), first)
+  assert.deepEqual(context.get('goals').get((await context.sessionController.resolveAgent(firstId)).agent), recreated)
   assert.deepEqual(context.get('goals').get((await context.sessionController.resolveAgent(secondId)).agent), complete)
 })
 

@@ -17,3 +17,11 @@ test('Agent slash lines are intercepted instead of becoming prompts', () => {
   assert.equal(isSlashCommand('/compact', false), false)
   assert.equal(isSlashCommand('explain /compact', true), false)
 })
+
+test('commands that open selectors or accept optional input run their bare form', () => {
+  const commands = agentSlashCommands('/', true)
+  assert.deepEqual(commands.filter(command => ['plan', 'permission'].includes(command.id)).map(command => [command.id, command.action, command.line]), [
+    ['plan', 'run', '/plan'],
+    ['permission', 'run', '/permission'],
+  ])
+})

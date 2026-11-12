@@ -745,6 +745,35 @@ export class OwnedContext {
         goals.set(goalKey(agent), goal)
         return publishGoal(agent, goal)
       },
+      edit: (agent, expected, input) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision || goal.phase === 'complete') return undefined
+        const next = { ...goal, ...input, id: goal.id, revision: goal.revision + 1, phase: goal.phase }
+        goals.set(goalKey(agent), next)
+        return publishGoal(agent, next)
+      },
+      pause: (agent, expected) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision || goal.phase !== 'active') return undefined
+        const next = { ...goal, revision: goal.revision + 1, phase: 'paused' }
+        goals.set(goalKey(agent), next)
+        return publishGoal(agent, next)
+      },
+      resume: (agent, expected) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision || !['paused', 'blocked'].includes(goal.phase)) return undefined
+        const next = { ...goal, revision: goal.revision + 1, phase: 'active' }
+        delete next.error
+        goals.set(goalKey(agent), next)
+        return publishGoal(agent, next)
+      },
+      clear: (agent, expected) => {
+        const goal = goals.get(goalKey(agent))
+        if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision) return false
+        goals.delete(goalKey(agent))
+        publishGoal(agent, null)
+        return true
+      },
       block: (agent, expected, error) => {
         const goal = goals.get(goalKey(agent))
         if (goal === undefined || goal.id !== expected?.id || goal.revision !== expected?.revision) return undefined
