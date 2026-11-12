@@ -181,6 +181,9 @@ export function install(rt) {
   const queueRoomMessage = (roomId, item) => roomInbox.set(roomId, [...(roomInbox.get(roomId) ?? []), item])
   // Member turns of a group round the user stopped: what they end with stays out of the group.
   const stoppedRoomTurns = new Set()
+  // A cancelled Session may not emit turn/end at once. Its exact turn stops counting as
+  // live work meanwhile, and a second Stop cannot claim it again.
+  const stoppedLiveTurns = new Map()
   // Running Cue subagents spawned by each Bot Session: parentSessionId → Map<childId, {childId, label?, since}>.
   /** @type {Map<string, Map<string, {childId:string, label?:string, since:number}>>} */
   const subagentsByParent = new Map()
@@ -198,6 +201,37 @@ export function install(rt) {
   const rememberStopped = (set, value) => {
     set.add(value)
     if (set.size > STOPPED_KEPT) set.delete(set.values().next().value)
+  }
+
+  const isStoppedLiveTurn = (id, entry = live.get(id)) => entry?.turn !== undefined && stoppedLiveTurns.get(id) === entry.turn
+  const claimStoppedLiveTurn = (id, expectedExchangeId) => {
+    const entry = live.get(id)
+    if (entry?.turn === undefined || isStoppedLiveTurn(id, entry)) return undefined
+    if (expectedExchangeId !== undefined && entry.info?.exchangeId !== expectedExchangeId) return undefined
+    stoppedLiveTurns.set(id, entry.turn)
+    const exchangeId = entry.info?.role === 'room' ? entry.info.exchangeId : undefined
+    const exchangeAdded = exchangeId !== undefined && !stoppedRoomTurns.has(exchangeId)
+    if (exchangeAdded) rememberStopped(stoppedRoomTurns, exchangeId)
+    return { turn: entry.turn, exchangeId, exchangeAdded }
+  }
+  const releaseStoppedLiveTurn = (id, claim) => {
+    if (stoppedLiveTurns.get(id) === claim.turn) stoppedLiveTurns.delete(id)
+    if (claim.exchangeAdded) stoppedRoomTurns.delete(claim.exchangeId)
+  }
+  const stopLiveRoomTurn = async (sessionId, expectedExchangeId, reason) => {
+    await stopSubagents(sessionId)
+    const claim = claimStoppedLiveTurn(sessionId, expectedExchangeId)
+    if (claim === undefined) return false
+    try {
+      rt.discardRoomSteps?.(sessionId)
+      const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
+      await agent?.cancel?.(reason)
+      await rt.forgetTurn?.(sessionId, expectedExchangeId ?? claim.exchangeId)
+      return true
+    } catch (error) {
+      releaseStoppedLiveTurn(sessionId, claim)
+      throw error
+    }
   }
 
   const subagentLabelFromCall = (entry) => {
@@ -309,18 +343,11 @@ export function install(rt) {
   // A stopped round stops the member work it started: the turn that answers it, or the
   // delivery still waiting for the member's Session. An earlier turn there keeps going.
   // An exchange whose turn already ended stays in the set, so it is bounded.
-  async function stopRoomTurn(sessionId, exchangeId) {
+  async function stopRoomTurn(sessionId, exchangeId, reason = { kind: 'hook', reason: 'ds-bot/stopped' }) {
     rememberStopped(stoppedRoomTurns, exchangeId)
-    rt.discardRoomSteps?.(sessionId)
-    await stopSubagents(sessionId)
+    if (await stopLiveRoomTurn(sessionId, exchangeId, reason)) return
     const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
     if (agent === undefined) {
-      await rt.forgetTurn?.(sessionId, exchangeId)
-      return
-    }
-    const entry = live.get(sessionId)
-    if (entry?.turn !== undefined && entry.info?.exchangeId === exchangeId) {
-      await agent.cancel({ kind: 'hook', reason: 'ds-bot/stopped' })
       await rt.forgetTurn?.(sessionId, exchangeId)
       return
     }
@@ -481,7 +508,7 @@ export function install(rt) {
     }
     for (const [id, value] of Object.entries(activity)) {
       const owner = rt.groupOwners.get(id)
-      if (owner !== undefined) merged[owner.botId] ??= value
+      if (owner !== undefined && !isStoppedLiveTurn(id)) merged[owner.botId] ??= value
     }
     for (const [id, map] of subagentsByParent) {
       if (map.size === 0) continue
@@ -524,7 +551,7 @@ export function install(rt) {
   const workView = () => {
     const bots = {}
     for (const [id, entry] of live) {
-      if (entry.turn === undefined) continue
+      if (entry.turn === undefined || isStoppedLiveTurn(id, entry)) continue
       const owner = rt.groupOwners.get(id)
       const botId = owner?.botId ?? rt.chatOwners.get(id)
       if (botId === undefined || (owner !== undefined && bots[botId] !== undefined)) continue
@@ -551,13 +578,13 @@ export function install(rt) {
 
   // Per Session, when its running turn began.
   const turnsView = () => Object.fromEntries([...live]
-    .filter(([, entry]) => entry.turn !== undefined && entry.since !== undefined)
+    .filter(([id, entry]) => entry.turn !== undefined && entry.since !== undefined && !isStoppedLiveTurn(id, entry))
     .map(([id, entry]) => [id, entry.since]))
 
   // Per Session, when the user last steered its running turn: the input the
   // activity row's phrase and clock restart from.
   const steeredView = () => Object.fromEntries([...live]
-    .filter(([, entry]) => entry.turn !== undefined && entry.steeredAt !== undefined)
+    .filter(([id, entry]) => entry.turn !== undefined && entry.steeredAt !== undefined && !isStoppedLiveTurn(id, entry))
     .map(([id, entry]) => [id, entry.steeredAt]))
 
   // Per group, the members whose turn there is running or who move on to a fresh part;
@@ -572,7 +599,7 @@ export function install(rt) {
     }
     for (const [id, entry] of live) {
       const owner = rt.groupOwners.get(id)
-      if (entry.turn !== undefined && owner !== undefined) add(owner.roomId, owner.botId, { since: entry.since, ...doingOf(entry) })
+      if (entry.turn !== undefined && owner !== undefined && !isStoppedLiveTurn(id, entry)) add(owner.roomId, owner.botId, { since: entry.since, ...doingOf(entry) })
     }
     for (const [id] of subagentsByParent) {
       const owner = rt.groupOwners.get(id)
@@ -747,6 +774,7 @@ export function install(rt) {
         endCall(id, entry, event.data?.callId)
         break
       case 'turn/start':
+        stoppedLiveTurns.delete(id)
         setActivity(id, 'thinking')
         entry.turn = event.data.turn
         entry.since = event.time ?? Date.now()
@@ -979,6 +1007,7 @@ export function install(rt) {
         break
       }
       case 'turn/end': {
+        stoppedLiveTurns.delete(id)
         setActivity(id, undefined)
         // A steer cut leaves the turn's routing state for the fresh turn that
         // claims the steer: nothing is answered or delivered for the cut one.
@@ -1245,5 +1274,10 @@ export function install(rt) {
     }, 'ds-bot: prompt rejection reasons')
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
+  Object.assign(rt, {
+    live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf,
+    stopRoomTurn, stopMemberRoomTurn: sessionId => stopLiveRoomTurn(sessionId, undefined, { kind: 'user' }),
+    roomTurnRunning: sessionId => live.get(sessionId)?.turn !== undefined && !isStoppedLiveTurn(sessionId),
+    stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork,
+  })
 }

@@ -31,7 +31,7 @@ const seed = (room = {}, extraRooms = {}, bots = {}, top = {}) => ({
   ...top,
 })
 
-async function start(t, room, services, extraRooms, bots, llm, top, files = {}) {
+async function start(t, room, services, extraRooms, bots, llm, top, files = {}, modelBoundary) {
   const home = mkdtempSync(join(tmpdir(), 'ds-bot-work-'))
   writeFileSync(join(home, 'state.json'), JSON.stringify(seed(room, extraRooms, bots, top)))
   for (const [name, value] of Object.entries(files)) writeFileSync(join(home, name), JSON.stringify(value))
@@ -70,7 +70,7 @@ async function start(t, room, services, extraRooms, bots, llm, top, files = {}) 
   let route
   const register = ctx.connection.fetch.register
   ctx.connection.fetch.register = (options) => { route = options; return register(options) }
-  rt = createRuntime(ctx, { home })
+  rt = createRuntime(ctx, { home, ...(modelBoundary === undefined ? {} : { modelBoundary }) })
   t.after(async () => {
     await ctx.dispose()
     rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
@@ -1091,6 +1091,34 @@ test('a failed group ledger write leaves the room sequence and log unchanged', a
   assert.deepEqual([room.seq, room.log], [0, []])
 })
 
+test('queued group lines do not pass a failed predecessor or leave a sequence gap', async (t) => {
+  let releaseFirst
+  const firstWrite = new Promise(resolve => { releaseFirst = resolve })
+  let writes = 0
+  await start(t, undefined, undefined, undefined, undefined, undefined, undefined, {}, {
+    appendLedgerFile: async (path, line) => {
+      writes += 1
+      if (writes === 1) {
+        await firstWrite
+        throw new Error('disk full')
+      }
+      writeFileSync(path, line, { flag: 'a' })
+    },
+  })
+  const room = rt.roomOf('r1')
+  const first = rt.logRoom(room, { who: 'User', text: 'first' })
+  const second = rt.logRoom(room, { who: 'User', text: 'second' })
+  assert.deepEqual([first.seq, second.seq], [1, 2])
+  releaseFirst()
+  await assert.rejects(rt.roomLineWritten(first), /disk full/)
+  await assert.rejects(rt.roomLineWritten(second), /disk full/)
+  assert.deepEqual([writes, room.seq, room.log, rt.ledger.records('group-r1')], [1, 0, [], []])
+
+  const recovered = rt.logRoom(room, { who: 'User', text: 'after failure' })
+  await rt.roomLineWritten(recovered)
+  assert.deepEqual([writes, recovered.seq, room.seq, room.log.map(line => line.seq), rt.ledger.records('group-r1').map(line => line.seq)], [2, 1, 1, [1], [1]])
+})
+
 // #592: stopping only the round left a member the round moved on from working. The round
 // runs in Cue, not in the group's Session, so the Session has nothing to cancel.
 test('one press stops the group\'s round and every member at work there, and nothing elsewhere', async (t) => {
@@ -1117,6 +1145,23 @@ test('one press stops the group\'s round and every member at work there, and not
   await settle(() => after() !== undefined)
   assert.deepEqual(logLines(host).map(line => [line.who, line.kind]), [['User', undefined], ['Chief', 'stopped'], ['Writer', 'stopped']])
   assert.deepEqual([...kinds(first()), ...kinds(after())].filter(([kind]) => kind === 'stopped'), [['stopped', 'Chief'], ['stopped', 'Writer']])
+})
+
+test('one room Stop clears live work and a second Stop does nothing', async (t) => {
+  const host = await start(t)
+  host.round('c1', host.say('@Writer 做任务'))
+  await settle(() => host.agentOf('gb').calls.length === 1)
+  host.begin('gb')
+  assert.deepEqual(rt.roomWorkView().r1?.map(entry => entry.botId), ['b'])
+
+  const first = await host.call('stop-room-work', { roomId: 'r1' })
+  assert.deepEqual([first.ok, first.value], [true, true])
+  assert.equal(rt.roomWorkView().r1, undefined)
+  assert.equal(host.agentOf('gb').cancelled.length, 1)
+
+  const second = await host.call('stop-room-work', { roomId: 'r1' })
+  assert.deepEqual([second.ok, second.value], [true, false])
+  assert.equal(host.agentOf('gb').cancelled.length, 1)
 })
 
 test('a member that cannot be stopped leaves the others stopped and reports the failure', async (t) => {

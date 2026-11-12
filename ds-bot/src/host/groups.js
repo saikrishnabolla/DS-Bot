@@ -275,21 +275,25 @@ export function install(rt) {
   }
 
   const roomLineListeners = new Set()
-  const roomLineWrites = new WeakMap()
+  const roomLineQueues = new WeakMap()
   const roomLineWrite = new WeakMap()
-  const roomNextSeq = new WeakMap()
   // The one way anything is said in a group: into its book, then into the room's log for
   // the members' turns. `session` marks a message the group's own Session shows already.
   const say = (room, line) => {
     ensureRoomLog(room)
-    const seq = (roomNextSeq.get(room) ?? room.seq) + 1
-    roomNextSeq.set(room, seq)
+    let queue = roomLineQueues.get(room)
+    if (queue === undefined) {
+      queue = { tail: Promise.resolve(), pending: 0, nextSeq: room.seq }
+      roomLineQueues.set(room, queue)
+    }
+    const seq = queue.nextSeq + 1
+    queue.nextSeq = seq
+    queue.pending += 1
     const record = { ...line, seq, time: line.time ?? Date.now() }
     const book = bookOf(room.id)
-    rt.ledger.append(book, record)
-    const durable = rt.ledger.written(book)
-    const commit = (roomLineWrites.get(room) ?? Promise.resolve()).then(async () => {
-      await durable
+    const commit = queue.tail.then(async () => {
+      rt.ledger.append(book, record)
+      await rt.ledger.written(book)
       room.seq = record.seq
       if (!memberLine(record)) return
       room.log = [...room.log, cutLine(record)].slice(-ROOM_LOG_MAX)
@@ -298,9 +302,14 @@ export function install(rt) {
       }
     })
     roomLineWrite.set(record, commit)
-    roomLineWrites.set(room, commit.catch(() => {
-      if (roomNextSeq.get(room) === record.seq) roomNextSeq.set(room, room.seq)
-    }))
+    queue.tail = commit
+    const settled = () => {
+      queue.pending -= 1
+      if (queue.pending !== 0) return
+      queue.tail = Promise.resolve()
+      queue.nextSeq = room.seq
+    }
+    void commit.then(settled, settled)
     return record
   }
 
@@ -357,7 +366,7 @@ export function install(rt) {
     keepGroupLine, dropGroupLines, groupRows, groupRowsView: rowsView,
     logRoom: (room, line) => say(room, line),
     roomLineWritten: record => roomLineWrite.get(record) ?? Promise.resolve(),
-    roomLinesWritten: room => roomLineWrites.get(room) ?? Promise.resolve(),
+    roomLinesWritten: room => roomLineQueues.get(room)?.tail ?? Promise.resolve(),
     groupRow: rowOf,
     onRoomLine: (listener) => {
       roomLineListeners.add(listener)
@@ -1169,6 +1178,7 @@ export function install(rt) {
         }
         leaveBatch(room, batch, member.id)
         if (batch.pending.length === 0 && batch.done.length > 0 && batch.worked && !batch.answered && !signal.aborted) {
+          await rt.roomLinesWritten(room)
           const caller = rt.botOf(batch.by)
           const wake = { names: [...batch.done], results: [...batch.results] }
           // A caller still waiting in this round starts with the results. One still in its
@@ -1200,8 +1210,10 @@ export function install(rt) {
   // A round still finishing is stopped too: what waits on it then waits for the group's
   // next message instead of starting.
   const stoppedFinishing = new Set()
-  rt.stopRoomRound = (roomId) => {
+  rt.stopRoomRound = (roomId, reason, barrier) => {
     const round = runningRound(roomId)
+    if (round !== undefined && reason !== undefined) round.stopReason = reason
+    if (round !== undefined && barrier !== undefined) round.stopBarrier = barrier
     round?.abort.abort()
     if (finalizing.has(roomId)) stoppedFinishing.add(roomId)
     return round !== undefined || finalizing.has(roomId)
@@ -1398,6 +1410,8 @@ export function install(rt) {
       passed: [],
       failed: [],
       started: [],
+      ...(holder.stopReason === undefined ? {} : { stopReason: holder.stopReason }),
+      ...(holder.stopBarrier === undefined ? {} : { stopBarrier: holder.stopBarrier }),
     }
     // A status post of its own is not an idle step: what its members answer is. A post
     // with work in it clears the streak, and a paused room holds the post back.
@@ -1423,6 +1437,7 @@ export function install(rt) {
     } catch (error) {
       rt.warn('ds-bot: group round in %s stopped: %s', room.name, error)
     } finally {
+      await round.stopBarrier
       finalizing.add(room.id)
       rt.roomProgress.delete(key)
       await rt.roomLinesWritten(room)
@@ -1434,7 +1449,7 @@ export function install(rt) {
       if (signal.aborted) {
         await Promise.all(round.started.map(async turn => {
           try {
-            await rt.stopRoomTurn?.(room.sessions?.[turn.botId] ?? turn.sessionId, turn.exchangeId)
+            await rt.stopRoomTurn?.(room.sessions?.[turn.botId] ?? turn.sessionId, turn.exchangeId, round.stopReason)
           } catch (error) {
             rt.warn('ds-bot: stopping a turn of the round in %s failed: %s', room.name, error)
           }
@@ -1666,7 +1681,8 @@ export function install(rt) {
   // once, and the members it calls start in that round, so it is not held back until
   // the round ends and never sits in the group Session's QueueDock (#663).
   async function postToRoom(room, sender, text, extra = {}, files = []) {
-    const running = [...rt.roomProgress.values()].find(round => round.roomId === room.id && round.nudge !== undefined)
+    const running = [...rt.roomProgress.values()].find(round => round.roomId === room.id
+      && (round.nudge !== undefined || (extra.roundStop === true && round.stopBarrier !== undefined)))
     if (running !== undefined) {
       if (extra.failed !== undefined) {
         // A failed model call is in the log already (noteFailure); the round names it.
@@ -1837,18 +1853,18 @@ export function install(rt) {
     const room = rt.roomOf(roomId)
     const member = rt.botOf(botId)
     const sessionId = rt.own(room?.sessions, botId)
-    const turnRunning = sessionId !== undefined && rt.live.get(sessionId)?.turn !== undefined
+    const turnRunning = sessionId !== undefined && (rt.roomTurnRunning?.(sessionId) ?? rt.live.get(sessionId)?.turn !== undefined)
     const subRunning = sessionId !== undefined && rt.hasSubagents?.(sessionId) === true
     if (room === undefined || member === undefined || sessionId === undefined || (!turnRunning && !subRunning)) return false
+    const roundStop = [...rt.roomProgress.values()].some(round => round.roomId === room.id
+      && round.started?.some(turn => turn.sessionId === sessionId || room.sessions?.[turn.botId] === sessionId))
     dropMemberFromBatch(room, botId)
     rt.discardRoomSteps(sessionId)
-    await rt.stopSubagents?.(sessionId)
     if (turnRunning) {
-      const agent = await rt.resolveAgent(sessionId)
-      await agent.cancel({ kind: 'user' })
-    }
+      await rt.stopMemberRoomTurn?.(sessionId)
+    } else await rt.stopSubagents?.(sessionId)
     rt.goalTaskReset?.(roomId, botId, 'Stopped by the user')
-    await postToRoom(room, member, '', { quiet: true, stopped: true })
+    await postToRoom(room, member, '', { quiet: true, stopped: true, ...(roundStop ? { roundStop: true } : {}) })
     await rt.forgetTurn?.(sessionId)
     return true
   }
@@ -1873,10 +1889,19 @@ export function install(rt) {
         return false
       }
     }
-    const round = rt.roomActive(room.id)
-    if (round) await attempt(async () => rt.stopRoomRound(room.id))
+    const running = runningRound(room.id) !== undefined
+    const round = running || finalizing.has(room.id)
+    const stoppingRounds = running ? rt.roomRounds(room.id) : []
+    let releaseRoundStop
+    const roundStop = running ? new Promise(resolve => { releaseRoundStop = resolve }) : undefined
+    if (round) rt.stopRoomRound(room.id, { kind: 'user' }, roundStop)
     let stopped = false
-    for (const botId of room.members) stopped = (await attempt(() => stopMemberWork(room.id, botId))) || stopped
+    try {
+      for (const botId of room.members) stopped = (await attempt(() => stopMemberWork(room.id, botId))) || stopped
+    } finally {
+      releaseRoundStop?.()
+    }
+    if (running) await attempt(async () => { await Promise.all(stoppingRounds); return true })
     if (failures.length > 0) throw failures[0]
     return round || stopped
   }
