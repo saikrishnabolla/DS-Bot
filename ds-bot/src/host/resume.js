@@ -129,11 +129,11 @@ export function install(rt) {
   let due = false
   const persist = () => {
     // Only the host that saves the team runs its work again.
-    if (stopped || rt.readOnly() !== undefined) return
+    if (stopped || rt.readOnly() !== undefined) return writing
     latest = JSON.stringify({ turns, queued })
     // One write waits at a time and takes the latest notes, so a busy round does not
     // write the file once per change.
-    if (due) return
+    if (due) return writing
     due = true
     // Written in place: a rename over the file fails on Windows while anything reads
     // it, and a torn write only loses what one restart would pick up.
@@ -143,6 +143,7 @@ export function install(rt) {
       await mkdir(home, { recursive: true })
       await writeFile(file, snapshot, 'utf8')
     }).catch(error => rt.warn('ds-bot: noting running turns failed: %s', error))
+    return writing
   }
   const update = (id, change) => {
     const next = change(turns[id])
@@ -186,6 +187,10 @@ export function install(rt) {
   // What a Session was sent and no turn has read yet.
   rt.unreadOf = sessionId => (queued[sessionId] ?? []).map(item => item.args)
   rt.forgetDelivery = forgetQueued
+  rt.forgetTurn = async (sessionId, exchangeId) => {
+    update(sessionId, record => (exchangeId === undefined || record?.trigger?.exchangeId === exchangeId ? undefined : record))
+    await writing
+  }
 
   // A message is done with once a turn takes it up, or once it leaves the inbox untaken
   // while Cue runs: the user stopped the Bot, or Cue moved or withdrew it.
@@ -451,11 +456,16 @@ export function install(rt) {
     for (const [sessionId, record] of cut) {
       await resumeTurn(sessionId, record).catch(error => rt.warn('ds-bot: picking up the turn of %s failed: %s', sessionId, error))
     }
+    // What a group's members were asked for and will not pick up is settled now.
+    await rt.settleRoomBatches?.()
   }
 
   ctx.effect(() => {
     const pending = Object.keys(interrupted.turns).length > 0 || Object.keys(interrupted.queued).length > 0
-    const timer = pending ? setTimeout(() => void resumeAll().catch(error => rt.warn('ds-bot: picking up interrupted work failed: %s', error)), RESUME_DELAY_MS) : undefined
+    // With nothing to pick up, the group batches a restart left are settled at once.
+    const timer = pending
+      ? setTimeout(() => void resumeAll().catch(error => rt.warn('ds-bot: picking up interrupted work failed: %s', error)), RESUME_DELAY_MS)
+      : setTimeout(() => void rt.load().then(() => rt.settleRoomBatches?.()).catch(error => rt.warn('ds-bot: settling group batches failed: %s', error)), 0)
     timer?.unref?.()
     // What the turns stopped by this shutdown left stays as last noted.
     return () => {

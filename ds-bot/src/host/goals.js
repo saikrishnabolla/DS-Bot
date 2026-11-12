@@ -508,13 +508,11 @@ export function install(rt) {
     return memberLines(room, goal, member).lines.join('\n')
   }
 
-  // Every non-task change is a group event: a notice in the log the members read,
-  // and a goal reply in every running round of the room for the client.
-  const announce = (room, reply) => {
-    rt.logRoom?.(room, { who: 'Cue', kind: 'notice', reason: 'goal', ...reply })
-    for (const round of rt.roomProgress.values()) {
-      if (round.roomId === room.id) round.replies.push({ kind: 'goal', ...reply, time: Date.now() })
-    }
+  // Every non-task change is a group event: a notice the members read, which the
+  // group chat shows as a goal row.
+  const announce = async (room, reply) => {
+    const record = rt.logRoom?.(room, { who: 'Cue', kind: 'notice', reason: 'goal', ...reply })
+    await rt.roomLineWritten?.(record)
   }
 
   // A goal message into the room's own Session, which relays it as a new round:
@@ -541,7 +539,7 @@ export function install(rt) {
     }
     const result = draftGoal(room, { brief: input, by: 'user' })
     if (result.error !== undefined) return { error: result.error }
-    announce(room, result.reply)
+    await announce(room, result.reply)
     await rt.save()
     await queueGoalRelay(room, 'draft', `[Goal request]\n${input}`)
     return {}
@@ -558,7 +556,7 @@ export function install(rt) {
     if (action === 'pause') {
       if (goal.status !== 'active') return { error: wrongState(room, goal, 'pause', 'active') }
       const result = pauseGoal(room, 'user')
-      announce(room, result.reply)
+      await announce(room, result.reply)
       await rt.save()
       if (body.stopWork === true) await rt.stopRoomWork(room.id)
       return {}
@@ -566,7 +564,7 @@ export function install(rt) {
     if (action === 'resume') {
       if (goal.status !== 'paused') return { error: wrongState(room, goal, 'resume', 'paused') }
       const result = resumeGoal(room, 'user')
-      announce(room, result.reply)
+      await announce(room, result.reply)
       await rt.save()
       await queueGoalRelay(room, 'resume', '[Goal resumed]')
       return {}
@@ -574,7 +572,7 @@ export function install(rt) {
     if (action === 'stop') {
       if (!['drafting', 'active', 'paused'].includes(goal.status)) return { error: wrongState(room, goal, 'stop', 'drafting, active or paused') }
       const result = stopGoal(room, 'Stopped by the user', 'user')
-      announce(room, result.reply)
+      await announce(room, result.reply)
       await rt.save()
       await rt.stopRoomWork(room.id)
       return {}
@@ -795,7 +793,7 @@ export function install(rt) {
           return `Unknown action ${action}.`
       }
       if (result.error !== undefined) return result.error
-      if (result.reply !== undefined) announce(room, result.reply)
+      if (result.reply !== undefined) await announce(room, result.reply)
       await rt.save()
       if (post !== undefined) await post()
       const ledger = goalLedger(room, member)

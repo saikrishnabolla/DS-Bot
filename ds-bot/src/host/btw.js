@@ -7,7 +7,7 @@
 // team writes them.
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { BlockAssembler } from '../engine/messages.js'
+import { assembleAuxiliaryModel } from '../engine/auxiliary-model.js'
 import { replaceFile } from './files.js'
 
 export const RESTART_ERROR = 'Cue restarted before this answer finished.'
@@ -158,16 +158,16 @@ export async function callAside(ctx, rt, snapshot, { extra = [], question, promp
     ...extra,
     { role: 'user', content: [{ type: 'text', text: promptFor(question, retry) }] },
   ], { sessionId: snapshot.sessionId, kind })
-  const assembler = new BlockAssembler()
   const tools = snapshot.header?.tools
-  for await (const chunk of ctx.llm.stream({
+  const callOptions = {
     ...snapshot.header?.config,
     messages,
     toolHistory: snapshot.toolHistory,
     ...(tools ? { tools: [...tools] } : {}),
     sessionId: snapshot.sessionId,
     signal,
-  })) assembler.push(chunk)
+  }
+  const assembler = await (rt?.assembleLlm ? rt.assembleLlm(callOptions) : assembleAuxiliaryModel(ctx, callOptions))
   const finish = assembler.finish
   if (finish.kind === 'error' || finish.kind === 'aborted') {
     return { failed: finish.failure?.message ?? finish.kind }

@@ -59,6 +59,14 @@ export function install(rt) {
   const offSaved = rt.onSaved(() => {
     if (active()) publish('revision', { revision: state.revision })
   })
+  const offRoomLine = rt.onRoomLine((room, record) => {
+    if (!active() || record.session === true) return
+    for (const item of rt.groupLineItems(record)) publish('message', {
+      roomId: room.id,
+      sessionId: rt.sessionOfRoom(room),
+      item,
+    })
+  })
 
   let liveTimer
   const live = () => {
@@ -146,6 +154,7 @@ export function install(rt) {
       clearInterval(keepalive)
       clearTimeout(liveTimer)
       offSaved()
+      offRoomLine()
       offOwnedFeed()
       listeners.clear()
       for (const controller of clients) leave(controller)

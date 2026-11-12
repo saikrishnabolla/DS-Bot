@@ -4,7 +4,7 @@
 // prompt cache still hits.
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { BlockAssembler } from '../engine/messages.js'
+import { assembleAuxiliaryModel } from '../engine/auxiliary-model.js'
 import { OCR_CACHE_MAX, OCR_PROMPT, OCR_RETRY_MS, OCR_TIMEOUT_MS } from './constants.js'
 import { replaceFile } from './files.js'
 import { splitRef } from './text.js'
@@ -91,15 +91,15 @@ export function install(rt) {
   async function readImage(attachment, sessionId) {
     const route = await ocrRoute()
     if (route === undefined) throw new Error('no vision model is available')
-    const assembler = new BlockAssembler()
-    for await (const chunk of ctx.llm.stream({
+    const callOptions = {
       provider: route.provider,
       model: route.model,
       sessionId,
       messages: rt.tagUsage([{ role: 'user', content: [{ type: 'image', attachment }, { type: 'text', text: OCR_PROMPT }] }], { sessionId, kind: 'image' }),
       maxTokens: 8192,
       signal: AbortSignal.timeout(OCR_TIMEOUT_MS),
-    })) assembler.push(chunk)
+    }
+    const assembler = await (rt.assembleLlm ? rt.assembleLlm(callOptions) : assembleAuxiliaryModel(ctx, callOptions))
     const finish = assembler.finish
     if (finish.kind === 'error' || finish.kind === 'aborted') throw new Error(finish.failure?.message ?? finish.kind)
     const text = assembler.blocks().filter(block => block.type === 'text').map(block => block.text).join('\n').trim()
