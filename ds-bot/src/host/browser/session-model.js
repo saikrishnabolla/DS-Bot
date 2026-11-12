@@ -1,11 +1,11 @@
 import {
-  BlockAssembler,
   createAssistantMessage,
   createSystemMessage,
   createToolResultMessage,
   createUserMessage,
   parseToolArguments,
 } from '../../engine/messages.js'
+import { assembleAuxiliaryModel } from '../../engine/auxiliary-model.js'
 
 const NO_SESSION_MODEL = 'browser_task needs a Bot session model'
 const OMITTED_IMAGE = '[Browser screenshot omitted.]'
@@ -179,14 +179,14 @@ export function sessionComplete(ctx, exec, rt) {
     const requestMessages = typeof rt?.tagUsage === 'function'
       ? rt.tagUsage(converted.messages, { sessionId, kind: 'browser-task' })
       : converted.messages
-    const assembler = new BlockAssembler()
-    for await (const chunk of ctx.llm.stream({
+    const callOptions = {
       ...header.config,
       messages: requestMessages,
       tools: driverTools(tools),
       sessionId,
       signal: exec.signal,
-    })) assembler.push(chunk)
+    }
+    const assembler = await (rt?.assembleLlm ? rt.assembleLlm(callOptions) : assembleAuxiliaryModel(ctx, callOptions))
     const finish = assembler.finish
     if (finish.kind === 'error' || finish.kind === 'aborted') {
       throw new Error(finish.failure?.message ?? finish.kind)

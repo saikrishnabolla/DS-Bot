@@ -2,6 +2,7 @@
 // only in its settings or by a Main Bot. The team's first Main Bot has none until the
 // user picks one in its chat. The Session keeps the selection durably.
 import { normalize, splitRef } from './text.js'
+import { assembleAuxiliaryModel, auxiliaryRetryPolicy } from '../engine/auxiliary-model.js'
 
 const CATALOG_TTL_MS = 10_000
 const ROUTE_WAIT_MS = 30_000
@@ -310,9 +311,16 @@ export function install(rt) {
     if (bot !== undefined) await applyModel(bot, { force: true })
   }
 
+  const lifetime = new AbortController()
+  ctx.effect?.(() => () => { lifetime.abort() }, 'ds-bot: auxiliary model calls')
+  const assembleLlm = options => assembleAuxiliaryModel(ctx, options, {
+    signal: lifetime.signal,
+    policy: auxiliaryRetryPolicy(rt.config?.auxiliaryModelRetry),
+  })
+
   Object.assign(rt, {
     catalog, cachedCatalog: () => answerable(catalogCache.value), cachedDefault: () => pickDefault(catalogCache.value),
     defaultRef, defaultModel, defaultBotModel, defaultEffort, isUsable, resolveModel, desiredModel, reasoningOf, resolveEffort, desiredEffort,
-    selectSessionModel, applyModel, waitForModel, syncModels, routeRefused, dropCatalog,
+    selectSessionModel, applyModel, waitForModel, syncModels, routeRefused, dropCatalog, assembleLlm,
   })
 }
