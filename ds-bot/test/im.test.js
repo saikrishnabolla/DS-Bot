@@ -174,6 +174,27 @@ test('unpaired DM asks once, allow pairs it, next message prompts the Bot', asyn
   assert.deepEqual(s.prompts[0].content, [{ type: 'text', text: 'do a thing' }])
 })
 
+test('IM server replies follow all eight interface locales', async (t) => {
+  const s = await start()
+  t.after(s.stop)
+  await add(s)
+  const cases = [
+    ['en', 'A connection request was sent to Cue'],
+    ['zh-CN', '已向 Cue 发出连接请求'],
+    ['zh-TW', '已向 Cue 發出連線請求'],
+    ['ja', 'Cue に接続リクエストを送信しました'],
+    ['ko', 'Cue에 연결 요청을 보냈습니다'],
+    ['es', 'Se envió una solicitud de conexión a Cue'],
+    ['fr', 'Une demande de connexion a été envoyée à Cue'],
+    ['de', 'Eine Verbindungsanfrage wurde an Cue gesendet'],
+  ]
+  for (const [index, [locale, expected]] of cases.entries()) {
+    await s.rt.handle('state', { locale })
+    await dm(s, `locale-${index}`, 'hello')
+    assert.match(s.fake.sent.at(-1).text, new RegExp(expected))
+  }
+})
+
 test('unbound group mention replies unbound and records the chat; binding routes mentions', async (t) => {
   const s = await start()
   t.after(s.stop)
