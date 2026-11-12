@@ -1046,6 +1046,51 @@ test('the user stops a member\'s work in a group, and the group shows it', async
   assert.deepEqual(log.map(line => [line.who, line.kind]), [['Writer', 'stopped']])
 })
 
+test('stopping a member discards step text still buffered for the group', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const host = await start(t)
+  host.emit('gb', 'turn/start', { turn: 1 })
+  const info = { role: 'post', roomId: 'r1' }
+  await rt.roomStepText('gb', info, 'first update', false)
+  await settle(() => host.agentOf('r1').calls.length === 1)
+  host.takePost()
+  await rt.roomStepText('gb', info, 'must be discarded', false)
+  assert.equal(host.agentOf('r1').calls.length, 0)
+  const cancel = host.agentOf('gb').cancel.bind(host.agentOf('gb'))
+  let release
+  const cancelling = new Promise((resolve) => { release = resolve })
+  host.agentOf('gb').cancel = async reason => { cancel(reason); await cancelling }
+  let stopped = false
+  const stopping = host.call('stop-member-work', { roomId: 'r1', botId: 'b' }).then(result => { stopped = true; return result })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(stopped, false)
+  t.mock.timers.tick(ROOM_STEP_GAP_MS)
+  await settle(() => true)
+  assert.equal(host.agentOf('r1').calls.length, 0)
+  release()
+  assert.equal((await stopping).value, true)
+  await settle(() => host.agentOf('r1').calls.length === 1)
+  const post = host.takePost()
+  assert.equal(post.source.stopped, true)
+  t.mock.timers.tick(ROOM_STEP_GAP_MS)
+  await settle(() => true)
+  assert.equal(host.agentOf('r1').calls.length, 0)
+})
+
+test('a failed group ledger write leaves the room sequence and log unchanged', async (t) => {
+  await start(t)
+  let fail
+  const durable = new Promise((_resolve, reject) => { fail = reject })
+  const written = rt.ledger.written
+  rt.ledger.written = book => book === 'group-r1' ? durable : written(book)
+  const room = rt.roomOf('r1')
+  const record = rt.logRoom(room, { who: 'User', text: 'wait for disk' })
+  assert.deepEqual([room.seq, room.log], [0, []])
+  fail(new Error('disk full'))
+  await assert.rejects(rt.roomLineWritten(record), /disk full/)
+  assert.deepEqual([room.seq, room.log], [0, []])
+})
+
 // #592: stopping only the round left a member the round moved on from working. The round
 // runs in Cue, not in the group's Session, so the Session has nothing to cancel.
 test('one press stops the group\'s round and every member at work there, and nothing elsewhere', async (t) => {
@@ -1985,6 +2030,7 @@ async function resultBeforeLongWait(t, filler = 70, result = 'R2-TESTER：测试
   const room = rt.roomOf('r1')
   const seq = room.log.find(line => line.who === 'Tester').seq
   for (let i = 0; i < filler; i += 1) rt.logRoom(room, { who: 'Tester', botId: 'c', text: `闲聊 ${i}` })
+  await rt.roomLinesWritten(room)
   assert.equal(room.log.some(line => line.seq === seq), filler < 60)
   await settle(() => true)
   return { host, seq }
@@ -2107,6 +2153,7 @@ test('a batch whose last member fails wakes the caller with the results of the o
   await relay()
   const room = rt.roomOf('r1')
   for (let i = 0; i < 12; i += 1) rt.logRoom(room, { who: 'Tester', botId: 'c', text: `闲聊 ${i}` })
+  await rt.roomLinesWritten(room)
   host.emit('gc', 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'RATE_LIMIT', status: 429, message: 'Too many requests' } } })
   await settle(() => host.agentOf('r1').calls.length === 1)
   const post = host.takePost()
@@ -2230,6 +2277,32 @@ test('a batch wake says which member finished with no closing message of its own
 })
 
 // A batch is saved with the team, so who still owes whom survives a restart.
+test('a mention batch is saved before its member starts work', async (t) => {
+  const host = await start(t)
+  const first = host.round('c1', host.say('@Chief 安排一下'))
+  await settle(() => host.agentOf('ga').calls.length === 1)
+  host.begin('ga')
+  const save = rt.save
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  let saving
+  const saveStarted = new Promise((resolve) => { saving = resolve })
+  rt.save = async (options) => {
+    saving()
+    await gate
+    return save(options)
+  }
+  host.finish('ga', '@Writer 整理文档')
+  await saveStarted
+  for (let at = 0; at < 20; at += 1) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(host.agentOf('gb').calls.length, 0)
+  release()
+  await settle(() => host.agentOf('gb').calls.length === 1)
+  host.begin('gb')
+  host.finish('gb', '文档好了')
+  await settle(() => first() !== undefined)
+})
+
 test('a call batch is saved with the team while its member works', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const host = await start(t)
@@ -2367,6 +2440,7 @@ test('two calls that start at the same seq each show only their own rows', async
   rt.ledger.append('group-r1', { event: 'anchor', id: 'one', from: 1, time: 1 })
   rt.ledger.append('group-r1', { event: 'anchor', id: 'two', from: 1, time: 2 })
   rt.logRoom(rt.roomOf('r1'), { who: 'Writer', botId: 'b', text: '回答第二次' })
+  await rt.roomLinesWritten(rt.roomOf('r1'))
   assert.deepEqual(rt.groupRows('r1', 1, undefined, 'one'), [])
   assert.deepEqual(rt.groupRows('r1', 1, undefined, 'two').map(row => row.text), ['回答第二次'])
 })

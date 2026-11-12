@@ -39,6 +39,7 @@ export function install(rt) {
   const dir = join(rt.home, 'ledger')
   const pathOf = book => join(dir, bookFile(book))
   const writes = () => rt.readOnly?.() === undefined
+  const appendLedgerFile = rt.appendLedgerFile ?? appendFile
 
   /** @type {Map<string, { records: object[], bySeq: Map<number, object>, size: number }>} */
   const books = new Map()
@@ -106,12 +107,14 @@ export function install(rt) {
     entry.records.push(record)
     if (Number.isInteger(record.seq)) entry.bySeq.set(record.seq, record)
     if (!writes()) return record
-    const line = `${entry.torn ? '\n' : ''}${JSON.stringify(record)}\n`
-    entry.torn = false
-    entry.size += Buffer.byteLength(line)
     const run = (writing.get(book) ?? Promise.resolve()).then(async () => {
       await mkdir(dir, { recursive: true })
-      await appendFile(pathOf(book), line, 'utf8')
+      // A queued predecessor may have torn after this record was queued. Decide the
+      // separator only now, once that predecessor has settled.
+      const line = `${entry.torn ? '\n' : ''}${JSON.stringify(record)}\n`
+      await appendLedgerFile(pathOf(book), line, 'utf8')
+      entry.torn = false
+      entry.size += Buffer.byteLength(line)
     })
     lastWrite.set(book, run)
     writing.set(book, run.catch((error) => {

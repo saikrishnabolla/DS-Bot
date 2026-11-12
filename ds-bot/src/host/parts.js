@@ -1597,6 +1597,17 @@ export function install(rt) {
   // Earlier parts of a Bot's own chat, newest page first, for the chat to show above
   // the current part as one conversation.
   const EARLIER_PAGE = 60
+  const groupItems = (replies, eventTime, turn) => {
+    const items = []
+    for (const { reply, texts, time, duration } of stackReplies(replies)) {
+      const item = { time: time ?? reply.time ?? eventTime }
+      if (turn !== undefined) item.turn = turn
+      if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...(reply.via ? { via: reply.via } : {}), ...item })
+      else if (reply.kind === undefined) items.push({ kind: 'post', botId: reply.botId ?? null, name: reply.name ?? null, texts, ...item, ...(duration === undefined ? {} : { duration }) })
+      else items.push({ kind: 'relay', reply, ...item })
+    }
+    return items
+  }
   function displayItems(partId, events, session, seedTurn) {
     const hidden = new Set(state.exchangeTurns[partId] ?? [])
     // Call ids of the page's group_relay calls; their tool/result events carry the
@@ -1692,15 +1703,9 @@ export function install(rt) {
           const range = relayRange(text)
           const room = range === undefined ? undefined : rt.roomOf(partId) ?? rt.roomOf(rt.pastOwners.get(partId)?.roomId)
           const replies = range === undefined ? parseReplies(text).replies : room === undefined ? [] : rt.groupRows(room.id, range.from, range.to, range.anchor)
-          for (const { reply, texts, time, duration } of stackReplies(replies)) {
-            // Reply rows take the reply's own time, and no seq: several rows share
-            // the result event's seq, which the chat keys a post's anchor by.
-            const item = { time: time ?? reply.time ?? event.time }
-            if (turn !== undefined) item.turn = turn
-            if (reply.kind === 'user') items.push({ kind: 'user', text: reply.text, ...(reply.via ? { via: reply.via } : {}), ...item })
-            else if (reply.kind === undefined) items.push({ kind: 'post', botId: reply.botId ?? null, name: reply.name ?? null, texts, ...item, ...(duration === undefined ? {} : { duration }) })
-            else items.push({ kind: 'relay', reply, ...item })
-          }
+          // Reply rows take their own time, and no seq: several rows share the result
+          // event's seq, which the chat keys a post's anchor by.
+          items.push(...groupItems(replies, event.time, turn))
         } else {
           const attachments = Array.isArray(message?.content)
             ? message.content.filter(block => (block?.type === 'image' || block?.type === 'file') && block.attachment !== undefined)
@@ -1891,5 +1896,12 @@ export function install(rt) {
     return true
   }
 
-  Object.assign(rt, { clock, partsOf, historyEntry, partLines, noteText, earlierPage, chatPage, roomChatPage, displayItems, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
+  Object.assign(rt, {
+    clock, partsOf, historyEntry, partLines, noteText, earlierPage, chatPage, roomChatPage, displayItems,
+    groupLineItems: record => {
+      const reply = rt.groupRow(record)
+      return reply === undefined ? [] : groupItems([reply], record.time)
+    },
+    followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values(),
+  })
 }

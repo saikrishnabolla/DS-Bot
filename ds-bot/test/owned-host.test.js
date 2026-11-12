@@ -655,3 +655,40 @@ test('owned Host relays room work, stops it, and restores the room transcript', 
   await new Promise(resolve => setTimeout(resolve, 100))
   await waitFor(async () => (await call('room-progress', { roomId: room.id })).value.length === 0)
 })
+
+test('a completed group reply appears on the live owned feed', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ds-bot-owned-live-room-'))
+  t.after(() => rm(dataDir, { recursive: true, force: true }))
+  const uiDir = join(dataDir, 'ui')
+  await mkdir(uiDir)
+  await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>Cue</title>')
+
+  const models = await ModelRuntime.create({ authPath: join(dataDir, 'auth.json'), modelsPath: null, refreshOnCreate: false })
+  const faux = fauxProvider()
+  faux.setResponses(Array.from({ length: 12 }, () => fauxAssistantMessage('Ready.')))
+  models.registerNativeProvider(faux.provider)
+  await models.refresh({ allowNetwork: false })
+
+  const host = await OwnedHost.open({ dataDir, uiDir, models, workspacePath: dataDir })
+  t.after(() => host.close())
+  const cookie = await authenticate(host)
+  const call = api(host, cookie)
+  const chief = (await call('state', { locale: 'en' })).value.bots[0]
+  assert.equal((await call('update-bot', { id: chief.id, model: 'faux/faux-1' })).ok, true)
+  const worker = (await call('create-bot', { name: 'Worker', model: 'faux/faux-1' })).value
+  const room = (await call('create-room', { name: 'Ops', members: [chief.id, worker.id], admin: chief.id })).value
+  await waitFor(async () => (await call('room-progress', { roomId: room.id })).value.length === 0)
+
+  let release
+  faux.setResponses([async () => await new Promise(resolve => { release = () => resolve(fauxAssistantMessage('Room answer.')) })])
+  const live = []
+  const unsubscribe = host.runtime.subscribeFeed((event, data) => live.push({ event, data }))
+  t.after(unsubscribe)
+  assert.equal((await call('send', { sessionId: room.id, text: 'answer now' })).ok, true)
+  await waitFor(() => typeof release === 'function')
+  await waitFor(() => live.some(({ event, data }) => event === 'message' && data.roomId === room.id && data.item?.kind === 'user'))
+  release()
+
+  await waitFor(async () => (await call('chat', { roomId: room.id })).value.items.some(item => item.kind === 'post'))
+  await waitFor(() => live.some(({ event, data }) => event === 'message' && data.roomId === room.id && data.item?.kind === 'post'))
+})

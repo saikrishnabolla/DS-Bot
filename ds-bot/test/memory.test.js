@@ -1914,6 +1914,7 @@ test('a group line that left the room log is still reviewed, opened by its seq, 
   const room = rt.roomOf('r1')
   assert.match(await tool('read_group_chat', { group: 'Launch', query: 'one page' }, 'g3'), /#1 .*under one page/)
   for (let at = 0; at < 70; at += 1) rt.logRoom(room, { who: 'User', text: `Plan number ${at} for the launch` })
+  await rt.roomLinesWritten(room)
   assert.ok(room.log[0].seq > 4, 'the first lines should have left the room log')
   ctx.emit('agent/status', { agent: { id: 'g3' }, status: 'idle' })
   await reviewed(call)

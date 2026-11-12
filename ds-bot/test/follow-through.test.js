@@ -546,6 +546,23 @@ test('a turn Cue stops as it shuts down stays noted; one the user stops does not
   await settle(() => inflight(home).a !== undefined && inflight(home).b === undefined)
 })
 
+test('stopping group work durably prevents its turn from resuming after a restart', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const home = freshHome(t)
+  const first = await start(home)
+  const result = await openRoomTurn(t, first)
+  await settle(() => inflight(home).gb?.roomId === 'r1')
+  assert.equal((await first.call('stop-room-work', { roomId: 'r1' })).value, true)
+  await settle(() => result() !== undefined)
+  assert.equal(inflight(home).gb, undefined)
+  await first.stop()
+
+  const second = await start(home)
+  t.mock.timers.tick(3000)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(second.agentOf('gb').calls.length, 0)
+})
+
 test('a message a shutdown cancelled is sent again once; one still waiting, taken up or withdrawn is not', async (t) => {
   const home = freshHome(t)
   const first = await start(home)

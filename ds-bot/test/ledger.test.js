@@ -6,9 +6,9 @@ import { test } from 'node:test'
 import { install, bookFile, parseBook } from '../src/host/ledger.js'
 import { relayRange } from '../src/shared/group-replies.js'
 
-const host = (t, { home = mkdtempSync(join(tmpdir(), 'ds-bot-ledger-')), readOnly } = {}) => {
+const host = (t, { home = mkdtempSync(join(tmpdir(), 'ds-bot-ledger-')), readOnly, append } = {}) => {
   const warnings = []
-  const rt = { home, readOnly: () => readOnly?.(), warn: (...args) => warnings.push(args) }
+  const rt = { home, readOnly: () => readOnly?.(), warn: (...args) => warnings.push(args), ...(append === undefined ? {} : { appendLedgerFile: append }) }
   install(rt)
   t.after(() => rmSync(home, { recursive: true, force: true, maxRetries: 5 }))
   return { rt, home, warnings, file: book => join(home, 'ledger', bookFile(book)) }
@@ -41,6 +41,36 @@ test('a line cut by an interruption is left out, and the book goes on after it',
   await rt.ledger.flush('group-r1')
   const again = host(t, { home })
   assert.deepEqual(again.rt.ledger.records('group-r1').map(record => record.text), ['whole', 'again'])
+})
+
+test('a queued record starts on a new line when the write before it tears', async (t) => {
+  let writes = 0
+  let first
+  const firstStarted = new Promise((resolve) => { first = resolve })
+  let fail
+  const letFirstFail = new Promise((resolve) => { fail = resolve })
+  const { rt, home, file } = host(t, {
+    append: async (path, line) => {
+      writes += 1
+      if (writes === 1) {
+        mkdirSync(join(home, 'ledger'), { recursive: true })
+        writeFileSync(path, line.slice(0, -3), { flag: 'a' })
+        first()
+        await letFirstFail
+        throw new Error('disk stopped after a partial write')
+      }
+      writeFileSync(path, line, { flag: 'a' })
+    },
+  })
+  rt.ledger.append('group-r1', { seq: 1, text: 'cut' })
+  rt.ledger.append('group-r1', { seq: 2, text: 'whole' })
+  await Promise.race([firstStarted, new Promise(resolve => setImmediate(resolve))])
+  fail()
+  await rt.ledger.flush('group-r1')
+  assert.equal(writes, 2)
+  const raw = readFileSync(file('group-r1'), 'utf8')
+  assert.ok(raw.includes(`\n${JSON.stringify({ seq: 2, text: 'whole' })}\n`))
+  assert.deepEqual(parseBook(raw).map(record => record.seq), [2])
 })
 
 test('a book that does not exist yet starts from its importer, once, and only a writing host keeps it', async (t) => {

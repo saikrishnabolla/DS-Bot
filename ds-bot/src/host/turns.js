@@ -311,17 +311,23 @@ export function install(rt) {
   // An exchange whose turn already ended stays in the set, so it is bounded.
   async function stopRoomTurn(sessionId, exchangeId) {
     rememberStopped(stoppedRoomTurns, exchangeId)
+    rt.discardRoomSteps?.(sessionId)
     await stopSubagents(sessionId)
     const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
-    if (agent === undefined) return
+    if (agent === undefined) {
+      await rt.forgetTurn?.(sessionId, exchangeId)
+      return
+    }
     const entry = live.get(sessionId)
     if (entry?.turn !== undefined && entry.info?.exchangeId === exchangeId) {
-      agent.cancel({ kind: 'hook', reason: 'ds-bot/stopped' })
+      await agent.cancel({ kind: 'hook', reason: 'ds-bot/stopped' })
+      await rt.forgetTurn?.(sessionId, exchangeId)
       return
     }
     for (const message of [...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])]) {
       if (message.source?.exchangeId === exchangeId && agent.inbox.remove(message.id)) stoppedRoomTurns.delete(exchangeId)
     }
+    await rt.forgetTurn?.(sessionId, exchangeId)
   }
 
   // The phone's Stop for a Bot's own-chat turn: the same cancel the group's
