@@ -19,7 +19,7 @@ import * as timeContext from './src/host/time-context.js'
 import * as tools from './src/host/tools.js'
 import * as chatIndex from './src/host/chat-index.js'
 import * as groups from './src/host/groups.js'
-import * as groupLog from './src/host/group-log.js'
+import * as ledger from './src/host/ledger.js'
 import * as goals from './src/host/goals.js'
 import * as approvals from './src/host/approvals.js'
 import * as resume from './src/host/resume.js'
@@ -52,7 +52,7 @@ export { COLORS } from './src/host/constants.js'
 // install. Listeners run and tools are listed in registration order, so this order holds:
 // usage meters model requests after every listener that rewrites them. privacy checks a
 // call before the hooks of tools do, so a closed call never reaches a card they show.
-const MODULES = [diagnostics, store, models, permissions, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, groupLog, goals, approvals, resume, memory, parts, images, avatarLibrary, secrets, connectors, capabilities, learning, schedules, browser, browserPlugins, computer, usage, update, thinking, feed, im, channel, officeSkills, goalSkills, localAgents]
+const MODULES = [diagnostics, store, ledger, models, permissions, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, approvals, resume, memory, parts, images, avatarLibrary, secrets, connectors, capabilities, learning, schedules, browser, browserPlugins, computer, usage, update, thinking, feed, im, channel, officeSkills, goalSkills, localAgents]
 
 export function createRuntime(ctx, config = {}) {
   const dataDir = config.dataDir ?? (config.home === undefined ? folders.dataRootOf(process.env.CUE_HOME) : config.home)
