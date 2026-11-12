@@ -6,6 +6,7 @@ import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
 import { textOf } from './text.js'
 import { validateViewAnswer } from '../view/core/index.js'
+import { writeZip } from '../office/zip.js'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
 
 const LANGUAGES = {
@@ -460,6 +461,57 @@ export function install(rt) {
           const sessionId = String(body.sessionId ?? '')
           if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
           return ok(await ctx.sessionController.displayPage({ sessionId, cursor: body.cursor ?? undefined }))
+        }
+        case 'agent-command': {
+          await rt.load()
+          const sessionId = String(body.sessionId ?? '')
+          if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
+          const line = String(body.line ?? '').trim()
+          const match = /^\/([a-z]+)(?:\s+([\s\S]*))?$/u.exec(line)
+          if (match === null) return fail('Unknown command', 'bot/invalid')
+          const command = match[1]
+          const input = String(match[2] ?? '').trim()
+          const agent = await rt.resolveAgent(sessionId)
+          if (command === 'compact') {
+            if (input !== '') return fail('/compact does not take an argument', 'bot/invalid')
+            await ctx.get('compaction').compactNow(agent, signal)
+            return ok({ command })
+          }
+          if (command === 'plan') {
+            const service = ctx.get('planMode')
+            const current = await service.get(agent)
+            const active = input === '' ? !current.active
+              : ['enter', 'on'].includes(input) ? true
+                : ['leave', 'off'].includes(input) ? false : undefined
+            if (active === undefined) return fail('Use /plan, /plan enter, or /plan leave', 'bot/invalid')
+            await service.set(agent, active)
+            return ok({ command, active })
+          }
+          if (command === 'permission') {
+            if (input === '') return fail('Choose a permission preset', 'bot/invalid')
+            ctx.get('permissionPresets').set(agent.session, input)
+            return ok({ command, permission: input })
+          }
+          if (command === 'model') {
+            if (input === '') return fail('Choose a model', 'bot/invalid')
+            const ref = await rt.resolveModel(input)
+            const slash = ref.indexOf('/')
+            await ctx.sessionController.selectModel({ sessionId, provider: ref.slice(0, slash), model: ref.slice(slash + 1) })
+            return ok({ command, model: ref })
+          }
+          if (command === 'goal') {
+            const service = ctx.get('goals')
+            if (input === '') return ok({ command, goal: service.get(agent) ?? null })
+            return ok({ command, goal: service.start(agent, { objective: input }) })
+          }
+          if (command === 'export') {
+            if (input !== '') return fail('/export does not take an argument', 'bot/invalid')
+            const page = await ctx.sessionController.page({ sessionId, maxMessages: 100_000 })
+            const data = Buffer.from(JSON.stringify({ sessionId, records: page.records }, null, 2))
+            const archive = writeZip([{ name: 'session.json', data }])
+            return ok({ command, download: { name: `cue-session-${sessionId}.zip`, type: 'application/zip', base64: archive.toString('base64') } })
+          }
+          return fail(`Unknown command /${command}`, 'bot/invalid')
         }
         case 'agent-sessions': {
           await rt.load()

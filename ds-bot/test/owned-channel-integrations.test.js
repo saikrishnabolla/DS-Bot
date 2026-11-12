@@ -125,9 +125,30 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   env.host().runtime.defaultModel = async () => 'faux/faux-1'
   const agent = ok(await env.call('add-agent'))
   assert.deepEqual((await env.host().runtime.ctx.harness.agent(agent.sessions[0])).model, { provider: 'faux', modelId: 'faux-1' })
+  const compaction = env.host().runtime.ctx.get('compaction')
+  const compactNow = compaction.compactNow
+  let compacted
+  compaction.compactNow = async target => { compacted = target.session.id }
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/compact' })), { command: 'compact' })
+  compaction.compactNow = compactNow
+  assert.equal(compacted, agent.sessions[0])
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan' })), { command: 'plan', active: true })
+  const plainAgent = await env.host().runtime.resolveAgent(agent.sessions[0])
+  assert.deepEqual(await env.host().runtime.ctx.get('planMode').get(plainAgent), { active: true, entered: true })
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/permission read-only' })), { command: 'permission', permission: 'read-only' })
+  assert.equal(env.host().runtime.ctx.get('permissionPresets').get(plainAgent.session), 'read-only')
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/model faux/faux-1' })), { command: 'model', model: 'faux/faux-1' })
+  const goal = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal Ship the demo' }))
+  assert.equal(goal.goal.objective, 'Ship the demo')
+  const exported = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/export' }))
+  assert.equal(exported.download.type, 'application/zip')
+  assert.equal(Buffer.from(exported.download.base64, 'base64').subarray(0, 2).toString(), 'PK')
+  const unknown = await env.call('agent-command', { sessionId: agent.sessions[0], line: '/does-not-exist' })
+  assert.equal(unknown.ok, false)
+  assert.equal(unknown.error.code, 'bot/invalid')
   assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Plain Agent prompt' })), true)
-  const plainAgent = await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])
-  await plainAgent.agent.whenIdle()
+  const resolvedAgent = await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])
+  await resolvedAgent.agent.whenIdle()
   const agentChat = ok(await env.call('agent-chat', { sessionId: agent.sessions[0] }))
   assert.deepEqual(agentChat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => [item.kind, item.text]), [
     ['user', 'Plain Agent prompt'],
@@ -147,8 +168,8 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
     await new Promise(resolve => setTimeout(resolve, 10))
   }
   assert.equal(ok(await env.call('stop-agent-work', { sessionId: agent.sessions[0] })), true)
-  await plainAgent.agent.whenIdle()
-  assert.equal(plainAgent.agent.status, 'idle')
+  await resolvedAgent.agent.whenIdle()
+  assert.equal(resolvedAgent.agent.status, 'idle')
   const agentRows = ok(await env.call('agent-sessions'))
   assert.deepEqual(agentRows.ids, [agent.sessions[0]])
   assert.equal(agentRows.byId[agent.sessions[0]].running, false)

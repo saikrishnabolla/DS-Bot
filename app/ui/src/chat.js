@@ -1,4 +1,4 @@
-import { createElement as h, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { call } from '../../../ds-bot/src/client/api.js'
 import { sessionMention } from '../../../ds-bot/src/client/at-menu.js'
@@ -22,6 +22,7 @@ import { FailureCell } from '../../../ds-bot/src/client/turn-error.js'
 import { WidgetDock } from '../../../ds-bot/src/client/widget-cell.js'
 import { approvalsForConversation, chatRequest, feedMatches, stopRequest } from './chat-target.js'
 import { transcriptSegments } from './pi-transcript.js'
+import { agentSlashCommands, downloadCommandResult, isSlashCommand } from './slash-commands.js'
 import { uploadAttachment } from './api.js'
 
 // The chat follows its end while the user is this close to it.
@@ -200,17 +201,20 @@ function ChatReferencePicker({ sessionId, request, actions, onPick }) {
         }, h('span', { className: 'bt-menu-label' }, row.label), row.updatedAt ? h('span', { className: 'bt-menu-hint' }, relativeShort(row.updatedAt)) : null))), document.body)
 }
 
-function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
+export function Composer({ sessionId, agentSession, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [references, setReferences] = useState([])
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
   const field = useRef(null)
   const inputActions = useInput(field, setText)
   const referenceRequest = useUi(state => state.referenceChat?.sessionId === sessionId ? state.referenceChat : null)
   const enterToSend = useRoster(state => sendsOnEnter(state.prefs))
+  const slashCommands = agentSlashCommands(text, agentSession)
+  useEffect(() => { setSlashIndex(0) }, [text])
   useLayoutEffect(() => {
     const node = field.current
     node.style.height = 'auto'
@@ -259,6 +263,35 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
       field.current?.setSelectionRange?.(caret, caret)
     })
   }
+  const runCommand = async (line) => {
+    if (disabled || sending) return
+    setError(null)
+    setSending(true)
+    try {
+      const result = await call('agent-command', { sessionId, line })
+      downloadCommandResult(result)
+      setText('')
+      setReferences([])
+    } catch (failure) {
+      setText(current => current === '' ? line : current)
+      setError(failure.message)
+    } finally { setSending(false) }
+  }
+  const chooseSlash = (command) => {
+    if (command.action === 'file') {
+      field.current?.closest?.('[data-composer-card]')?.querySelector?.('input[type=file]')?.click?.()
+      setText('')
+    } else if (command.action === 'feedback') {
+      setText('')
+      actions.openSettings('feedback')
+    } else if (command.action === 'draft') {
+      setText(command.draft)
+      requestAnimationFrame(() => {
+        field.current?.focus?.()
+        field.current?.setSelectionRange?.(command.draft.length, command.draft.length)
+      })
+    } else void runCommand(command.line)
+  }
   const submit = async () => {
     const value = text.trim()
     const files = attachments
@@ -267,6 +300,10 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
       .filter(reference => text.slice(reference.start, reference.end) === `@${reference.label}`)
       .map(({ sessionId: referencedSessionId, label, ref }) => ({ sessionId: referencedSessionId, label, ref }))
     if ((value === '' && files.length === 0) || disabled || sending) return
+    if (isSlashCommand(value, agentSession)) {
+      await runCommand(value)
+      return
+    }
     setError(null)
     setText('')
     setReferences([])
@@ -315,6 +352,21 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
           onChange: event => changeText(event.target.value),
           onPaste: event => { if (event.clipboardData?.files?.length) { event.preventDefault(); addFiles(event.clipboardData.files) } },
           onKeyDown: (event) => {
+            if (slashCommands.length > 0 && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+              event.preventDefault()
+              setSlashIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + slashCommands.length) % slashCommands.length)
+              return
+            }
+            if (slashCommands.length > 0 && event.key === 'Escape') {
+              event.preventDefault()
+              setText('')
+              return
+            }
+            if (slashCommands.length > 0 && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault()
+              chooseSlash(slashCommands[Math.min(slashIndex, slashCommands.length - 1)])
+              return
+            }
             if (event.key === 'Enter' && enterToSend && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
               void submit()
@@ -325,6 +377,13 @@ function Composer({ sessionId, placeholder, disabled, running, onSend, onStop, a
         running ? h('button', { type: 'button', className: 'dsb-stop', disabled: stopping, onClick: () => { void stop() } }, stopping ? t('Stopping…') : t('Stop')) : null,
         h(ComposerVoice, { sessionId, inputActions, actions, useUi, useRoster }),
         h('button', { type: 'button', className: 'dsb-send', disabled: disabled || sending || (text.trim() === '' && attachments.length === 0), 'aria-label': t('Send message'), title: t('Send message'), onClick: () => { void submit() } }, h(ArrowUpIcon)))),
+    slashCommands.length > 0 ? h('div', { className: 'bt-menu bt-menu-up dsb-slash-menu', role: 'listbox', 'aria-label': 'Commands' },
+      slashCommands.map((command, index) => h(Fragment, { key: command.id },
+        index === 0 || slashCommands[index - 1].group !== command.group
+          ? h('div', { className: 'dsb-slash-heading' }, command.group === 'add' ? t('Add') : t('Commands')) : null,
+        h('button', {
+          type: 'button', role: 'option', 'aria-selected': index === slashIndex, onMouseDown: event => event.preventDefault(), onClick: () => chooseSlash(command),
+        }, h('span', { className: 'bt-menu-label' }, t(command.label)), h('span', { className: 'dsb-slash-description' }, t(command.description)))))) : null,
     referenceRequest ? h(ChatReferencePicker, { sessionId, request: referenceRequest, actions, onPick: insertReference }) : null)
 }
 
@@ -496,6 +555,7 @@ export function Chat({ sessionId, team, pluginSlot = () => null }) {
       }),
       h(Composer, {
         sessionId,
+        agentSession: agentSessionId !== undefined,
         disabled: waiting,
         running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),
