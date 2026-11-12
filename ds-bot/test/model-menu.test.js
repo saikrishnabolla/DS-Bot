@@ -21,7 +21,7 @@ const sandbox = {
       react: { Fragment: 'fragment', createContext: (initial) => { const ctx = { value: initial }; ctx.Provider = ({ value, children }) => { ctx.value = value; return children }; return ctx }, useContext: ctx => ctx.value, useMemo: make => make(), useCallback: fn => fn, useId: () => 'dv-id', useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(), 
         createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity) }),
         useState: initial => [initial, () => {}],
-        useEffect: () => {},
+        useEffect: () => {}, useLayoutEffect: () => {},
         useRef: initial => ({ current: initial }),
       },
       'react-dom': {},
@@ -31,7 +31,7 @@ const sandbox = {
   },
 }
 runInNewContext(bundle.outputFiles[0].text, sandbox)
-const { groupModels, ModelChoiceDock, ModelKeyCard, effortRows, effortStops, EffortBar, stepMenuFocus, ModelRows, ModelGroupList, groupOpen, toggledGroup, manualFor } = module.exports
+const { groupModels, ModelMenu, ModelChoiceDock, ModelKeyCard, effortRows, effortStops, EffortBar, stepMenuFocus, ModelRows, ModelGroupList, groupOpen, toggledGroup, manualFor } = module.exports
 
 function nodes(tree, match) {
   if (!tree || typeof tree !== 'object') return []
@@ -58,6 +58,13 @@ const models = [
   { ref: 'local/flash', provider: 'local', providerName: 'Ollama', name: 'DeepSeek Flash' },
   { ref: 'official/pro', provider: 'official', providerName: 'DeepSeek', name: 'DeepSeek Pro' },
 ]
+
+test('the model-picker trigger has an accessible name', () => {
+  const bot = { id: 'chief', name: 'Chief', model: 'official/flash' }
+  const tree = ModelMenu({ bot, roster: { models }, actions: {}, run: () => {} })
+  const trigger = nodes(tree, node => node.type === 'button' && node.props.className === 'bt-model-trigger')[0]
+  assert.equal(trigger.props['aria-label'], 'Model: DeepSeek Flash')
+})
 
 test('the first model choice shows provider groups and keeps each model route', () => {
   const { tree, picked } = dock(models)
