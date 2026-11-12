@@ -94,22 +94,49 @@ test('without a usable standard preset a Bot Session keeps Cue\'s default', asyn
 test('a group round calls group_relay directly when the Session declares it', async (t) => {
   const { relay, stop } = start()
   t.after(stop)
+  const rounds = []
   for (const tools of [declared('read', 'group_relay'), declared('run_code', 'group_relay')]) {
     const block = await relayCall(relay, tools)
-    assert.deepEqual([block.name, block.arguments], ['group_relay', '{}'])
+    assert.equal(block.name, 'group_relay')
+    rounds.push(JSON.parse(block.arguments))
   }
+  for (const args of rounds) assert.match(args.roundId, /^\d+-[0-9a-f-]{36}$/)
+  assert.equal(new Set(rounds.map(args => args.roundId)).size, rounds.length)
 })
 
 test('a group made under the PTC preset relays through run_code', async (t) => {
   const { relay, stop } = start()
   t.after(stop)
-  const block = await relayCall(relay, declared('run_code'))
-  assert.equal(block.name, 'run_code')
-  assert.deepEqual(JSON.parse(block.arguments), {
-    description: 'Relay the group chat to its Bots',
-    code: 'return await tools.group_relay({})',
-    timeoutMs: 600_000,
-  })
+  const blocks = [await relayCall(relay, declared('run_code')), await relayCall(relay, declared('run_code'))]
+  const roundIds = []
+  for (const block of blocks) {
+    assert.equal(block.name, 'run_code')
+    const args = JSON.parse(block.arguments)
+    const roundId = args.description.match(/^Relay the group chat to its Bots \((\d+-[0-9a-f-]{36})\)$/)?.[1]
+    assert.ok(roundId)
+    assert.equal(args.code, `return await tools.group_relay({ roundId: ${JSON.stringify(roundId)} })`)
+    assert.equal(args.timeoutMs, 600_000)
+    roundIds.push(roundId)
+  }
+  assert.notEqual(roundIds[0], roundIds[1])
+})
+
+test('a legacy round without roundId returns the same result as a new one', async (t) => {
+  const { rt, stop } = start()
+  t.after(stop)
+  await rt.load()
+  const tool = rt.teamTools.find(def => def.name === 'group_relay')
+  const exec = { agent: { id: 'room' }, callId: 'legacy', signal: AbortSignal.abort() }
+  // Each call names where its rows start in the group's book; the rest of the result is the same.
+  const rest = (value) => {
+    const { from, anchor, ...others } = JSON.parse(value)
+    assert.ok(Number.isInteger(from) && typeof anchor === 'string')
+    return others
+  }
+  const legacy = rest(await tool.execute({}, exec))
+  const current = rest(await tool.execute({ roundId: `${Date.now()}-legacy` }, { ...exec, callId: 'current' }))
+  assert.deepEqual(current, legacy)
+  assert.deepEqual(current, {})
 })
 
 test('a group Session without either relay tool ends visibly instead of calling nothing', async (t) => {
