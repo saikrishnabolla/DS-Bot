@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Component, createElement as h, Fragment, useEffect, useMemo } from 'react'
+import { Component, createElement as h, Fragment, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { call } from '../../../ds-bot/src/client/api.js'
 import { ErrorToast } from '../../../ds-bot/src/client/feedback.js'
 import { HeaderPill } from '../../../ds-bot/src/client/header.js'
@@ -7,13 +7,15 @@ import { t } from '../../../ds-bot/src/client/i18n.js'
 import { Overlays } from '../../../ds-bot/src/client/overlays.js'
 import { SETTINGS_PAGE_IDS } from '../../../ds-bot/src/client/settings.js'
 import { BrandMark, TeamSidebar } from '../../../ds-bot/src/client/sidebar.js'
-import { allThemes, themeCss } from '../../../ds-bot/src/client/themes.js'
+import { allThemes, registry, themeCss } from '../../../ds-bot/src/client/themes.js'
 import { Chat } from './chat.js'
 import { createClientPlugins } from './plugins.js'
+import { installRegistrationHub } from './registration-hub.js'
 import { createTeam } from './team.js'
 
 // The team's theme and accent.
 function useTheme(prefs) {
+  useSyncExternalStore(registry.subscribe, registry.getSnapshot, registry.getSnapshot)
   useEffect(() => {
     const theme = allThemes()[prefs?.theme] ?? allThemes().deepseek
     const style = document.createElement('style')
@@ -70,6 +72,7 @@ export function App() {
   const team = useMemo(createTeam, [])
   useEffect(() => team.start(), [team])
   const { hooks, actions } = team
+  useEffect(() => installRegistrationHub(window, error => actions.reportError(error, 'registration')), [actions])
   const clientPlugins = useMemo(() => createClientPlugins({
     React,
     call,
