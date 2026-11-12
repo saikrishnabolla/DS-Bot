@@ -16,7 +16,7 @@ export async function resolve(specifier, context, nextResolve) {
 register(`data:text/javascript,${encodeURIComponent(loader)}`, import.meta.url)
 await waitImmediate()
 
-test('the Agent composer opens, filters and executes slash commands without sending a prompt', async t => {
+test('Bot and Agent composers execute slash commands without sending a prompt', async t => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://owned.test/' })
   dom.window.HTMLElement.prototype.attachEvent = () => {}
   dom.window.HTMLElement.prototype.detachEvent = () => {}
@@ -93,4 +93,20 @@ test('the Agent composer opens, filters and executes slash commands without send
   ])
   await act(async () => { dom.window.document.querySelector('[aria-label="Permission presets"] [role="option"]').click(); await waitImmediate() })
   assert.equal(requests.at(-1).payload.line, '/permission read-only')
+
+  const runningLines = [
+    '/compact',
+    '/plan Check the risky path',
+    '/permission read-only',
+    '/model faux/faux-1',
+    '/goal Ship the demo',
+    '/export',
+    '/does-not-exist',
+  ]
+  await act(async () => { root.render(h(Composer, { ...props, agentSession: false, botSession: true, running: true })) })
+  for (const line of runningLines) {
+    await type(line)
+    await act(async () => { dom.window.document.querySelector('[aria-label="Send message"]').click(); await waitImmediate() })
+  }
+  assert.deepEqual(requests.slice(-runningLines.length).map(request => request.payload.line), runningLines)
 })

@@ -117,6 +117,8 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   const writer = ok(await env.call('create-bot', {
     name: 'Writer', role: 'Write', model: 'faux/faux-1',
   }))
+  const chiefPermission = ok(await env.call('agent-command', { sessionId: env.host().runtime.chatOf(chief.id), line: '/permission' }))
+  assert.equal(chiefPermission.command, 'permission')
 
   let providers = ok(await env.call('provider-key', {
     provider: 'anthropic', value: 'sk-owned-integration',
@@ -191,6 +193,27 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
     ['user', 'Plain Agent prompt'],
     ['bot', 'Ready.'],
   ])
+  let planInterrupted = false
+  env.faux().setResponses([async (_context, options) => {
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 2_000)
+      options?.signal?.addEventListener('abort', () => { planInterrupted = true; clearTimeout(timer); resolve() }, { once: true })
+    })
+    return fauxAssistantMessage('This plan answer should be interrupted.')
+  }, fauxAssistantMessage('Planned with the new direction.')])
+  assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Start slow planning work' })), true)
+  const planDeadline = Date.now() + 2_000
+  while ((await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])).agent.status !== 'running') {
+    if (Date.now() >= planDeadline) assert.fail('Agent session did not start running')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan Redirect the active turn' })), { command: 'plan', active: true })
+  await resolvedAgent.agent.whenIdle()
+  assert.equal(planInterrupted, true)
+  const planContext = await env.host().runtime.ctx.harness.context(agent.sessions[0])
+  assert.equal(planContext.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text === 'Redirect the active turn')), true)
+  assert.equal(planContext.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('/plan'))), false)
+
   env.faux().setResponses([async (_context, options) => {
     await new Promise(resolve => {
       const timer = setTimeout(resolve, 2_000)

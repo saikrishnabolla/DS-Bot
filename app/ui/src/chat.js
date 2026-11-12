@@ -201,7 +201,7 @@ function ChatReferencePicker({ sessionId, request, actions, onPick }) {
         }, h('span', { className: 'bt-menu-label' }, row.label), row.updatedAt ? h('span', { className: 'bt-menu-hint' }, relativeShort(row.updatedAt)) : null))), document.body)
 }
 
-export function Composer({ sessionId, agentSession, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
+export function Composer({ sessionId, agentSession, botSession, placeholder, disabled, running, onSend, onStop, actions, useUi, useRoster }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [references, setReferences] = useState([])
@@ -214,7 +214,8 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
   const inputActions = useInput(field, setText)
   const referenceRequest = useUi(state => state.referenceChat?.sessionId === sessionId ? state.referenceChat : null)
   const enterToSend = useRoster(state => sendsOnEnter(state.prefs))
-  const slashCommands = agentSlashCommands(text, agentSession)
+  const commandSession = agentSession || botSession
+  const slashCommands = agentSlashCommands(text, commandSession)
   useEffect(() => { setSlashIndex(0) }, [text])
   useLayoutEffect(() => {
     const node = field.current
@@ -307,7 +308,7 @@ export function Composer({ sessionId, agentSession, placeholder, disabled, runni
       .filter(reference => text.slice(reference.start, reference.end) === `@${reference.label}`)
       .map(({ sessionId: referencedSessionId, label, ref }) => ({ sessionId: referencedSessionId, label, ref }))
     if ((value === '' && files.length === 0) || disabled || sending) return
-    if (isSlashCommand(value, agentSession)) {
+    if (isSlashCommand(value, commandSession)) {
       await runCommand(value, files)
       return
     }
@@ -572,6 +573,7 @@ export function Chat({ sessionId, team, pluginSlot = () => null }) {
       h(Composer, {
         sessionId,
         agentSession: agentSessionId !== undefined,
+        botSession: bot !== undefined,
         disabled: waiting,
         running,
         placeholder: waiting ? t('Pick a model and {name} can start.', { name }) : name ? t('Message {name}', { name }) : t('Message'),

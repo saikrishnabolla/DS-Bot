@@ -7,7 +7,7 @@ import { handoffReply, questionReply, viewReply } from './parts.js'
 import { textOf } from './text.js'
 import { validateViewAnswer } from '../view/core/index.js'
 import { writeZip } from '../office/zip.js'
-import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
+import { COLORS, EXTRA_COLORS, ROUTE, STEER_CUT } from './constants.js'
 
 const LANGUAGES = {
   zh: 'Chinese (简体中文)',
@@ -482,7 +482,7 @@ export function install(rt) {
         case 'agent-command': {
           await rt.load()
           const sessionId = String(body.sessionId ?? '')
-          if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
+          if (rt.agentOf(sessionId) === undefined && !rt.isBotSession(sessionId)) return fail('Session does not support commands', 'bot/not-found')
           const line = String(body.line ?? '').trim()
           const match = /^\/([a-z]+)(?:\s+([\s\S]*))?$/u.exec(line)
           if (match === null) return fail('Unknown command', 'bot/invalid')
@@ -502,7 +502,11 @@ export function install(rt) {
             const active = input !== 'off'
             await service.set(agent, active)
             if (active && (input !== '' || attachments.length > 0)) {
-              await agent.followup(createUserMessage({
+              if (agent.status === 'running') {
+                await agent.cancel({ kind: 'hook', reason: STEER_CUT })
+                await agent.whenIdle()
+              }
+              await agent.steer(createUserMessage({
                 content: [...attachments, ...(input === '' ? [] : [{ type: 'text', text: input }])],
                 source: { kind: 'user' },
               }))
