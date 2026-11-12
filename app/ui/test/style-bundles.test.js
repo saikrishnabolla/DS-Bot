@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const main = readFileSync(fileURLToPath(new URL('../src/main.js', import.meta.url)), 'utf8')
 const appCss = readFileSync(fileURLToPath(new URL('../src/app.css', import.meta.url)), 'utf8')
+const appJs = readFileSync(fileURLToPath(new URL('../src/app.js', import.meta.url)), 'utf8')
 const materialCss = readFileSync(fileURLToPath(new URL('../../src/material.css', import.meta.url)), 'utf8')
 const fontsCss = readFileSync(fileURLToPath(new URL('../../src/fonts.css', import.meta.url)), 'utf8')
 
@@ -52,4 +53,10 @@ test('desktop frame preserves the original title-band and surface primitives', (
   assert.match(appCss, /::-webkit-scrollbar\{width:5px;height:5px\}/u)
   assert.match(appCss, /\.dsb-scroll\{[^}]*padding:60px 11px 16px 0\}/u)
   assert.match(fontsCss, /--cue-ui-font-family:\s*var\(--cue-font-family-text-default\)/u)
+})
+
+test('slash menus keep their composer anchor and registered themes repaint', () => {
+  assert.match(appCss, /\.dsb-composer-wrap>\.dsb-slash-menu\{position:absolute/u)
+  assert.match(appJs, /const revision = useSyncExternalStore\(registry\.subscribe, registry\.getSnapshot, registry\.getSnapshot\)/u)
+  assert.match(appJs, /\[prefs\?\.theme, prefs\?\.accent, prefs\?\.motion, revision\]/u)
 })

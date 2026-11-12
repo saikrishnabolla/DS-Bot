@@ -6,6 +6,7 @@ import test from 'node:test'
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
 import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 import { OwnedHost } from '../src/engine/owned-host.js'
+import { readZip } from '../src/office/zip.js'
 
 async function fixture(t, { browser = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'ds-bot-owned-channel-integrations-'))
@@ -116,6 +117,8 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   const writer = ok(await env.call('create-bot', {
     name: 'Writer', role: 'Write', model: 'faux/faux-1',
   }))
+  const chiefPermission = ok(await env.call('agent-command', { sessionId: env.host().runtime.chatOf(chief.id), line: '/permission' }))
+  assert.equal(chiefPermission.command, 'permission')
 
   let providers = ok(await env.call('provider-key', {
     provider: 'anthropic', value: 'sk-owned-integration',
@@ -125,14 +128,92 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
   env.host().runtime.defaultModel = async () => 'faux/faux-1'
   const agent = ok(await env.call('add-agent'))
   assert.deepEqual((await env.host().runtime.ctx.harness.agent(agent.sessions[0])).model, { provider: 'faux', modelId: 'faux-1' })
+  const compaction = env.host().runtime.ctx.get('compaction')
+  const compactNow = compaction.compactNow
+  let compacted
+  compaction.compactNow = async target => { compacted = target.session.id }
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/compact' })), { command: 'compact' })
+  compaction.compactNow = compactNow
+  assert.equal(compacted, agent.sessions[0])
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan' })), { command: 'plan', active: true })
+  const plainAgent = await env.host().runtime.resolveAgent(agent.sessions[0])
+  assert.deepEqual(await env.host().runtime.ctx.get('planMode').get(plainAgent), { active: true, entered: true })
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan' })), { command: 'plan', active: true })
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan off' })), { command: 'plan', active: false })
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan Check the risky path' })), { command: 'plan', active: true })
+  await plainAgent.whenIdle()
+  assert.equal((await env.host().runtime.ctx.harness.context(agent.sessions[0])).messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text === 'Check the risky path')), true)
+  const reference = await env.host().runtime.ctx.get('attachments').saveFile({ data: Buffer.from('command attachment'), name: 'command.txt', mediaType: 'text/plain' })
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan Review the attachment', content: [{ type: 'file', attachment: reference }] })), { command: 'plan', active: true })
+  await plainAgent.whenIdle()
+  const planEntries = await env.host().runtime.ctx.harness.entries(agent.sessions[0], { limit: 100, order: 'ascending' })
+  const planAttachment = planEntries.items.find(item => item.data?.content?.some(block => block.type === 'text' && block.text === 'Review the attachment'))
+  assert.equal(planAttachment.data.content[0].type, 'file')
+  const permissionMenu = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/permission' }))
+  assert.equal(permissionMenu.permission, 'workspace-write')
+  assert.deepEqual(permissionMenu.permissions.options.map(option => option.value), ['read-only', 'workspace-write', 'danger-full-access'])
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/permission read-only' })), { command: 'permission', permission: 'read-only' })
+  assert.equal(env.host().runtime.ctx.get('permissionPresets').get(plainAgent.session), 'read-only')
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/model faux/faux-1' })), { command: 'model', model: 'faux/faux-1' })
+  const goal = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal Ship the demo', content: [{ type: 'file', attachment: reference }] }))
+  assert.equal(goal.goal.objective, 'Ship the demo')
+  await plainAgent.whenIdle()
+  const goalEntries = await env.host().runtime.ctx.harness.entries(agent.sessions[0], { limit: 100, order: 'ascending' })
+  const goalAttachment = goalEntries.items.find(item => item.data?.content?.some(block => block.type === 'text' && block.text === 'Reference attachments for the goal objective.'))
+  assert.equal(goalAttachment.data.content[0].type, 'file')
+  const refusedReplacement = await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal Replace it silently' })
+  assert.equal(refusedReplacement.ok, false)
+  assert.match(refusedReplacement.error.message, /already active/)
+  const edited = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal edit Ship the verified demo' }))
+  assert.equal(edited.goal.objective, 'Ship the verified demo')
+  assert.equal(edited.goal.id, goal.goal.id)
+  const paused = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal pause' }))
+  assert.equal(paused.goal.phase, 'paused')
+  const resumed = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal resume' }))
+  assert.equal(resumed.goal.phase, 'active')
+  assert.equal(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal clear' })).goal, null)
+  assert.equal(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal pause after verification' })).goal.objective, 'pause after verification')
+  assert.equal(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal clear' })).goal, null)
+  assert.equal(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/goal clear' })).text, 'No goal to clear.')
+  const exported = ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/export' }))
+  assert.equal(exported.download.type, 'application/zip')
+  const members = readZip(Buffer.from(exported.download.base64, 'base64'))
+  assert.deepEqual(members.map(member => member.name), ['session.v4.jsonl'])
+  const log = members[0].data.toString('utf8')
+  assert.match(log, /"conversationId"/)
+  assert.match(log, /Check the risky path/)
+  const unknown = await env.call('agent-command', { sessionId: agent.sessions[0], line: '/does-not-exist' })
+  assert.equal(unknown.ok, false)
+  assert.equal(unknown.error.code, 'bot/invalid')
   assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Plain Agent prompt' })), true)
-  const plainAgent = await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])
-  await plainAgent.agent.whenIdle()
+  const resolvedAgent = await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])
+  await resolvedAgent.agent.whenIdle()
   const agentChat = ok(await env.call('agent-chat', { sessionId: agent.sessions[0] }))
-  assert.deepEqual(agentChat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => [item.kind, item.text]), [
+  assert.deepEqual(agentChat.items.filter(item => item.kind === 'user' || item.kind === 'bot').map(item => [item.kind, item.text]).slice(-2), [
     ['user', 'Plain Agent prompt'],
     ['bot', 'Ready.'],
   ])
+  let planInterrupted = false
+  env.faux().setResponses([async (_context, options) => {
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, 2_000)
+      options?.signal?.addEventListener('abort', () => { planInterrupted = true; clearTimeout(timer); resolve() }, { once: true })
+    })
+    return fauxAssistantMessage('This plan answer should be interrupted.')
+  }, fauxAssistantMessage('Planned with the new direction.')])
+  assert.equal(ok(await env.call('send', { sessionId: agent.sessions[0], text: 'Start slow planning work' })), true)
+  const planDeadline = Date.now() + 2_000
+  while ((await env.host().runtime.ctx.sessionController.resolveAgent(agent.sessions[0])).agent.status !== 'running') {
+    if (Date.now() >= planDeadline) assert.fail('Agent session did not start running')
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(ok(await env.call('agent-command', { sessionId: agent.sessions[0], line: '/plan Redirect the active turn' })), { command: 'plan', active: true })
+  await resolvedAgent.agent.whenIdle()
+  assert.equal(planInterrupted, true)
+  const planContext = await env.host().runtime.ctx.harness.context(agent.sessions[0])
+  assert.equal(planContext.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text === 'Redirect the active turn')), true)
+  assert.equal(planContext.messages.some(message => message.role === 'user' && message.content.some(block => block.type === 'text' && block.text.includes('/plan'))), false)
+
   env.faux().setResponses([async (_context, options) => {
     await new Promise(resolve => {
       const timer = setTimeout(resolve, 2_000)
@@ -147,8 +228,8 @@ test('owned Host persists provider keys, Agent sessions and secret decisions acr
     await new Promise(resolve => setTimeout(resolve, 10))
   }
   assert.equal(ok(await env.call('stop-agent-work', { sessionId: agent.sessions[0] })), true)
-  await plainAgent.agent.whenIdle()
-  assert.equal(plainAgent.agent.status, 'idle')
+  await resolvedAgent.agent.whenIdle()
+  assert.equal(resolvedAgent.agent.status, 'idle')
   const agentRows = ok(await env.call('agent-sessions'))
   assert.deepEqual(agentRows.ids, [agent.sessions[0]])
   assert.equal(agentRows.byId[agent.sessions[0]].running, false)

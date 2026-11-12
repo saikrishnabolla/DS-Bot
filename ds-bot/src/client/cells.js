@@ -1,6 +1,6 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { MarkdownText, writeClipboard } from './ui-primitives.js'
+import { FileTypeIcon, MarkdownText, fileExtension, fileSizeText, writeClipboard } from './ui-primitives.js'
 import { inkText } from './inks.js'
 import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel, clockLabel, messageClock } from './text.js'
 import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, GoalIcon, MemoryIcon } from './icons.js'
@@ -479,21 +479,33 @@ const scrollParent = (node) => {
   return null
 }
 
+export function EarlierAttachments({ attachments }) {
+  return h('div', { className: 'bt-uattach' }, attachments.map((block, index) => {
+    const attachment = block.attachment ?? {}
+    const digest = String(attachment.attachmentId ?? '').replace(/^sha256:/, '')
+    if (block.type === 'image' && /^[a-f0-9]{64}$/.test(digest)) {
+      return h('img', { key: index, className: 'bt-uattachment-image', src: `api/bot/attachment/${digest}`, alt: attachment.name ?? 'Image' })
+    }
+    const meta = [fileExtension(attachment.name).toUpperCase().slice(0, 8), fileSizeText(attachment.bytes)].filter(Boolean).join(' · ')
+    return h('span', { key: index, className: 'bt-ufile', title: attachment.name },
+      h(FileTypeIcon, { path: attachment.name, className: 'bt-ufile-icon' }),
+      h('span', { className: 'bt-ufile-text' },
+        h('span', { className: 'bt-ufile-name' }, attachment.name ?? 'File'),
+        meta ? h('span', { className: 'bt-ufile-meta' }, meta) : null))
+  }))
+}
+
 function EarlierUser({ row, actions }) {
   const { shown, folded, control, code, codeHead } = useFold(row.text ?? '')
   const body = row.text && shown !== '' ? h(MarkdownText, { text: shown, labels: mdLabels(), variant: 'compact' }) : null
   const area = foldArea(body, code, codeHead, actions)
-  return h('div', { className: 'bt-urow' }, h('div', { className: 'bt-ububble', 'data-folded': folded || undefined },
-    control ? h('div', { className: 'bt-fold-body' }, area) : area,
-    control,
-    Array.isArray(row.attachments) ? h('span', { className: 'bt-uattachments' }, row.attachments.map((block, index) => {
-      const attachment = block.attachment ?? {}
-      const digest = String(attachment.attachmentId ?? '').replace(/^sha256:/, '')
-      return block.type === 'image' && /^[a-f0-9]{64}$/.test(digest)
-        ? h('img', { key: index, className: 'bt-uattachment-image', src: `api/bot/attachment/${digest}`, alt: attachment.name ?? 'Image' })
-        : h('span', { key: index, className: 'bt-uattachment-file', title: attachment.name }, attachment.name ?? 'File')
-    }))
-      : row.images ? h('span', { className: 'bt-uimages' }, row.images === 1 ? t('1 image') : t('{count} images', { count: row.images })) : null),
+  const attachments = Array.isArray(row.attachments) ? row.attachments : []
+  return h('div', { className: 'bt-urow' },
+    attachments.length > 0 ? h(EarlierAttachments, { attachments }) : null,
+    area || control || (attachments.length === 0 && row.images) ? h('div', { className: 'bt-ububble', 'data-folded': folded || undefined },
+      control ? h('div', { className: 'bt-fold-body' }, area) : area,
+      control,
+      attachments.length === 0 && row.images ? h('span', { className: 'bt-uimages' }, row.images === 1 ? t('1 image') : t('{count} images', { count: row.images })) : null) : null,
     row.via ? h('div', { className: 'bt-utime' }, h(ViaTag, { via: row.via }), Number.isFinite(row.time) ? messageClock(row.time) : null) : null)
 }
 

@@ -26,7 +26,7 @@ runInNewContext(bundle.outputFiles[0].text, {
   },
   queueMicrotask,
 })
-const { ChatRows, ThinkingRow, syncGroupChains } = module.exports
+const { ChatRows, EarlierAttachments, ThinkingRow, syncGroupChains } = module.exports
 
 const roster = { byId: { b: { id: 'b', name: 'Writer' } }, roomsById: {} }
 const MINUTE = 60_000
@@ -41,6 +41,16 @@ test('a Bot\'s messages in a row are one block', () => {
     { kind: 'bot', text: 'three', time: 4 * MINUTE },
   ]
   assert.deepEqual(shape(ChatRows({ items, sessionId: 'b', roster, actions: {} })), ['EarlierUser', 'bot:one+two', 'EarlierUser', 'bot:three'])
+})
+
+test('user file attachments render as cards with type and size metadata', () => {
+  const card = EarlierAttachments({ attachments: [{ type: 'file', attachment: { name: 'notes.pdf', bytes: 1536 } }] })
+  assert.equal(card.props.className, 'bt-uattach')
+  const file = card.children[0]
+  assert.equal(file.props.className, 'bt-ufile')
+  assert.equal(file.children[0].props.className, 'bt-ufile-icon')
+  assert.equal(file.children[1].children[0].children[0], 'notes.pdf')
+  assert.equal(file.children[1].children[1].children[0], 'PDF · 2 KB')
 })
 
 test('a view row renders as a view card from its blueprint', () => {

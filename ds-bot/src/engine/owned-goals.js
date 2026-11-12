@@ -64,4 +64,13 @@ export class OwnedGoalStore {
     this.#goals.set(normalized, goal)
     return goal
   }
+
+  delete(key) {
+    const normalized = String(key)
+    if (this.#dir !== undefined) {
+      rmSync(join(this.#dir, nameOf(normalized)), { force: true })
+      syncDirectory(this.#dir)
+    }
+    return this.#goals.delete(normalized)
+  }
 }

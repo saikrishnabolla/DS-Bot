@@ -6,9 +6,22 @@ import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
 import { textOf } from './text.js'
 import { validateViewAnswer } from '../view/core/index.js'
-import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
+import { writeZip } from '../office/zip.js'
+import { COLORS, EXTRA_COLORS, ROUTE, STEER_CUT } from './constants.js'
 
-const LANGUAGES = { zh: 'Chinese (简体中文)', en: 'English' }
+const LANGUAGES = {
+  zh: 'Chinese (简体中文)',
+  'zh-tw': 'Traditional Chinese (繁體中文)',
+  'zh-hk': 'Traditional Chinese (繁體中文)',
+  'zh-mo': 'Traditional Chinese (繁體中文)',
+  'zh-hant': 'Traditional Chinese (繁體中文)',
+  en: 'English',
+  ja: 'Japanese (日本語)',
+  ko: 'Korean (한국어)',
+  es: 'Spanish (Español)',
+  fr: 'French (Français)',
+  de: 'German (Deutsch)',
+}
 const RUN_STATS = ['sessionStats', 'tokenUsage', 'contextPressure']
 
 const invalid = message => Object.assign(new Error(message), { code: 'bot/invalid' })
@@ -103,6 +116,23 @@ async function sentContent(ctx, body) {
   return content
 }
 
+async function commandAttachments(ctx, body) {
+  const content = await sentContent(ctx, body)
+  if (content.some(block => block.type === 'text')) throw invalid('Command attachments are invalid')
+  return content
+}
+
+async function durableSessionLog(harness, sessionId) {
+  const entries = []
+  let cursor
+  do {
+    const page = await harness.entries(sessionId, { limit: 256, cursor, order: 'ascending' })
+    entries.push(...page.items)
+    cursor = page.next
+  } while (cursor !== undefined)
+  return Buffer.from(entries.map(entry => JSON.stringify(entry)).join('\n') + (entries.length === 0 ? '' : '\n'))
+}
+
 export function errorCode(error) {
   if (typeof error?.code === 'string' && (error.code.startsWith('bot/') || error.code.startsWith('session/'))) return error.code
   return isInternal(error) ? 'bot/internal' : 'bot/refused'
@@ -115,7 +145,11 @@ export function install(rt) {
 
   // The Cue interface language of the last browser that asked for the team.
   let uiLocale
-  rt.uiLanguage = () => (uiLocale === undefined ? undefined : LANGUAGES[uiLocale.split('-')[0].toLowerCase()] ?? uiLocale)
+  rt.uiLanguage = () => {
+    if (uiLocale === undefined) return undefined
+    const locale = uiLocale.toLowerCase()
+    return LANGUAGES[locale] ?? LANGUAGES[locale.split('-')[0]] ?? uiLocale
+  }
 
   const ok = value => ({ ok: true, value })
   const fail = (message, code = 'bot/error') => ({ ok: false, error: { code, message, details: {} } })
@@ -444,6 +478,106 @@ export function install(rt) {
           const sessionId = String(body.sessionId ?? '')
           if (rt.agentOf(sessionId) === undefined) return fail('Session does not belong to the Agent', 'bot/not-found')
           return ok(await ctx.sessionController.displayPage({ sessionId, cursor: body.cursor ?? undefined }))
+        }
+        case 'agent-command': {
+          await rt.load()
+          const sessionId = String(body.sessionId ?? '')
+          if (rt.agentOf(sessionId) === undefined && !rt.isBotSession(sessionId)) return fail('Session does not support commands', 'bot/not-found')
+          const line = String(body.line ?? '').trim()
+          const match = /^\/([a-z]+)(?:\s+([\s\S]*))?$/u.exec(line)
+          if (match === null) return fail('Unknown command', 'bot/invalid')
+          const command = match[1]
+          const input = String(match[2] ?? '').trim()
+          const agent = await rt.resolveAgent(sessionId)
+          const attachments = await commandAttachments(ctx, body)
+          if (command === 'compact') {
+            if (input !== '') return fail('/compact does not take an argument', 'bot/invalid')
+            if (attachments.length > 0) return fail('Attachments cannot accompany /compact.', 'bot/invalid')
+            await ctx.get('compaction').compactNow(agent, signal)
+            return ok({ command })
+          }
+          if (command === 'plan') {
+            const service = ctx.get('planMode')
+            if (input === 'off' && attachments.length > 0) return fail('Attachments cannot accompany /plan off.', 'bot/invalid')
+            const active = input !== 'off'
+            await service.set(agent, active)
+            if (active && (input !== '' || attachments.length > 0)) {
+              if (agent.status === 'running') {
+                await agent.cancel({ kind: 'hook', reason: STEER_CUT })
+                await agent.whenIdle()
+              }
+              await agent.steer(createUserMessage({
+                content: [...attachments, ...(input === '' ? [] : [{ type: 'text', text: input }])],
+                source: { kind: 'user' },
+              }))
+            }
+            return ok({ command, active })
+          }
+          if (command === 'permission') {
+            if (attachments.length > 0) return fail('Attachments cannot accompany /permission.', 'bot/invalid')
+            const service = ctx.get('permissionPresets')
+            if (input === '') {
+              const permissions = service.catalog()
+              return ok({ command, permission: service.get(agent.session) ?? permissions.defaultPreset, permissions })
+            }
+            service.set(agent.session, input)
+            return ok({ command, permission: input })
+          }
+          if (command === 'model') {
+            if (input === '') return fail('Choose a model', 'bot/invalid')
+            if (attachments.length > 0) return fail('Attachments cannot accompany /model.', 'bot/invalid')
+            const ref = await rt.resolveModel(input)
+            const slash = ref.indexOf('/')
+            await ctx.sessionController.selectModel({ sessionId, provider: ref.slice(0, slash), model: ref.slice(slash + 1) })
+            return ok({ command, model: ref })
+          }
+          if (command === 'goal') {
+            const service = ctx.get('goals')
+            const current = service.get(agent)
+            const control = input.toLowerCase()
+            const edit = /^edit(?=\s)/iu.test(input) ? input.slice(4).trim() : undefined
+            const objective = edit === undefined && !['', 'clear', 'pause', 'resume', 'edit'].includes(control) ? input : undefined
+            const acceptsAttachments = objective !== undefined || edit !== undefined
+            if (attachments.length > 0 && !acceptsAttachments) {
+              return fail('Attachments only accompany a goal objective: /goal <objective> or /goal edit <objective>.', 'bot/invalid')
+            }
+            if (input === '') return ok({ command, goal: current ?? null })
+            if (control === 'edit') return fail('Goal editing requires a replacement objective.\nUsage: /goal [<objective>|clear|edit <objective>|pause|resume]', 'bot/invalid')
+            if (control === 'clear') {
+              if (current === undefined) return ok({ command, goal: null, text: 'No goal to clear.' })
+              if (!service.clear(agent, current)) return fail('The goal command is not valid for the current state. Run /goal to view available commands.', 'bot/invalid')
+              return ok({ command, goal: null, text: 'Goal cleared.' })
+            }
+            if (control === 'pause' || control === 'resume') {
+              if (current === undefined) return fail(`No goal is currently set; /goal ${control} requires one. Usage: /goal [<objective>|clear|edit <objective>|pause|resume]`, 'bot/invalid')
+              const changed = control === 'pause' ? service.pause(agent, current) : service.resume(agent, current)
+              if (changed === undefined) return fail('The goal command is not valid for the current state. Run /goal to view available commands.', 'bot/invalid')
+              return ok({ command, goal: changed })
+            }
+            let goal
+            if (edit !== undefined) {
+              if (current === undefined) return fail('No goal is currently set; /goal edit requires one. Usage: /goal [<objective>|clear|edit <objective>|pause|resume]', 'bot/invalid')
+              goal = current.phase === 'complete'
+                ? service.start(agent, { objective: edit })
+                : service.edit(agent, current, { objective: edit })
+            } else {
+              if (current !== undefined && current.phase !== 'complete') {
+                return fail(`A goal is already ${current.phase}. Use /goal edit <objective> to change it or /goal clear before replacing it.`, 'bot/invalid')
+              }
+              goal = service.start(agent, { objective })
+            }
+            if (goal === undefined) return fail('The goal command is not valid for the current state. Run /goal to view available commands.', 'bot/invalid')
+            if (attachments.length > 0) await agent.followup(createUserMessage({ content: [...attachments, { type: 'text', text: 'Reference attachments for the goal objective.' }], source: { kind: 'user' } }))
+            return ok({ command, goal })
+          }
+          if (command === 'export') {
+            if (input !== '') return fail('/export does not take an argument', 'bot/invalid')
+            if (attachments.length > 0) return fail('Attachments cannot accompany /export.', 'bot/invalid')
+            const data = await durableSessionLog(ctx.harness, sessionId)
+            const archive = writeZip([{ name: 'session.v4.jsonl', data }])
+            return ok({ command, download: { name: `cue-session-${sessionId}.zip`, type: 'application/zip', base64: archive.toString('base64') } })
+          }
+          return fail(`Unknown command /${command}`, 'bot/invalid')
         }
         case 'agent-sessions': {
           await rt.load()
