@@ -127,7 +127,11 @@ export function install(rt) {
 
   // The Cue interface language of the last browser that asked for the team.
   let uiLocale
-  rt.uiLanguage = () => (uiLocale === undefined ? undefined : LANGUAGES[uiLocale.split('-')[0].toLowerCase()] ?? uiLocale)
+  rt.uiLanguage = () => {
+    if (uiLocale === undefined) return undefined
+    const locale = uiLocale.toLowerCase()
+    return LANGUAGES[locale] ?? LANGUAGES[locale.split('-')[0]] ?? uiLocale
+  }
 
   const ok = value => ({ ok: true, value })
   const fail = (message, code = 'bot/error') => ({ ok: false, error: { code, message, details: {} } })
